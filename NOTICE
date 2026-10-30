@@ -15,5 +15,7 @@ to, or redistribute them, and their licences do not apply to TrustPCB's own code
 Anyone who builds or distributes the openEMS Docker image (docker/ems) is responsible for
 meeting the GPL terms for that image.
 
+The resvg renderer used through resvg-py is licensed MPL-2.0.
+
 Python and JavaScript dependencies keep their own licences; see server/pyproject.toml and
 web/package.json.

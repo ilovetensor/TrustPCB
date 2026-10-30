@@ -3,7 +3,7 @@
 Routes that need work owned by another lane call one clearly named function in that lane's
 module and answer 501 until the module and function exist. The hooks are:
 
-  trustpcb.intake.upload.ingest(*, store, version, upload_path, filename) -> dict | None
+  trustpcb.intake.service.ingest(*, store, version, upload_path, filename) -> dict | None
       Called by POST /api/projects/{id}/versions after the upload was streamed to disk. `version`
       is the freshly created versions row (status "uploaded"); unpack into store.version_dir(version["id"]).
       `upload_path` is the zip file, or a directory holding the uploaded files (folder drag, or a
@@ -48,10 +48,10 @@ MAX_UPLOAD_BYTES = int(float(os.getenv('TRUSTPCB_MAX_UPLOAD_MB', '512')) * 1024 
 MAX_UPLOAD_FILES = 5000
 MAX_FIELD_BYTES = 8 * 1024
 TOKEN_HEADER = 'x-trustpcb-token'
-BACKEND_PORT = 8008
+BACKEND_PORT = 8118
 ALLOWED_HOSTS = {f'127.0.0.1:{BACKEND_PORT}', f'localhost:{BACKEND_PORT}', f'[::1]:{BACKEND_PORT}'}
 ALLOWED_ORIGINS = {
-    'http://127.0.0.1:3000', 'http://localhost:3000', 'http://[::1]:3000',
+    'http://127.0.0.1:3118', 'http://localhost:3118', 'http://[::1]:3118',
     f'http://127.0.0.1:{BACKEND_PORT}', f'http://localhost:{BACKEND_PORT}', f'http://[::1]:{BACKEND_PORT}',
 }
 FINDING_STATUS_CHANGES = {'dismissed', 'open'}
@@ -365,7 +365,7 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     @app.post('/api/projects/{id}/versions')
     async def upload_version(id: str, request: Request):
         found(store().get_project(id), 'Project')
-        ingest = lane_function('trustpcb.intake.upload', 'ingest')  # refuse before reading a large body
+        ingest = lane_function('trustpcb.intake.service', 'ingest')  # refuse before reading a large body
         upload_dir = store().upload_dir(uuid.uuid4().hex)
         try:
             sink = await receive_upload(request, upload_dir)

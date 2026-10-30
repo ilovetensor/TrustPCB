@@ -8,7 +8,7 @@ import uvicorn
 
 from trustpcb.api import create_app
 
-HEADERS = {'Host': '127.0.0.1:8008', 'X-TrustPCB-Token': 'secret'}
+HEADERS = {'Host': '127.0.0.1:8118', 'X-TrustPCB-Token': 'secret'}
 
 
 @pytest.fixture
@@ -75,5 +75,5 @@ def test_stream_replays_resumes_and_follows(live):
 
 def test_stream_requires_the_token(live):
     _, base = live
-    response = httpx.get(f'{base}/api/reviews/x/stream', headers={'Host': '127.0.0.1:8008'})
+    response = httpx.get(f'{base}/api/reviews/x/stream', headers={'Host': '127.0.0.1:8118'})
     assert response.status_code == 401
