@@ -1,0 +1,42 @@
+[
+ {
+  "tool": "get_finding",
+  "args": {
+   "code": "F-001"
+  }
+ },
+ {
+  "tool": "measure",
+  "args": {
+   "kind": "distance",
+   "a": "ref:C14",
+   "b": "ref:U3"
+  }
+ },
+ {
+  "tool": "propose_finding_change",
+  "args": {
+   "action": "new",
+   "title": "Decoupling capacitor C14 is also far from the radio supply pin",
+   "severity": "low",
+   "what": "C14 sits 5.54 mm from U3, edge to edge.",
+   "why_it_matters": "A long loop weakens decoupling at the radio.",
+   "recommendation": "Move C14 closer to the U3 supply pin in your layout tool.",
+   "evidence_ids": [
+    "E-002"
+   ],
+   "targets": [
+    "ref:C14",
+    "ref:U3"
+   ],
+   "rule": "decoupling"
+  }
+ },
+ {
+  "text": "Yes, C14 is also too far from U3. I added it as a new finding with a pin on the board."
+ },
+ {
+  "tool": "end_followup",
+  "args": {}
+ }
+]

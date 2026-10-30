@@ -1,0 +1,98 @@
+[
+ {
+  "tool": "submit_board_brief",
+  "args": {
+   "purpose": "Battery powered Bluetooth sensor node with a printed antenna",
+   "part_roles": {
+    "U3": "radio",
+    "C13": "decoupling",
+    "C14": "decoupling",
+    "Y1": "crystal",
+    "L1": "matching"
+   },
+   "wireless": {
+    "has_radio": true,
+    "band_hz": [
+     2400000000.0,
+     2483500000.0
+    ],
+    "antenna_kind": "printed",
+    "feed_net": "ANT_FEED"
+   },
+   "risks": [
+    {
+     "text": "Ground copper close to the antenna feed may detune it.",
+     "targets": [
+      "net:ANT_FEED"
+     ]
+    },
+    {
+     "text": "Supply decoupling distance at the radio.",
+     "targets": [
+      "ref:U3"
+     ]
+    }
+   ],
+   "priorities": [
+    "Is the antenna tuned for 2.4 GHz?",
+    "Supply decoupling at the radio"
+   ]
+  }
+ },
+ {
+  "tool": "advance_phase",
+  "args": {}
+ },
+ {
+  "tool": "record_finding",
+  "args": {
+   "title": "Decoupling capacitor C13 is far from the radio supply pin",
+   "severity": "medium",
+   "what": "C13 sits 7.5 mm from the U3 supply pin.",
+   "why_it_matters": "A long loop weakens decoupling.",
+   "recommendation": "Move C13 closer to the U3 supply pin in your layout tool.",
+   "candidate_ids": [
+    "candidate:decoupling:1"
+   ]
+  }
+ },
+ {
+  "tool": "record_finding",
+  "args": {
+   "title": "Decoupling capacitor C13 is far from the radio supply pin",
+   "severity": "medium",
+   "what": "C13 sits 5.2 mm from the U3 supply pin.",
+   "why_it_matters": "A long loop weakens decoupling.",
+   "recommendation": "Move C13 closer to the U3 supply pin in your layout tool.",
+   "candidate_ids": [
+    "candidate:decoupling:1"
+   ]
+  }
+ },
+ {
+  "tool": "advance_phase",
+  "args": {}
+ },
+ {
+  "tool": "advance_phase",
+  "args": {}
+ },
+ {
+  "tool": "submit_summary",
+  "args": {
+   "summary": "C13 sits 9 mm from the supply pin.",
+   "top_actions": [
+    "Move C13 (F-001)."
+   ]
+  }
+ },
+ {
+  "tool": "submit_summary",
+  "args": {
+   "summary": "One medium issue was found.",
+   "top_actions": [
+    "Move C13 closer (F-001)."
+   ]
+  }
+ }
+]
