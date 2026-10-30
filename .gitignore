@@ -1,0 +1,30 @@
+# Local-only agent runner
+server/trustpcb/runners/local_*
+server/requirements.local.txt
+*.local.*
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Web
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+
+# App data and generated output
+.trustpcb/
+data/
+*.log
+.DS_Store
+docker/ems/.cache/
