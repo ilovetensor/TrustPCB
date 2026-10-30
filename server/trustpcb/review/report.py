@@ -8,6 +8,7 @@ printed by a headless browser when one is installed.
 from __future__ import annotations
 
 import asyncio
+import base64
 import html
 import json
 import os
@@ -30,6 +31,7 @@ END_STATE_TEXT = {
     'canceled': 'The review was stopped by the user; code assembled this report from what was recorded.',
     'pipeline_failed': 'The checks before the agent could not finish; this report shows what was available.',
 }
+EVIDENCE_SHOWN = 8
 SIM_NOTE = 'Simulated. Not a substitute for a real antenna measurement.'
 
 
@@ -105,6 +107,14 @@ def _not_tested(summary: dict, review: dict, rf_section: dict, candidates_new: i
             items.append(f'Phase {skipped["phase"]} ({skipped["name"]}) was skipped: {skipped["reason"]}')
     if candidates_new:
         items.append(f'{candidates_new} analyzer or KiCad result(s) were not reviewed by the agent and are listed as Unreviewed.')
+    groups = summary.get('unreviewed_groups') or []
+    if groups:
+        items.append('Unreviewed by rule: ' + ', '.join(f'{g["rule"]} ({g["count"]})' for g in groups[:10]) + '.')
+    waived = summary.get('coverage_waived')
+    if waived:
+        items.append(f'Phase 3 coverage was cut short: {waived.get("reason", "a budget ended")}.')
+    for group in summary.get('auto_grouped') or []:
+        items.append(f'{group["count"]} info-level {group["rule"]} result(s) were grouped by code and not reviewed one by one.')
     for limit in summary.get('limits') or []:
         if limit['rule'] in ('budget_wall', 'hard_deadline', 'model_turns', 'silence_watchdog', 'loop'):
             items.append(f'The review stopped early: {limit["detail"]}.')
@@ -158,6 +168,8 @@ def build_snapshot(store, review_id: str, *, cause: str, incomplete: bool = Fals
         'candidates': {'total': len(candidate_rows), 'unreviewed': unreviewed,
                        'by_state': {s: sum(1 for c in candidate_rows if c['review_state'] == s) for s in {c['review_state'] for c in candidate_rows}}},
         'version_changes': summary.get('version_changes'),
+        'review_work': {'dismissals': summary.get('dismissals') or [], 'auto_grouped': summary.get('auto_grouped') or [],
+                        'region_views': len(summary.get('region_views') or []), 'unreviewed_groups': summary.get('unreviewed_groups') or []},
         'assumptions': [{'name': a['name'], 'value': a['value'], 'source': a['source'], 'note': a.get('note')} for a in store.list_assumptions(review_id)],
         'not_tested': [], 'limits': summary.get('limits') or [], 'budget': review.get('budget') or {},
         'method': _method(store, review, rows),
@@ -318,7 +330,7 @@ def render_html(snap: dict, images: dict | None = None) -> str:
         out.append(f'<div class="card">{images["overview"]}<p class="muted small">Board with numbered issue pins (top layer).</p></div>')
     # 4 rf
     out.append('<h2>RF result</h2>')
-    out.append(render_rf(rf))
+    out.append(render_rf(rf, images))
     # 5 investigation story
     out.append('<h2>Investigation story</h2>')
     if snap['investigations']:
@@ -341,6 +353,7 @@ def render_html(snap: dict, images: dict | None = None) -> str:
         out.append('<p class="muted">No findings were recorded.</p>')
     for f in findings:
         out.append(render_finding(f, snap, images.get(f['code'])))
+    out.append(render_review_work(snap.get('review_work') or {}))
     # 7 version changes
     if snap.get('version_changes'):
         out.append('<h2>Changes since the previous version</h2>')
@@ -390,9 +403,16 @@ def render_changes(changes: dict, cause: str) -> str:
     return f'<div class="changes"><strong>Changes since revision r{esc(changes.get("from_revision"))}</strong> <span class="muted small">({esc(cause)})</span><ul>{"".join(rows)}</ul></div>'
 
 
-def render_rf(rf: dict) -> str:
+NOT_TESTED_RF = ('S11 curve and match to the target band', 'electric-field picture of the antenna', 'radiation pattern')
+
+
+def render_rf(rf: dict, images: dict | None = None) -> str:
+    images = images or {}
     if rf['status'] == 'not_tested':
-        return f'<p>{pill("cls-not_tested", "Not tested")} {esc(rf["reason"])}</p>'
+        shown = ', '.join(NOT_TESTED_RF)
+        return (f'<div class="notice"><p><strong>{pill("cls-not_tested", "Not tested")} RF behaviour.</strong> {esc(rf["reason"])}</p>'
+                f'<p>Because no simulation ran, this report has no {esc(shown)}. Statements about antenna tuning, matching or radiated power are '
+                f'engineering opinion or layout measurements, not simulated results. Treat the antenna as unverified until it is measured on a real board.</p></div>')
     parts = []
     target = rf.get('target_db')
     for key, title in (('confirm_base', 'Confirmed base'), ('confirm_winner', 'Confirmed best change')):
@@ -407,8 +427,37 @@ def render_rf(rf: dict) -> str:
         parts.append(f'<p>Target ({esc(target)} dB across the band): {pill("cls-measured" if rf["meets_target"] else "sev-high", "met" if rf["meets_target"] else "not met")}</p>')
     if rf.get('screen_runs'):
         parts.append('<p class="muted">Only screen runs exist. They compare changes with the base and give no absolute result.</p>')
+    for key, title, caption in (('rf_field', 'Field still', 'Electric field in the board plane at the design frequency, from the confirm run.'),
+                                ('rf_pattern', 'Radiation pattern', 'Directivity from the confirm run. A simulation, not a chamber measurement.')):
+        if images.get(key):
+            parts.append(f'<div class="card"><h3>{esc(title)}</h3>{images[key]}<p class="muted small">{esc(caption)}</p></div>')
+    missing = images.get('rf_missing') or {}
+    if rf.get('confirm_base') or rf.get('confirm_winner'):
+        for key, title in (('field', 'Field still'), ('pattern', 'Radiation-pattern still')):
+            if not images.get('rf_' + key):
+                parts.append(f'<p class="muted small">{pill("cls-not_tested", "Not tested")} {esc(title)}: {esc(missing.get(key) or "no image was produced for this run")}.</p>')
+    else:
+        parts.append(f'<p class="muted small">{pill("cls-not_tested", "Not tested")} Field and radiation-pattern stills are shown only for confirm runs, and there is none.</p>')
     parts.append(f'<p class="muted small">{esc(rf["note"])}</p>')
     return ''.join(parts)
+
+
+def render_review_work(work: dict) -> str:
+    """What the agent cleared as harmless, what code grouped, and how closely the board was inspected."""
+    out = []
+    dismissals = work.get('dismissals') or []
+    if dismissals:
+        out.append('<h2>Checked and cleared</h2><p class="muted small">These analyzer results were judged harmless on this board. The reason is the agent\'s own; check it against your design intent.</p><table>'
+                   '<tr><th>Check</th><th>Results</th><th>Why harmless</th></tr>')
+        for d in dismissals:
+            out.append(f'<tr><td>{esc(", ".join(d.get("rules") or []))}</td><td class="n">{esc(d.get("count"))}</td><td class="small">{esc(d.get("reason"))}</td></tr>')
+        out.append('</table>')
+    grouped = work.get('auto_grouped') or []
+    if grouped:
+        out.append('<p class="small muted">Grouped by code, not judged one by one (info level): ' + esc(', '.join(f'{g["rule"]} ({g["count"]})' for g in grouped)) + '.</p>')
+    if work.get('region_views'):
+        out.append(f'<p class="small muted">The agent made {esc(work["region_views"])} close-up board view(s) in its open review.</p>')
+    return ''.join(out)
 
 
 def render_finding(f: dict, snap: dict, image: str | None) -> str:
@@ -426,7 +475,7 @@ def render_finding(f: dict, snap: dict, image: str | None) -> str:
                f'<p><strong>Recommendation for the engineer.</strong> {esc(f["recommendation"])}</p>')
     if f['evidence']:
         out.append('<p class="small"><strong>Evidence.</strong></p><ul class="small">')
-        for code in f['evidence']:
+        for code in f['evidence'][:EVIDENCE_SHOWN]:
             e = evidence_by_code.get(code)
             if not e:
                 continue
@@ -435,6 +484,8 @@ def render_finding(f: dict, snap: dict, image: str | None) -> str:
             numbers = ', '.join(f'{k.replace("_", " ")} {measurement_text(v)}' for k, v in (values.get('measurements') or {}).items() if isinstance(v, dict))
             tag = f' [{values.get("quality")}, trust {(values.get("trust") or {}).get("status")}]' if values.get('kind') == 'simulated' else ''
             out.append(f'<li><code>{esc(code)}</code> {esc(label)}{esc(tag)}{": " + esc(numbers) if numbers else ""}</li>')
+        if len(f['evidence']) > EVIDENCE_SHOWN:
+            out.append(f'<li class="muted">and {len(f["evidence"]) - EVIDENCE_SHOWN} more results grouped under this finding (all kept in the JSON export)</li>')
         out.append('</ul>')
     if f['assumptions']:
         out.append('<p class="small"><strong>Assumptions.</strong> ' + esc('; '.join(f['assumptions'])) + '</p>')
@@ -533,12 +584,44 @@ async def html_to_pdf(document: str, browser: str | None = None) -> bytes:
         return target.read_bytes()
 
 
+async def rf_stills(store, review: dict, snap: dict) -> dict:
+    """Field and radiation-pattern stills from the best confirm run, as inline images. The Lab supplies the PNG bytes
+    (`view_result` kinds `field` and `pattern`); anything it cannot draw is reported in `rf_missing`, never invented."""
+    from . import service
+    out: dict[str, Any] = {}
+    if (snap.get('rf') or {}).get('status') != 'tested':
+        return out
+    rows = [r for r in store.list_evidence(review['id']) if r['type'] == ev.CONFIRM and (r['values'].get('trust') or {}).get('status') == 'ok' and (r['values'].get('run') or r['values'].get('job_id'))]
+    winner = next((r for r in rows if r['values'].get('label') == 'confirm winner'), None)
+    best = winner or (rows[0] if rows else None)
+    missing: dict[str, str] = {}
+    if best is None:
+        missing = {k: 'no confirmed run with stored solver output' for k in ('field', 'pattern')}
+    else:
+        lab = service.get_lab(store)
+        for kind in ('field', 'pattern'):
+            try:
+                values = best['values']
+                run = values.get('run') or {'job_id': values.get('job_id'), 'status': values.get('status') or 'done', 'result': values.get('metrics') or {}, 'curve': values.get('curve')}
+                image = await lab.view_result(review_id=review['id'], result=run, kind=kind, params={})
+                data = image.get('data_b64') or (base64.b64encode(image['png']).decode() if image.get('png') else None)
+                if not data:
+                    raise ValueError('the lab returned no image')
+                out['rf_' + kind] = f'<img alt="{kind} still" style="max-width:100%;border:1px solid #d7dbe0;border-radius:6px" src="data:{image.get("mime", "image/png")};base64,{data}">'
+            except Exception as exc:
+                missing[kind] = str(exc)[:160] or type(exc).__name__
+    if missing:
+        out['rf_missing'] = missing
+    return out
+
+
 async def render_revision(*, store, review: dict, revision: dict, fmt: str) -> bytes:
     """GET /api/reviews/{id}/report/{rev}.html|pdf. The snapshot is frozen; only the board images are drawn at render time."""
     if fmt not in ('html', 'pdf'):
         raise ValueError('Format must be html or pdf')
     snapshot = revision['snapshot']
     images = await board_images(store, review, snapshot)
+    images.update(await rf_stills(store, review, snapshot))
     document = render_html(snapshot, images)
     if fmt == 'html':
         return document.encode('utf-8')

@@ -8,6 +8,7 @@ from typing import Any
 from ..pcb.model import Board
 from .base import AnalyzerContext, Emitter, mark, meas, point_target
 from .classify import is_ground
+from .radiating import radiating
 from .topology import get_topology
 
 RULE = "track_detour"
@@ -17,10 +18,13 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
     topo = get_topology(board, ctx)
     ratio_min = float(ctx.t("detour_ratio"))
     extra_min = float(ctx.t("detour_extra_mm"))
+    rad = radiating(board, ctx)
     em = Emitter(RULE)
     for route in topo.routes:
         if route.net is None or is_ground(route.net):
             continue
+        if rad and any(t in rad.track_ids for t in route.tracks):
+            continue  # a route that ends in the antenna: a meander there is intentional
         length = route.length
         direct = math.dist(route.start, route.end)
         extra = length - direct

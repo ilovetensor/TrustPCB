@@ -50,6 +50,12 @@ class ReviewSession:
         self.investigation_codes: dict[str, str] = {}
         self.suspect_codes: dict[str, str] = {}
         self.limits: list[dict] = []                 # budget walls and stop rules that fired
+        self.region_views: dict[int, dict] = {}        # phase 3 open-review gate: counted region views
+        self.view_unavailable = False                   # the board cannot be drawn: the region view gate gives way
+        self.dismissals: list[dict] = []                # {rules, count, reason}: shown in the report
+        self.auto_grouped: list[dict] = []              # info-only rule groups grouped by code at the phase 3 gate
+        self.coverage_refusals = 0
+        self.coverage_waived: dict | None = None
         self.stop_reason: str | None = None
         self.stop_detail: str = ''
         self.finished = False

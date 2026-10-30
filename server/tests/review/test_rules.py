@@ -10,14 +10,14 @@ from trustpcb.review.tools import MAX_RESULT_CHARS, ToolResult, bound, ok, page,
 # ---- the table in spec section 8 -----------------------------------------------------------------
 
 @pytest.mark.parametrize('depth,expected', [
-    ('quick', (240, 0, 45, 0, 0, 0, 8, 1_500_000, 15_000)),
-    ('standard', (1800, 1200, 90, 1, 5, 2, 14, 3_000_000, 30_000)),
-    ('deep', (4500, 3600, 140, 3, 6, 4, 20, 6_000_000, 60_000)),
+    ('quick', (360, 0, 90, 0, 0, 0, 8, 1_500_000, 15_000)),
+    ('standard', (1800, 1200, 160, 1, 5, 2, 14, 3_000_000, 30_000)),
+    ('deep', (4500, 3600, 220, 3, 6, 4, 20, 6_000_000, 60_000)),
 ])
 def test_default_budgets_match_the_spec(depth, expected):
     c = config_for(depth)
     assert (c.wall_s, c.solver_s, c.model_turns, c.investigations, c.experiments_per_investigation, c.confirm_runs, c.images, c.input_tokens, c.output_tokens) == expected
-    assert c.phase_calls[2] == 10 and c.phase_calls[3] == 30 and c.phase_images[3] == 8
+    assert c.phase_calls[2] == 10 and c.phase_calls[3] == {'quick': 60, 'standard': 80, 'deep': 80}[depth] and c.phase_images[3] == 8
 
 
 def test_unknown_depth_is_rejected():

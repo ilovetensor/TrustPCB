@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 
+from gate_steps import clear
+
 SCRIPTS = Path(__file__).parent / 'scripts'
 
 
@@ -55,7 +57,7 @@ async def test_phase_four_is_skipped_when_rf_is_not_simulatable(env):
     script = [
         {'tool': 'open_investigation', 'args': {'question': 'Is the antenna detuned by nearby copper?', 'suspects': [{'title': 'Copper', 'why': 'Nearby pour.'}]}},
         {'tool': 'submit_board_brief', 'args': {'purpose': 'Battery powered Bluetooth sensor node', 'part_roles': {'U3': 'radio'}, 'risks': [], 'priorities': ['antenna']}},
-        {'tool': 'advance_phase'}, {'tool': 'advance_phase'},
+        {'tool': 'advance_phase'}, *clear(), {'tool': 'advance_phase'},
         {'tool': 'open_investigation', 'args': {'question': 'Is the antenna detuned by nearby copper?', 'suspects': [{'title': 'Copper', 'why': 'Nearby pour.'}]}},
         {'tool': 'submit_summary', 'args': {'summary': 'The board was reviewed without simulation.', 'top_actions': ['Check the antenna keep-clear zone.']}},
     ]
@@ -141,7 +143,7 @@ async def test_silence_watchdog_is_quiet_while_a_simulation_runs(env):
 
     env.lab.run_scenario = slow
     script = [{'tool': 'submit_board_brief', 'args': {'purpose': 'Battery powered Bluetooth sensor node', 'part_roles': {'U3': 'radio'}, 'risks': [], 'priorities': ['antenna']}},
-              {'tool': 'advance_phase'}, {'tool': 'advance_phase'},
+              {'tool': 'advance_phase'}, *clear(), {'tool': 'advance_phase'},
               {'tool': 'open_investigation', 'args': {'question': 'Is copper next to the feed detuning the antenna?', 'suspects': [{'title': 'Copper', 'why': 'Pour near the feed.'}]}},
               {'tool': 'run_simulation', 'args': {'suspect_id': 'S1', 'label': 'base'}}]
     review = await env.review(script)
@@ -177,7 +179,7 @@ async def test_baseline_failure_ends_as_pipeline_failed_with_a_report(env):
 async def test_budget_wall_leaves_only_closing_tools(env):
     env.lab.solve_s['screen'] = 700.0       # two runs use 1400 of the 1200 solver seconds
     script = [{'tool': 'submit_board_brief', 'args': {'purpose': 'Battery powered Bluetooth sensor node', 'part_roles': {'U3': 'radio'}, 'risks': [], 'priorities': ['antenna']}},
-              {'tool': 'advance_phase'}, {'tool': 'advance_phase'},
+              {'tool': 'advance_phase'}, *clear(), {'tool': 'advance_phase'},
               {'tool': 'open_investigation', 'args': {'question': 'Is copper next to the feed detuning the antenna?', 'suspects': [{'title': 'Copper', 'why': 'Pour near the feed.'}]}},
               {'tool': 'run_simulation', 'args': {'suspect_id': 'S1', 'label': 'base'}},
               {'tool': 'run_simulation', 'args': {'suspect_id': 'S1', 'label': 'clear', 'whatif_ops': [{'op': 'adjust_antenna_length', 'delta_mm': 2.0}]}},

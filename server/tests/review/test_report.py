@@ -43,7 +43,7 @@ async def test_html_is_self_contained_and_escapes_board_text(env):
                                        why_it_matters='w', recommendation='r', marks=[], source='review')
     report.create_revision(env.store, review['id'], cause='test')
     html = await html_of(env, review)
-    assert '<script' not in html and '<img' not in html and 'onerror=alert' not in html.replace('&lt;img src=x onerror=alert(2)&gt;', '')
+    assert '<script' not in html and '<img src=x' not in html and 'onerror=alert' not in html.replace('&lt;img src=x onerror=alert(2)&gt;', '')
     assert '&lt;script&gt;alert(1)&lt;/script&gt;' in html and finding['code'] in html
     externals = re.findall(r'(?:src|href)="(https?:[^"]+)"|url\((https?:[^)]+)\)|@import', html)
     assert externals == []

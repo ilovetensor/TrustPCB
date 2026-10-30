@@ -2,7 +2,8 @@
 
 Each routed run on a fast net is sampled along its length. A sample is supported when ground
 copper (a filled ground zone) lies on an adjacent copper layer at that point. A stretch of
-unsupported samples is a gap crossing. Ground zones that have no fill data are approximated by
+unsupported samples is a gap crossing. Samples inside an antenna keep-out, or on the detected radiating
+element, are never gaps: an antenna is meant to be free of ground (see ``radiating``). Ground zones that have no fill data are approximated by
 their outline and the candidate says so.
 """
 
@@ -19,6 +20,7 @@ from shapely.ops import unary_union
 from ..pcb.model import Board
 from .base import AnalyzerContext, Emitter, mark, meas, point_target
 from .classify import fast_nets, is_ground
+from .radiating import radiating
 from .topology import Run, get_topology
 
 RULE = "return_path"
@@ -82,6 +84,7 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
     merge = float(ctx.t("return_path_merge_mm"))
     gnd, approx = ground_copper(board)
     fast = set(fast_nets(board, ctx))
+    rad = radiating(board, ctx)
     em = Emitter(RULE)
     for run in topo.runs:
         if run.net not in fast:
@@ -99,6 +102,10 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             g = gnd.get(layer)
             if g is not None:
                 supported |= shapely.contains_xy(g, xs, ys)
+        if rad:
+            # A printed antenna must stay clear of ground: its keep-out and the radiating element are not judged.
+            supported |= rad.contains_xy(xs, ys, run.layer)
+            supported |= np.array([s[3] in rad.track_ids for s in samples], dtype=bool)
         i = 0
         n = len(samples)
         while i < n:

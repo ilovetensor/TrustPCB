@@ -13,7 +13,7 @@ from trustpcb.review.tools import MAX_RESULT_CHARS, ToolRegistry
 
 PHASE_TOOLS = {
     2: {'get_status', 'advance_phase', 'get_board_summary', 'read_schematic', 'read_datasheet', 'view_board', 'submit_board_brief'},
-    3: {'get_status', 'advance_phase', 'read_schematic', 'read_datasheet', 'view_board', 'list_candidates', 'record_finding', 'dismiss_candidate', 'show_on_board'},
+    3: {'get_status', 'advance_phase', 'read_schematic', 'read_datasheet', 'view_board', 'list_candidates', 'record_finding', 'dismiss_candidate', 'dismiss_rule_group', 'show_on_board'},
     4: {'get_status', 'advance_phase', 'record_finding', 'show_on_board', 'open_investigation', 'run_simulation', 'view_result', 'compare_results', 'tune_matching', 'conclude_suspect',
         'close_investigation'},
     5: {'get_status', 'advance_phase', 'record_finding', 'view_result', 'compare_results', 'tune_matching', 'confirm_result'},
@@ -89,7 +89,7 @@ async def test_results_stay_near_8_kb_and_lists_are_paged(registry, env, sample_
 
 
 def test_prompts_are_plain_and_name_no_ai_provider():
-    values = dict(depth='standard', wall_minutes=30, investigations=1, experiments=5, confirm_runs=2, images=14, phase2_calls=10, phase3_calls=30, phase4_calls=40, phase5_calls=8,
+    values = dict(depth='standard', wall_minutes=30, investigations=1, experiments=5, confirm_runs=2, images=14, region_views=2, phase2_calls=10, phase3_calls=80, phase4_calls=40, phase5_calls=8,
                   target_db=-10, band='2.4 to 2.4835 GHz')
     texts = [prompts.system_prompt(**values)] + [prompts.phase_brief(n, **values) for n in (2, 3, 4, 5, 6)] + [prompts.followup_prompt()]
     banned = ['an' + 'thropic', 'open' + 'ai', 'g' + 'pt', 'gem' + 'ini', 'cla' + 'ude', 'lla' + 'ma', 'mist' + 'ral', 'co' + 'here', 'oll' + 'ama', 'so' + 'nnet', 'op' + 'us ']

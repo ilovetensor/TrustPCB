@@ -98,23 +98,57 @@ def band_from_goal(goal: dict) -> list[float] | None:
     return None
 
 
-def deterministic_summary(store, review_id: str, end_state: str, end_reason: str, rf_status: str) -> dict:
-    """The summary code writes when the agent did not (rule 10). Uses only stored facts."""
+def _first_sentence(text: str, limit: int = 220) -> str:
+    text = ' '.join((text or '').split())
+    cut = re.split(r'(?<=[.!?])\s', text, maxsplit=1)[0]
+    return cut if len(cut) <= limit else cut[:limit].rsplit(' ', 1)[0] + '...'
+
+
+def deterministic_summary(store, review_id: str, end_state: str, end_reason: str, rf_status: str, *, extra: dict | None = None) -> dict:
+    """The summary code writes when the agent did not (rule 10). Uses only stored facts.
+
+    It reads like a short engineer's note: what the board is, how many findings and how severe, the few that matter most with
+    the reason each one matters, what was cleared as harmless, and what was not tested.
+    """
+    extra = extra or {}
     findings = [f for f in store.list_findings(review_id) if f['status'] in ('open', 'needs_recheck')]
     order = ('critical', 'high', 'medium', 'low', 'info')
     findings.sort(key=lambda f: (order.index(f['severity']), f['code']))
     counts = store.severity_counts(review_id)
     parts = [f'{counts[s]} {s}' for s in order if counts.get(s)]
+    purpose = ((extra.get('brief') or {}).get('purpose') or '').strip()
+    lines: list[str] = []
+    if purpose:
+        lines.append(f'Board: {purpose.rstrip(".")}.')
     if findings:
-        text = f'This review recorded {len(findings)} open finding(s): ' + ', '.join(parts) + '.'
-        text += ' The most important: ' + '; '.join(f'{f["code"]} {f["title"]}' for f in findings[:3]) + '.'
+        lines.append(f'The review recorded {len(findings)} open finding(s): ' + ', '.join(parts) + '. Each finding groups the checks that share one cause.')
+        lines.append('What matters most:')
+        for f in findings[:4]:
+            why = _first_sentence(f.get('why_it_matters') or '')
+            lines.append(f'{f["code"]} ({f["severity"]}) {f["title"]}' + (f': {why}' if why else ''))
+        if len(findings) > 4:
+            lines.append(f'{len(findings) - 4} more finding(s) are lower priority; they are listed in the report.')
     else:
-        text = 'This review recorded no open findings.'
+        lines.append('The review recorded no open findings.')
+    dismissed = [d for d in extra.get('dismissals') or []]
+    if dismissed:
+        total = sum(d.get('count', 0) for d in dismissed)
+        lines.append(f'{total} analyzer result(s) were cleared as harmless on this board, each with a reason in the report.')
+    if extra.get('unreviewed'):
+        lines.append('Not reviewed: ' + ', '.join(f'{g["rule"]} ({g["count"]})' for g in extra['unreviewed'][:6]) + '.')
     if end_state != 'complete':
-        text += f' The review ended early ({end_reason.replace("_", " ")}), so the checks that were not reached are listed as not tested.'
+        lines.append(f'The review ended early ({end_reason.replace("_", " ")}), so the checks that were not reached are listed as not tested.')
     if rf_status == 'not_tested':
-        text += ' The RF behaviour was not tested.'
-    return {'text': text, 'top_actions': [f'{f["code"]}: {f["recommendation"]}' for f in findings[:3]], 'source': 'code'}
+        lines.append('RF behaviour was not tested: no simulation ran, so statements about antenna tuning are engineering opinion.')
+    actions, seen = [], set()
+    for f in findings:
+        if f['severity'] in ('critical', 'high', 'medium') or not actions:
+            if f['code'] not in seen:
+                seen.add(f['code'])
+                actions.append(f'{f["code"]}: {_first_sentence(f["recommendation"], 300)}')
+        if len(actions) == 5:
+            break
+    return {'text': ' '.join(lines), 'top_actions': actions or [f'{f["code"]}: {_first_sentence(f["recommendation"], 300)}' for f in findings[:3]], 'source': 'code'}
 
 
 class PipelineFailed(Exception):
@@ -303,6 +337,9 @@ class ReviewRun:
             return 'complete_with_limits', limited[0]['rule'], limited[0]['detail']
         return 'agent_stopped', 'agent_ended_early', f'The agent ended in phase {s.phase} ({PHASE_NAMES[s.phase]}) before finishing.'
 
+    def unreviewed_groups(self) -> list[dict]:
+        return _unreviewed(self.store, self.review_id)
+
     # ---- phase 6: code, always -----------------------------------------------------------------
     async def report(self, canceled: bool) -> None:
         ctx, store, session = self.ctx, self.store, self.session
@@ -333,7 +370,16 @@ class ReviewRun:
                     store.set_candidate_state(self.review_id, row['candidate_id'], 'unreviewed')
         rf_status = 'tested' if any(r['type'] in ('simulation', 'confirm') for r in store.list_evidence(self.review_id)) else 'not_tested'
         agent_summary = session.summary if session and session.summary else None
-        summary['summary'] = agent_summary or deterministic_summary(store, self.review_id, end_state, reason, rf_status)
+        unreviewed = self.unreviewed_groups()
+        if session:
+            summary['dismissals'] = list(session.dismissals)
+            summary['auto_grouped'] = list(session.auto_grouped)
+            summary['region_views'] = [{k: v for k, v in item.items()} for item in session.region_views.values()]
+            if session.coverage_waived:
+                summary['coverage_waived'] = session.coverage_waived
+        summary['unreviewed_groups'] = unreviewed
+        summary['summary'] = agent_summary or deterministic_summary(store, self.review_id, end_state, reason, rf_status,
+                                                                    extra={'brief': summary.get('brief'), 'dismissals': summary.get('dismissals'), 'unreviewed': unreviewed})
         summary['end'] = {'state': end_state, 'reason': reason, 'detail': detail}
         summary['limits'] = limits
         summary['phases'] = [{'phase': c.phase, 'previous': c.previous, 'name': PHASE_NAMES[c.phase], 'skipped': [{'phase': p, 'name': PHASE_NAMES[p], 'reason': r} for p, r in c.skipped]}
@@ -352,6 +398,14 @@ class ReviewRun:
                 await session.emit_budget()
             await ctx.emit('report_ready', {'review_id': self.review_id, 'revision': revision['number'], 'end_state': end_state, 'reason': reason,
                                             'counts': store.severity_counts(self.review_id)})
+
+
+def _unreviewed(store, review_id: str) -> list[dict]:
+    groups: dict[str, int] = {}
+    for row in store.list_candidates(review_id):
+        if row['review_state'] in ('new', 'unreviewed'):
+            groups[row['rule'] or 'other'] = groups.get(row['rule'] or 'other', 0) + 1
+    return [{'rule': rule, 'count': count} for rule, count in sorted(groups.items(), key=lambda kv: -kv[1])]
 
 
 def _count_states(store, review_id: str) -> dict:
