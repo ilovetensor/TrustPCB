@@ -52,6 +52,9 @@ async def call_tool(registry: Any, name: str, args: dict) -> Any:
         if spec.name == name:
             result = spec.handler(args)
             return await result if inspect.isawaitable(result) else result
+    if callable(getattr(registry, 'call', None)):
+        result = registry.call(name, args)
+        return await result if inspect.isawaitable(result) else result
     raise KeyError(name)
 
 
