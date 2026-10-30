@@ -10,8 +10,8 @@ from trustpcb.review.tools import MAX_RESULT_CHARS, ToolResult, bound, ok, page,
 # ---- the table in spec section 8 -----------------------------------------------------------------
 
 @pytest.mark.parametrize('depth,expected', [
-    ('quick', (360, 0, 90, 0, 0, 0, 8, 1_500_000, 15_000)),
-    ('standard', (1800, 1200, 160, 1, 5, 2, 14, 3_000_000, 30_000)),
+    ('quick', (360, 0, 90, 0, 0, 0, 8, 3_000_000, 30_000)),
+    ('standard', (1800, 1200, 160, 1, 5, 2, 14, 4_000_000, 40_000)),
     ('deep', (4500, 3600, 220, 3, 6, 4, 20, 6_000_000, 60_000)),
 ])
 def test_default_budgets_match_the_spec(depth, expected):
@@ -47,8 +47,8 @@ def test_tracker_counts_time_solver_tokens_and_walls():
     tracker.add_solver(1200)
     assert tracker.global_exhausted() == 'solver_time'
     tracker = BudgetTracker(config_for('standard'), Clock())
-    tracker.add_usage({'input_tokens': 2_000_000, 'output_tokens': 10})
-    tracker.add_usage({'usage': {'input_tokens': 1_000_000, 'cache_read_input_tokens': 5, 'output_tokens': 1}})
+    tracker.add_usage({'input_tokens': 3_000_000, 'output_tokens': 10})
+    tracker.add_usage({'usage': {'input_tokens': 900_000, 'cache_read_input_tokens': 1_000_000, 'output_tokens': 1}})
     assert tracker.global_exhausted() == 'input_tokens' and tracker.output_tokens == 11
     assert BudgetTracker(config_for('standard'), Clock()).images_left(3) == 8       # the phase cap is lower than the review cap
 

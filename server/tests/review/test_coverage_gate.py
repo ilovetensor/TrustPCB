@@ -170,7 +170,7 @@ async def test_when_the_phase_calls_run_out_the_gate_gives_way(env, monkeypatch)
 
 
 async def test_a_budget_wall_does_not_block_the_closing_path(env):
-    review = await env.review(TO_REVIEW + [{'usage': {'input_tokens': 3_100_000, 'output_tokens': 20}}, ADVANCE])
+    review = await env.review(TO_REVIEW + [{'usage': {'input_tokens': 4_100_000, 'output_tokens': 20}}, ADVANCE])
     passed = contents(env, review, 'advance_phase')[1]
     assert 'error' not in passed[:12] and 'coverage_waived' in passed
 
