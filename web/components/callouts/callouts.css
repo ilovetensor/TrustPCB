@@ -1,0 +1,75 @@
+.cl-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.cl-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.cl-item {
+  transition: opacity 0.25s;
+}
+.cl-leader {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: leader 0.7s var(--ease) both;
+  stroke-linejoin: miter;
+}
+.cl-dimline {
+  stroke-dasharray: 1;
+  animation: leader 0.8s var(--ease) both;
+}
+.cl-balloon {
+  pointer-events: all;
+  cursor: pointer;
+  animation: pop 0.45s var(--ease) 0.35s both;
+}
+.cl-balloon:hover circle:nth-child(2) {
+  stroke-width: 2;
+}
+.cl-n {
+  font: 600 11px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.cl-dimtext {
+  font: 500 10.5px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.cl-ping {
+  animation: ping 1.6s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes ping {
+  from {
+    transform: scale(0.7);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+.cl-tag {
+  position: absolute;
+  padding: 8px 10px 9px;
+  pointer-events: none;
+  animation: rise 0.35s var(--ease) both;
+  --draw: 1;
+}
+.cl-tag-title {
+  font: 600 12px/1.25 var(--font-ui);
+  margin-top: 2px;
+}
+.cl-tag-val {
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--signal);
+}
+.cl-dim {
+  pointer-events: none;
+}

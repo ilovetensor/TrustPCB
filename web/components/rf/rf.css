@@ -1,0 +1,163 @@
+.rf {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--stage);
+}
+.rf-stage {
+  position: absolute;
+  inset: 0;
+}
+.rf-top {
+  position: absolute;
+  z-index: 8;
+  left: 14px;
+  right: 14px;
+  top: 12px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  background: var(--panel);
+  border: 1px solid var(--hair);
+}
+.rf-title {
+  font: 600 13px var(--font-ui);
+}
+.rf .panel {
+  position: absolute;
+  z-index: 6;
+}
+.rf-ctl {
+  left: 14px;
+  top: 72px;
+  width: 316px;
+}
+.rf-charts {
+  right: 14px;
+  top: 72px;
+  bottom: 14px;
+  width: 410px;
+  overflow-y: auto;
+}
+.rf-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rf-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.rf-legend p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.rf-legend .btn,
+.rf-legend input {
+  align-self: flex-start;
+}
+.rf-ramp {
+  height: 10px;
+  border: 1px solid var(--hair-2);
+}
+.rf-ramp-l {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--paper-3);
+}
+.rf-kv {
+  gap: 7px 10px;
+}
+.rf-note {
+  font-size: 8.5px;
+  line-height: 1.5;
+  margin: 2px 0 0;
+}
+.rf-leg {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 10.5px;
+  color: var(--paper-2);
+}
+.rf-leg i {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.rf-none {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 22px 26px;
+  max-width: 420px;
+  background-color: var(--panel);
+}
+@media (max-width: 1099px) {
+  .rf {
+    position: relative;
+    inset: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+  .rf-stage {
+    position: relative;
+    height: 52dvh;
+    order: 1;
+  }
+  .rf-top {
+    position: relative;
+    inset: auto;
+    margin: 0;
+    order: 0;
+    left: auto;
+    right: auto;
+    top: auto;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 46px;
+    padding: 8px 14px;
+  }
+  .rf .panel {
+    position: relative;
+    order: 2;
+    inset: auto;
+    width: auto;
+    margin: 12px 12px 0;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+  }
+}
+
+.rf-banner {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--hair);
+  font-size: 11px;
+  color: var(--paper-2);
+  max-width: min(560px, 90vw);
+}

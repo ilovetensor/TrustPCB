@@ -1,0 +1,46 @@
+.stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--stage);
+}
+.stage-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(900px 600px at 62% 38%, rgba(70, 52, 190, 0.16), transparent 70%),
+    radial-gradient(700px 500px at 18% 90%, rgba(150, 30, 120, 0.07), transparent 70%),
+    linear-gradient(180deg, #08081a, #06060e 60%);
+}
+.stage-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.stage-tools {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  max-width: calc(100% - 40px);
+  flex-wrap: wrap;
+}
+.stage-tools .vr {
+  width: 1px;
+  height: 18px;
+  background: var(--hair);
+  margin: 0 6px;
+}
+.explode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--paper-2);
+}
+.explode input {
+  width: 96px;
+  accent-color: var(--signal);
+}

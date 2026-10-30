@@ -1,0 +1,31 @@
+.s3 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+.s3 canvas {
+  display: block;
+  outline: none;
+}
+
+.layer-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--paper-2);
+  white-space: nowrap;
+  position: absolute;
+  pointer-events: none;
+}
+.layer-tag i {
+  width: 38px;
+  height: 1px;
+  background: var(--paper-3);
+  display: inline-block;
+}
+.layer-tag span {
+  color: var(--signal);
+}
