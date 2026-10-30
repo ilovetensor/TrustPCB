@@ -96,7 +96,7 @@ async def test_image_budget_per_phase(env):
 
 
 async def test_token_budget_ends_non_closing_tools(env):
-    script = [{'usage': {'input_tokens': 3_100_000, 'output_tokens': 20}}, {'tool': 'get_board_summary'}, BRIEF]
+    script = [{'usage': {'input_tokens': 4_100_000, 'output_tokens': 20}}, {'tool': 'get_board_summary'}, BRIEF]
     review = await env.review(script)
     assert 'budget_exhausted' in contents(env, review, 'get_board_summary')[0] and '"saved":true' in contents(env, review, 'submit_board_brief')[0]
     assert review['summary']['limits'][0]['budget'] == 'input_tokens'
