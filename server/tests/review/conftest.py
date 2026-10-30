@@ -1,6 +1,7 @@
 """Shared setup for the review lane: a real parsed board, a fake Lab, a fake clock and a scripted agent."""
 import asyncio
 import json
+import sys
 import types
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from trustpcb.runners.scripted import ScriptedRunner
 from trustpcb.sessions import SessionManager
 from trustpcb.storage import Store
 
+sys.path.insert(0, str(Path(__file__).parent))     # test helpers such as gate_steps
 ROOT = Path(__file__).resolve().parents[3]
 SAMPLE = ROOT / 'samples' / 'nrf52840-node' / 'nrf52840_rf_iot_node.kicad_pcb'
 SCRIPTS = Path(__file__).parent / 'scripts'
@@ -119,7 +121,7 @@ class FakeLab:
         return [dict(c) for c in self.candidates if c['rule'] == rule and (not targets or set(targets) & set(c['targets']))]
 
     async def view_board(self, *, version_id, view, region=None, marks=None, width=1200):
-        self.calls.append(('view_board', view))
+        self.calls.append(('view_board', view, region, marks))
         return {'mime': 'image/png', 'data_b64': PIXEL, 'caption': f'{view} view'}
 
     async def rf_status(self, *, version_id, goal=None):

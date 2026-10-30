@@ -77,3 +77,24 @@ def test_run_for_version_parses_project_when_no_board_json(tmp_path, patch_board
     res = run_for_version(tmp_path)
     assert (tmp_path / "artifacts" / "analyzers.json").is_file()
     assert res["status"]["impedance"]["status"] == "ok"
+
+
+def test_nrf_antenna_keepout_is_exempt_from_the_transmission_line_rules(nrf_board):
+    """A printed antenna must stay free of ground: no return-path, detour or impedance candidate may cover its keep-out."""
+    from shapely.geometry import LineString, Point, box
+
+    keepout = nrf_board.keepouts[0]
+    zone = box(*[min(p[0] for p in keepout.ring), min(p[1] for p in keepout.ring), max(p[0] for p in keepout.ring), max(p[1] for p in keepout.ring)])
+    tracks = {t.id: t for t in nrf_board.tracks}
+    r = run_all(nrf_board, AnalyzerContext())
+    for c in r["candidates"]:
+        if c["rule"] not in ("return_path", "track_detour", "impedance"):
+            continue
+        if c.get("position"):
+            assert not zone.contains(Point(c["position"])), (c["id"], c["title"])
+        for tid in c["targets"]:
+            if tid in tracks:
+                mid = LineString(tracks[tid].points()).interpolate(0.5, normalized=True)
+                assert not zone.contains(mid), (c["id"], tid, c["title"])
+    titles = [c["title"] for c in r["candidates"] if c["rule"] in ("return_path", "track_detour")]
+    assert not any("ANT_FEED" in t for t in titles), titles

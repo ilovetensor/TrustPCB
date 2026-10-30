@@ -21,6 +21,7 @@ DUPLICATE_CLOSE_AT = 3           # rule 3: the third repeat of an identical requ
 REPAIRS_PER_SCENARIO = 1         # rule 7
 REPAIRS_PER_INVESTIGATION = 2
 SILENCE_SECONDS = 180.0          # rule 8
+MIN_REGION_VIEWS = {'quick': 1, 'standard': 2, 'deep': 2}   # phase 3 open-review gate: region views before leaving the phase
 REFUSAL_STREAK_LIMIT = 6         # extra safety: this many refused calls in a row end the agent
 IMPROVEMENT_DB = 1.0             # a what-if counts as an improvement when it gains at least this much
 SCREEN_CONFIRM_DB = 3.0          # screen and confirm must agree within these limits
@@ -66,15 +67,15 @@ class BudgetConfig:
 
 
 _PHASE_CALLS = {
-    'quick': {2: 10, 3: 30, 4: 0, 5: 0, 6: 4},
-    'standard': {2: 10, 3: 30, 4: 40, 5: 8, 6: 4},
-    'deep': {2: 10, 3: 30, 4: 90, 5: 14, 6: 4},
+    'quick': {2: 10, 3: 60, 4: 0, 5: 0, 6: 4},
+    'standard': {2: 10, 3: 80, 4: 40, 5: 8, 6: 4},
+    'deep': {2: 10, 3: 80, 4: 90, 5: 14, 6: 4},
 }
 
 CONFIGS: dict[str, BudgetConfig] = {
-    'quick': BudgetConfig('quick', 4 * 60, 0, 45, 0, 0, 0, 8, 1_500_000, 15_000, _PHASE_CALLS['quick'], {3: 8}),
-    'standard': BudgetConfig('standard', 30 * 60, 20 * 60, 90, 1, 5, 2, 14, 3_000_000, 30_000, _PHASE_CALLS['standard'], {3: 8}),
-    'deep': BudgetConfig('deep', 75 * 60, 60 * 60, 140, 3, 6, 4, 20, 6_000_000, 60_000, _PHASE_CALLS['deep'], {3: 8}),
+    'quick': BudgetConfig('quick', 6 * 60, 0, 90, 0, 0, 0, 8, 3_000_000, 30_000, _PHASE_CALLS['quick'], {3: 8}),
+    'standard': BudgetConfig('standard', 30 * 60, 20 * 60, 160, 1, 5, 2, 14, 4_000_000, 40_000, _PHASE_CALLS['standard'], {3: 8}),
+    'deep': BudgetConfig('deep', 75 * 60, 60 * 60, 220, 3, 6, 4, 20, 6_000_000, 60_000, _PHASE_CALLS['deep'], {3: 8}),
 }
 
 
@@ -141,10 +142,11 @@ class BudgetTracker:
     def add_usage(self, payload: dict) -> None:
         """Token counts from a `usage` event; flat or nested under `usage`."""
         usage = payload.get('usage') if isinstance(payload.get('usage'), dict) else payload
-        for key in ('input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens'):
+        # Cached input costs about a tenth of fresh input, so it counts at that weight.
+        for key, weight in (('input_tokens', 1), ('cache_creation_input_tokens', 1), ('cache_read_input_tokens', 0.1)):
             value = usage.get(key)
             if isinstance(value, (int, float)):
-                self.input_tokens += int(value)
+                self.input_tokens += int(value * weight)
         value = usage.get('output_tokens')
         if isinstance(value, (int, float)):
             self.output_tokens += int(value)

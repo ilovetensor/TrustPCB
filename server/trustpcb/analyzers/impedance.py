@@ -6,7 +6,8 @@ approximation. Every value is an estimate: it assumes a solid reference plane on
 layer and ignores solder mask, coupling to neighbours and etch factor.
 
 Candidates are tracks on controlled nets (fast, RF, or listed in ``net_targets``) more than 10
-percent from their target, grouped into sections of equal width. ``overlays`` returns a colour for
+percent from their target, grouped into sections of equal width. Tracks that are part of a printed antenna
+(see ``radiating``) are left out: they are meant to be that shape. ``overlays`` returns a colour for
 every track for the UI, labelled as an estimate.
 """
 
@@ -18,6 +19,7 @@ from typing import Any
 from ..pcb.model import Board
 from .base import AnalyzerContext, Emitter, mark, meas
 from .classify import is_diff_net, is_fast_net, is_ground, is_power, is_rf_net
+from .radiating import radiating
 from .topology import get_topology
 
 RULE = "impedance"
@@ -143,6 +145,7 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
     tol = float(ctx.t("impedance_tolerance_pct"))
     min_section = float(ctx.t("impedance_min_section_mm"))
     cache: dict[tuple[str, float], dict[str, Any] | None] = {}
+    rad = radiating(board, ctx)
     # sections: consecutive segments of equal width in a run, pooled by (net, layer, width)
     pooled: dict[tuple[str, str, float], dict[str, Any]] = {}
     order: list[tuple[str, str, float]] = []
@@ -151,8 +154,11 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             continue
         i = 0
         while i < len(run.segs):
+            if run.segs[i].parent in rad.track_ids:
+                i += 1  # radiating element: its width and shape are the antenna design, not a line to match
+                continue
             j = i
-            while j + 1 < len(run.segs) and abs(run.segs[j + 1].width - run.segs[i].width) < 1e-6:
+            while j + 1 < len(run.segs) and abs(run.segs[j + 1].width - run.segs[i].width) < 1e-6 and run.segs[j + 1].parent not in rad.track_ids:
                 j += 1
             segs = run.segs[i : j + 1]
             i = j + 1

@@ -326,3 +326,42 @@ def test_thresholds_overridable(builder):
     b.poly("SIG", [(10, 10), (20, 10), (20, 20)])
     ctx = AnalyzerContext(thresholds={"angle_max_deg": 120.0})
     assert len(track_angle.analyze(b.build(), ctx)) == 1
+
+
+def _antenna_board(builder, keepout: bool, feed_pad: bool = False):
+    b = builder()
+    if feed_pad:
+        b.part("U1", "MCU-X", 20, 31, [("1", "ANT_FEED", 0, -1)], lib="QFN")      # the radio pin that feeds the line
+    b.zone("GND", "B.Cu", [[0, 10], [50, 10], [50, 40], [0, 40]])  # ground stops short of the antenna area
+    if keepout:
+        b.keepout([[10, 0], [30, 0], [30, 10], [10, 10]])
+    b.track("ANT_FEED", (20, 30), (20, 10), width=0.3)           # the feed line, over ground
+    b.poly("ANT_FEED", [(20, 10), (20, 8), (12, 8), (12, 6), (28, 6), (28, 4), (12, 4), (12, 2), (28, 2)], width=1.0)  # the meander
+    return b.build()
+
+
+def test_antenna_keepout_is_not_judged_for_ground(builder):
+    ctx = lambda: AnalyzerContext(fast_nets=["ANT_FEED"])
+    without = return_path.analyze(_antenna_board(builder, keepout=False), ctx())
+    assert without and any(val(c, "gap_length") > 5 for c in without)       # control: with no keep-out the gap is reported
+    board = _antenna_board(builder, keepout=True)
+    out = return_path.analyze(board, ctx())
+    assert out == []                                                         # the keep-out and the radiating element are exempt
+
+
+def test_meander_in_keepout_is_not_a_detour_or_a_mismatch(builder):
+    for keepout, expected in ((False, True), (True, False)):
+        board = _antenna_board(builder, keepout=keepout)
+        ctx = AnalyzerContext(fast_nets=["ANT_FEED"])
+        detours = track_detour.analyze(board, ctx)
+        steps = impedance.analyze(board, ctx)
+        assert bool(detours) is expected, (keepout, detours)
+        # the 1 mm meander is far from 50 ohm; only judged without the keep-out
+        assert any(val(c, "width") == 1.0 for c in steps) is expected, (keepout, [c["title"] for c in steps])
+
+
+def test_detected_radiating_element_is_exempt_even_without_a_keepout(builder):
+    ctx = AnalyzerContext(fast_nets=["ANT_FEED"])
+    board = _antenna_board(builder, keepout=False, feed_pad=True)
+    assert return_path.analyze(board, ctx) == [] and track_detour.analyze(board, ctx) == []
+    assert not any(val(c, "width") == 1.0 for c in impedance.analyze(board, ctx))

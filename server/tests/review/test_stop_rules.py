@@ -1,8 +1,10 @@
 """Stop rules enforced through a whole scripted review."""
+from gate_steps import clear
+
 BRIEF = {'tool': 'submit_board_brief', 'args': {'purpose': 'Battery powered Bluetooth sensor node', 'part_roles': {'U3': 'radio'}, 'risks': [], 'priorities': ['antenna']}}
 OPEN = {'tool': 'open_investigation', 'args': {'question': 'Is copper next to the feed detuning the antenna?', 'suspects': [
     {'title': 'Ground copper next to the feed', 'why': 'Keep-clear analyzer hit.'}, {'title': 'Antenna length tolerance', 'why': 'A length error shifts the resonance.'}]}}
-PRE = [BRIEF, {'tool': 'advance_phase'}, {'tool': 'advance_phase'}, OPEN]
+PRE = [BRIEF, {'tool': 'advance_phase'}] + clear() + [{'tool': 'advance_phase'}, OPEN]
 BASE = {'tool': 'run_simulation', 'args': {'suspect_id': 'S1', 'label': 'base'}}
 
 
@@ -102,8 +104,8 @@ async def test_token_budget_ends_non_closing_tools(env):
 
 
 async def test_turn_budget_ends_the_run_cleanly(env):
-    review = await env.review([{'tool': 'get_status'}] * 50, depth='quick')
-    assert len(contents(env, review, 'get_status')) == 45
+    review = await env.review([{'tool': 'get_status'}] * 100, depth='quick')
+    assert len(contents(env, review, 'get_status')) == 90
     assert review['end_state'] == 'complete_with_limits' and review['summary']['end']['reason'] == 'budget_wall'
     assert 'model turns' in review['summary']['end']['detail']
     assert 'model_turns' in {l['rule'] for l in env.store.latest_report_revision(review['id'])['snapshot']['limits']}

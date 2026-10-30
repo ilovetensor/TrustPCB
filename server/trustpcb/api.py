@@ -48,7 +48,7 @@ MAX_UPLOAD_BYTES = int(float(os.getenv('TRUSTPCB_MAX_UPLOAD_MB', '512')) * 1024 
 MAX_UPLOAD_FILES = 5000
 MAX_FIELD_BYTES = 8 * 1024
 TOKEN_HEADER = 'x-trustpcb-token'
-BACKEND_PORT = 8118
+BACKEND_PORT = int(os.environ.get('TRUSTPCB_BACKEND_PORT', '8118'))
 ALLOWED_HOSTS = {f'127.0.0.1:{BACKEND_PORT}', f'localhost:{BACKEND_PORT}', f'[::1]:{BACKEND_PORT}'}
 ALLOWED_ORIGINS = {
     'http://127.0.0.1:3118', 'http://localhost:3118', 'http://[::1]:3118',

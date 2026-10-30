@@ -25,7 +25,7 @@ SUSPECT_SCHEMA = obj({'title': text(3, 160), 'why': text(3, 400), 'test': text(3
 FINDING_PROPS = {
     'title': text(5, 160), 'severity': {'type': 'string', 'enum': ['critical', 'high', 'medium', 'low', 'info']},
     'what': text(5, 1200), 'why_it_matters': text(5, 1200), 'recommendation': text(5, 1200),
-    'rule': text(1, 60), 'candidate_ids': arr(text(1, 80), 0, 20), 'evidence_ids': arr(text(1, 20), 0, 12),
+    'rule': text(1, 60), 'candidate_ids': arr(text(1, 80), 0, 60), 'evidence_ids': arr(text(1, 20), 0, 12),
     'targets': arr(text(1, 80), 0, 20), 'marks': arr(MARK_SCHEMA, 0, 12),
     'scope': {'type': 'string', 'enum': ['targets', 'board']}, 'assumptions': arr(text(1, 300), 0, 8), 'not_tested': arr(text(1, 300), 0, 8),
 }
@@ -50,11 +50,15 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
         define('read_datasheet', 'List uploaded datasheets, or read one page of one as text.',
                obj({'name': text(1, 120), 'page': {'type': 'integer', 'minimum': 1, 'maximum': 500}}), h.read_datasheet,
                phases=P({2, 3}), levels=ALL_LEVELS, trail=lambda a: 'Reading a datasheet' + (f': {a["name"]}' if a.get('name') else '')),
-        define('view_board', 'A rendered image of the board. view: top, bottom or layer (give layer). Optional region [x0,y0,x1,y1] in mm, targets or candidate_ids to mark.',
+        define('view_board', 'A rendered image of the board. Presets: view top, bottom or layer (give layer); around a target id (ref:U3, net:ANT_FEED, zone_role:radio, '
+               'candidate:...) with margin_mm; or a region [x0,y0,x1,y1] in mm. annotate draws the candidate marks inside the window (numbered). '
+               'targets or candidate_ids mark specific items. In phase 3 the review needs close region views of the areas that matter.',
                obj({'view': {'type': 'string', 'enum': ['top', 'bottom', 'layer']}, 'layer': text(1, 20), 'region': arr(NUM, 4, 4),
-                    'targets': arr(text(1, 80), 0, 20), 'candidate_ids': arr(text(1, 80), 0, 10)}, ['view']),
+                    'around': text(1, 80), 'margin_mm': {'type': 'number', 'minimum': 0, 'maximum': 40}, 'annotate': BOOL,
+                    'targets': arr(text(1, 80), 0, 20), 'candidate_ids': arr(text(1, 80), 0, 10)}),
                h.view_board, phases=P({2, 3}), levels=ALL_LEVELS, image=True,
-               trail=lambda a: 'Looking at the ' + (a.get('layer') or a.get('view', 'board')) + (' (zoomed)' if a.get('region') else '')),
+               trail=lambda a: 'Looking at ' + (a['around'] if a.get('around') else 'the ' + (a.get('layer') or a.get('view', 'board'))) + (' (zoomed)' if a.get('region') or a.get('around') else '')
+               + (' with candidate marks' if a.get('annotate') else '')),
         define('submit_board_brief', 'Save what the board is, the role of each important part, the risks and the priorities. Ends phase 2.',
                obj({'purpose': text(10, 600),
                     'wireless': obj({'has_radio': BOOL, 'band_hz': arr(NUM, 2, 2), 'antenna_kind': {'type': 'string', 'enum': ['printed', 'chip', 'module', 'none', 'unknown']},
@@ -68,8 +72,13 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
                     'group_by': {'type': 'string', 'enum': ['rule', 'none']}, 'page': {'type': 'integer', 'minimum': 1, 'maximum': 200}}),
                h.list_candidates, phases=P({3}), levels=CHECK_UP, trail=lambda a: 'Listing candidates' + (f' for {a["rule"]}' if a.get('rule') else '')),
         define('record_finding', 'Create or update a finding. Class is set by the server from the evidence. Every number with a unit must match evidence. '
-               'Pass candidate_ids and/or evidence_ids, and targets or marks (or scope board).', obj(FINDING_PROPS | {'update': text(1, 12)}, ['title', 'severity', 'what', 'why_it_matters', 'recommendation']),
+               'Pass rule_group to cover every still-new candidate of one rule (one finding for a whole group), and/or candidate_ids and evidence_ids, '
+               'and targets or marks (or scope board).',
+               obj(FINDING_PROPS | {'update': text(1, 12), 'rule_group': text(1, 60)}, ['title', 'severity', 'what', 'why_it_matters', 'recommendation']),
                h.record_finding, phases=P({3, 4, 5}), trail=lambda a: f'Recording a finding: {a.get("title", "")[:80]}'),
+        define('dismiss_rule_group', 'Dismiss every still-new candidate of one rule as harmless, with a specific reason for this board. '
+               'A group with medium or high results needs a real explanation.', obj({'rule': text(1, 60), 'reason': text(8, 600)}, ['rule', 'reason']),
+               h.dismiss_rule_group, phases=P({3}), trail=lambda a: f'Dismissing the {a.get("rule", "")} group as harmless'),
         define('dismiss_candidate', 'Mark candidates as harmless, with a reason.', obj({'candidate_ids': arr(text(1, 80), 1, 50), 'reason': text(8, 400)}, ['candidate_ids', 'reason']),
                h.dismiss_candidate, phases=P({3}), trail=lambda a: f'Dismissing {len(a.get("candidate_ids", []))} harmless candidate(s)'),
         define('show_on_board', 'Spotlight items on the live board. Pass target ids or a finding_code.',
