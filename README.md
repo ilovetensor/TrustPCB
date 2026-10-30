@@ -12,7 +12,7 @@ Needs Node 20+, [uv](https://docs.astral.sh/uv/), and `kicad-cli` 10 for board c
 
 ```sh
 npm run setup   # install backend and web dependencies
-npm run dev     # backend on :8008, web on :3000
+npm run dev     # backend on :8118, web on :3118
 ```
 
 Data lives in `.trustpcb/` (override with `TRUSTPCB_DATA_DIR`). Copy `.env.example` to `.env` for local settings.

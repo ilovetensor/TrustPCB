@@ -8,8 +8,8 @@ import { existsSync } from 'node:fs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 if (existsSync(path.join(root, '.env'))) process.loadEnvFile(path.join(root, '.env'));
 
-const BACKEND_PORT = 8008;
-const WEB_PORT = 3000;
+const BACKEND_PORT = 8118;
+const WEB_PORT = 3118;
 const hasWeb = existsSync(path.join(root, 'web', 'package.json'));
 // Optional local-only extras (git-ignored): extra packages for a development runner.
 const localRequirements = path.join(root, 'server', 'requirements.local.txt');

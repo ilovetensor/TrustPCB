@@ -1,0 +1,32 @@
+{
+  "frequency_hz": 2500000000.0,
+  "substrate_er": 4.3,
+  "substrate_height_mm": 1.6,
+  "copper_thickness_mm": 0.035,
+  "board_width_mm": 50.0,
+  "board_length_mm": 60.0,
+  "patch_width_mm": 36.832208602609484,
+  "patch_length_mm": 28.543673471855726,
+  "effective_permittivity": 3.9877623050412225,
+  "end_extension_mm": 0.7407687166374913,
+  "effective_length_mm": 30.02521090513071,
+  "feed_width_mm": 3.0548254838547275,
+  "inset_depth_mm": 10.2,
+  "inset_notch_width_mm": 4.0,
+  "patch_x_min_mm": 6.583895698695258,
+  "patch_x_max_mm": 43.41610430130474,
+  "patch_y_min_mm": 26.456,
+  "patch_y_max_mm": 54.99967347185573,
+  "radiating_edge_keepout_mm": 5.0,
+  "via_pitch_mm": 2.5,
+  "via_drill_mm": 0.4,
+  "via_pad_mm": 0.8,
+  "estimates": {
+    "center_impedance_ohm": 50.0,
+    "center_s11_db": -20.0,
+    "center_vswr": 1.22,
+    "fractional_bandwidth_percent": 3.0,
+    "gain_dbi": 5.5,
+    "radiation_efficiency_percent": 68.0
+  }
+}

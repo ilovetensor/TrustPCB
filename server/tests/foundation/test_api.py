@@ -26,7 +26,7 @@ def test_security_rejects_missing_or_wrong_token_foreign_host_and_origin(client)
     assert client.get('/api/projects', headers={'Host': 'evil.example'}).status_code == 403
     assert client.get('/api/projects', headers={'Host': '127.0.0.1:9999'}).status_code == 403
     assert client.get('/api/projects', headers={'Origin': 'https://evil.example'}).status_code == 403
-    assert client.get('/api/projects', headers={'Origin': 'http://localhost:3000'}).status_code == 200
+    assert client.get('/api/projects', headers={'Origin': 'http://localhost:3118'}).status_code == 200
     assert client.get('/api/projects').status_code == 200
 
 
@@ -39,7 +39,7 @@ def test_health_needs_no_token_but_still_checks_host(client):
 def test_token_comes_from_the_environment(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     monkeypatch.setenv('TRUSTPCB_TOKEN', 'from-env')
-    with TestClient(api.create_app(data_dir=tmp_path / 'd'), base_url='http://127.0.0.1:8008') as c:
+    with TestClient(api.create_app(data_dir=tmp_path / 'd'), base_url='http://127.0.0.1:8118') as c:
         assert c.get('/api/projects', headers={'X-TrustPCB-Token': 'from-env'}).status_code == 200
         assert c.get('/api/projects', headers={'X-TrustPCB-Token': 'secret'}).status_code == 401
 
@@ -92,7 +92,7 @@ def test_missing_lane_functions_answer_501(client, store_of, fakes):
     thread = store.create_thread(review['id'])
     revision = store.add_report_revision(review['id'], 'done', {'x': 1})
     checks = [
-        ('trustpcb.intake.upload', 'ingest', lambda: client.post(f"/api/projects/{project['id']}/versions", content=b'x', headers={'X-Filename': 'a.zip'})),
+        ('trustpcb.intake.service', 'ingest', lambda: client.post(f"/api/projects/{project['id']}/versions", content=b'x', headers={'X-Filename': 'a.zip'})),
         ('trustpcb.review.service', 'start_review', lambda: client.post(f"/api/versions/{version['id']}/reviews", json={})),
         ('trustpcb.review.followup', 'start_thread', lambda: client.post(f"/api/reviews/{review['id']}/threads", json={})),
         ('trustpcb.review.followup', 'send_message', lambda: client.post(f"/api/threads/{thread['id']}/messages", json={'text': 'hi', 'request_id': 'r'})),
@@ -168,7 +168,7 @@ def ingest_spy(fakes):
                      'bytes': None if path.is_dir() else path.read_bytes()})
         return {'status': 'ready', 'detection': {'board': 'main.kicad_pcb'}}
 
-    fakes.module('trustpcb.intake.upload', ingest=ingest)
+    fakes.module('trustpcb.intake.service', ingest=ingest)
     return seen
 
 
@@ -232,7 +232,7 @@ def test_ingest_value_error_marks_the_version_failed(client, fakes):
     def ingest(**kwargs):
         raise ValueError('No .kicad_pcb found in the zip')
 
-    fakes.module('trustpcb.intake.upload', ingest=ingest)
+    fakes.module('trustpcb.intake.service', ingest=ingest)
     project = client.post('/api/projects', json={'name': 'p'}).json()
     response = client.post(f"/api/projects/{project['id']}/versions", content=b'zip', headers={'X-Filename': 'a.zip'})
     assert response.status_code == 422 and 'No .kicad_pcb' in response.json()['detail']
@@ -245,7 +245,7 @@ def test_async_ingest_is_supported(client, fakes):
         await asyncio.sleep(0)
         return {'status': 'ready'}
 
-    fakes.module('trustpcb.intake.upload', ingest=ingest)
+    fakes.module('trustpcb.intake.service', ingest=ingest)
     project = client.post('/api/projects', json={'name': 'p'}).json()
     assert client.post(f"/api/projects/{project['id']}/versions", content=b'zip', headers={'X-Filename': 'a.zip'}).json()['status'] == 'ready'
 

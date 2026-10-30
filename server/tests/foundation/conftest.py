@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from trustpcb.api import create_app
 from trustpcb.storage import Store
 
-HOST = 'http://127.0.0.1:8008'
+HOST = 'http://127.0.0.1:8118'
 TOKEN = 'secret'
 
 
