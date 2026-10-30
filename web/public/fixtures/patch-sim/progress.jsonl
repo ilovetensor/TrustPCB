@@ -1,0 +1,16 @@
+{"t": 0.0, "phase": "setup"}
+{"t": 4.54, "phase": "solve", "timestep": 435, "max_timesteps": 60000, "energy_db": -0.0, "speed_mcs": 17.4}
+{"t": 8.55, "phase": "solve", "timestep": 1210, "max_timesteps": 60000, "energy_db": -0.44, "speed_mcs": 31.5}
+{"t": 12.57, "phase": "solve", "timestep": 2088, "max_timesteps": 60000, "energy_db": -2.34, "speed_mcs": 35.6}
+{"t": 16.58, "phase": "solve", "timestep": 3399, "max_timesteps": 60000, "energy_db": -13.49, "speed_mcs": 53.3}
+{"t": 20.59, "phase": "solve", "timestep": 4334, "max_timesteps": 60000, "energy_db": -19.32, "speed_mcs": 38.0}
+{"t": 24.62, "phase": "solve", "timestep": 5133, "max_timesteps": 60000, "energy_db": -26.99, "speed_mcs": 32.4}
+{"t": 28.63, "phase": "solve", "timestep": 6622, "max_timesteps": 60000, "energy_db": -32.79, "speed_mcs": 60.4}
+{"t": 32.64, "phase": "solve", "timestep": 7917, "max_timesteps": 60000, "energy_db": -51.27, "speed_mcs": 52.6}
+{"t": 32.65, "phase": "solved", "timestep": 7917, "energy_db": -51.27, "solve_s": 32.51}
+{"t": 32.65, "phase": "post", "step": "ports"}
+{"t": 32.66, "phase": "post", "step": "nf2ff"}
+{"t": 34.79, "phase": "post", "step": "fields"}
+{"t": 35.02, "phase": "post", "step": "current"}
+{"t": 35.04, "phase": "post", "step": "pulse"}
+{"t": 35.66, "phase": "done", "status": "ok", "output_bytes": 5498074}
