@@ -6,6 +6,7 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
+from ..analyzers import run_for_version
 from ..pcb.baseline import run_baseline
 from ..pcb.model import parse_board
 from . import detect, stackup, upload
@@ -29,6 +30,7 @@ async def ingest(*, store, version: dict, upload_path, filename: str) -> dict[st
         raise ValueError('The upload contains no .kicad_pcb file')
     board = await asyncio.to_thread(parse_board, result.pcb, version['id'])
     baseline = await run_baseline(version_dir)
+    await asyncio.to_thread(run_for_version, version_dir)
     found = detect.detect(board, result.sch)
     _record_artifacts(store, version['id'], version_dir / 'artifacts')
     return {
