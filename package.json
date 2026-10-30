@@ -1,0 +1,14 @@
+{
+  "name": "trustpcb",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "setup": "node scripts/setup.mjs",
+    "test": "bash scripts/test-all.sh",
+    "test:related": "bash scripts/test-related.sh",
+    "typecheck": "npm --prefix web run typecheck",
+    "build": "npm --prefix web run build"
+  }
+}

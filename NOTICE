@@ -1,0 +1,19 @@
+TrustPCB
+Copyright (c) 2026 TrustPCB contributors. Released under the MIT License (see LICENSE).
+
+TrustPCB starts from the backend and web shell of earlier project (MIT, Copyright (c) 2026
+earlier project contributors), built during the hackathon build period.
+
+Separately run programs
+-----------------------
+TrustPCB runs the following programs as separate processes. It does not import, link
+to, or redistribute them, and their licences do not apply to TrustPCB's own code.
+
+  KiCad (kicad-cli)  GNU General Public License v3.0 or later    https://www.kicad.org/
+  openEMS            GNU General Public License v3.0             https://www.openems.de/
+
+Anyone who builds or distributes the openEMS Docker image (docker/ems) is responsible for
+meeting the GPL terms for that image.
+
+Python and JavaScript dependencies keep their own licences; see server/pyproject.toml and
+web/package.json.
