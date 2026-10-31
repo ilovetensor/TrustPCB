@@ -56,15 +56,17 @@ function halfTex(re: Float32Array, im: Float32Array, nx: number, ny: number) {
  * A slice of the solver's complex field, drawn as a glowing plane.
  * xy slices lie in the board plane at height `y`; xz slices stand vertically at board y = at_mm.
  */
-export function WaveField3D({ slice, y, lift = 0, period = 3.4, opacity = 0.95, gamma = 0.5, paused, phase }: {
+export function WaveField3D({ slice, y, lift = 0, period = 3.4, opacity = 0.95, gamma = 0.5, paused, phase, seeThrough = false, yScale = 1 }: {
   slice: FieldSlice; y?: number; lift?: number; period?: number; opacity?: number; gamma?: number; paused?: boolean; phase?: number;
+  /** draw over the board even where the plane lies inside it */ seeThrough?: boolean;
+  /** vertical squash of the board model, for a vertical slice */ yScale?: number;
 }) {
   const mat = useMemo(() => new THREE.ShaderMaterial({
-    vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, depthTest: !seeThrough, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     uniforms: {
       uField: { value: null }, uLut: { value: lutTex(SIGNED_STOPS) }, uPhase: { value: 0 }, uGamma: { value: gamma }, uOpacity: { value: opacity }, uFade: { value: 0.14 },
     },
-  }), [gamma, opacity]);
+  }), [gamma, opacity, seeThrough]);
   useEffect(() => {
     const tex = halfTex(slice.re, slice.im, slice.nx, slice.ny);
     mat.uniforms.uField.value = tex;
@@ -90,14 +92,14 @@ export function WaveField3D({ slice, y, lift = 0, period = 3.4, opacity = 0.95, 
     );
   }
   return (
-    <mesh position={[cu, cv + lift, -slice.at_mm]} material={mat} renderOrder={5}>
+    <mesh position={[cu, cv * yScale + lift, -slice.at_mm]} scale={[1, yScale, 1]} material={mat} renderOrder={5}>
       <planeGeometry args={[w, h]} />
     </mesh>
   );
 }
 
 /** Pulse launch: |E| frames played once over a plane. */
-export function PulsePlane3D({ pulse, y, frame, fadeOut = 1 }: { pulse: PulseData; y: number; frame: number; fadeOut?: number }) {
+export function PulsePlane3D({ pulse, y, frame, fadeOut = 1, seeThrough = false }: { pulse: PulseData; y: number; frame: number; fadeOut?: number; seeThrough?: boolean }) {
   const lut = useMemo(() => lutTex(FIELD_STOPS), []);
   const mat = useMemo(() => new THREE.ShaderMaterial({
     vertexShader: vert,
@@ -106,8 +108,8 @@ export function PulsePlane3D({ pulse, y, frame, fadeOut = 1 }: { pulse: PulseDat
       void main(){ float m = texture2D(uF, vUv).r; float s = pow(clamp(m,0.0,1.0), 0.5);
         vec3 c = texture2D(uLut, vec2(s,0.5)).rgb; vec2 e = min(vUv,1.0-vUv);
         gl_FragColor = vec4(c, smoothstep(0.02,0.5,s) * smoothstep(0.0,0.12,min(e.x,e.y)) * uFade); }`,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uF: { value: null }, uLut: { value: lut }, uFade: { value: 1 } },
-  }), [lut]);
+    transparent: true, depthWrite: false, depthTest: !seeThrough, blending: THREE.AdditiveBlending, uniforms: { uF: { value: null }, uLut: { value: lut }, uFade: { value: 1 } },
+  }), [lut, seeThrough]);
   const tex = useMemo(() => {
     const t = new THREE.DataTexture(new Float32Array(pulse.nx * pulse.ny * 4), pulse.nx, pulse.ny, THREE.RGBAFormat, THREE.FloatType);
     t.minFilter = t.magFilter = THREE.LinearFilter;
@@ -130,7 +132,7 @@ export function PulsePlane3D({ pulse, y, frame, fadeOut = 1 }: { pulse: PulseDat
 }
 
 /** Surface current on the top copper: |Js| on a heat ramp, transparent off copper. Sits just above the copper plane. */
-export function CurrentPlane3D({ data, y, glow = 1 }: { data: CurrentData; y?: number; glow?: number }) {
+export function CurrentPlane3D({ data, y, glow = 1, seeThrough = false }: { data: CurrentData; y?: number; glow?: number; seeThrough?: boolean }) {
   const lut = useMemo(() => lutTex(FIELD_STOPS), []);
   const mat = useMemo(() => new THREE.ShaderMaterial({
     vertexShader: vert,
@@ -139,8 +141,8 @@ export function CurrentPlane3D({ data, y, glow = 1 }: { data: CurrentData; y?: n
       void main(){ float m = texture2D(uF, vUv).r; float s = pow(clamp(m,0.0,1.0), 0.62);
         vec3 c = texture2D(uLut, vec2(s,0.5)).rgb * (0.9 + 0.5 * uGlow * s);
         gl_FragColor = vec4(c, smoothstep(0.004, 0.05, m)); }`,
-    transparent: true, depthWrite: false, uniforms: { uF: { value: null }, uLut: { value: lut }, uGlow: { value: glow } },
-  }), [lut, glow]);
+    transparent: true, depthWrite: false, depthTest: !seeThrough, uniforms: { uF: { value: null }, uLut: { value: lut }, uGlow: { value: glow } },
+  }), [lut, glow, seeThrough]);
   const tex = useMemo(() => {
     const d = new Float32Array(data.nx * data.ny * 4);
     for (let i = 0; i < data.nx * data.ny; i++) d[i * 4] = data.mag[i];

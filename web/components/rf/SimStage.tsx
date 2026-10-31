@@ -12,10 +12,25 @@ import { DEFAULT_LAYERS } from "../board2d/layers";
 import { CurrentCanvas2D, FieldCanvas2D, PulseCanvas2D } from "./FieldCanvas2D";
 import { CurrentPlane3D, PulsePlane3D, WaveField3D } from "./WaveField3D";
 import { RadiationBalloon } from "./RadiationBalloon";
+import { boardYScale } from "../scene3d/boardModel";
 
 const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false, loading: () => <div className="rf-loading idx">Loading the 3D board</div> });
 
 export type SimView = "wave" | "pulse" | "pattern" | "current";
+/** Where the field plane is drawn: on the board's top face, or at the height the solver sampled it. */
+export type FieldPlane = "top" | "solver";
+const TOP_FACE = 1.6;
+
+/**
+ * The solver samples its slice at a height inside the stack-up. On a thick or many-layer board that is inside the opaque
+ * board, where nobody can see it. `inside` says so; `atMm` is the height the solver used, on the same scale as the drawn board.
+ */
+export function planeInfo(board: Board, view: SimView, fields?: Fields | null, current?: CurrentData | null, pulse?: PulseData | null) {
+  const ky = boardYScale(board);
+  const raw = view === "wave" ? fields?.xy?.at_mm : view === "pulse" ? pulse?.at_mm : view === "current" ? current?.at_mm : undefined;
+  const drawn = raw == null ? null : raw * ky;
+  return { ky, atMm: raw ?? null, inside: drawn != null && drawn < TOP_FACE - 0.2 };
+}
 const noop = () => {};
 const none = [] as never[];
 const noMeta = {};
@@ -58,15 +73,19 @@ interface SimStageProps {
   board: Board; glbUrl: string | null; sceneInfo?: SceneInfo | null;
   view: SimView; mode: "2d" | "3d"; meta: SimMeta | null | undefined;
   fields?: Fields | null; current?: CurrentData | null; pulse?: PulseData | null; pattern?: PatternData | null;
-  frame: number; paused: boolean; calm: boolean; insets: Insets;
+  frame: number; paused: boolean; calm: boolean; insets: Insets; plane?: FieldPlane;
 }
 
 /** The solver's field drawn on the review's own board: the GLB from its version in 3D, or the vector board in 2D. */
-export function SimStage({ board, glbUrl, sceneInfo = null, view, mode, meta, fields, current, pulse, pattern, frame, paused, calm, insets }: SimStageProps) {
+export function SimStage({ board, glbUrl, sceneInfo = null, view, mode, meta, fields, current, pulse, pattern, frame, paused, calm, insets, plane = "top" }: SimStageProps) {
   const sceneMarkup = useScene(sceneInfo);
   const { antenna } = useOutline(meta);
   const balloonAt = useMemo<[number, number, number]>(() => (antenna ? [(antenna[0] + antenna[2]) / 2, 3, (antenna[1] + antenna[3]) / 2] : [(board.bbox[0] + board.bbox[2]) / 2, 3, (board.bbox[1] + board.bbox[3]) / 2]), [antenna, board]);
   const use3d = mode === "3d" || view === "pattern";
+  const { ky, inside } = planeInfo(board, view, fields, current, pulse);
+  // inside the board: on top it sits just above the surface; in the solver's plane it is drawn through the board
+  const seeThrough = inside && plane === "solver";
+  const at = (mm: number) => (inside && plane === "top" ? TOP_FACE + 0.15 : mm * ky);
 
   if (!use3d || !glbUrl) {
     const layers = { ...DEFAULT_LAYERS, issues: false, regions: false, silk: false, zones: true };
@@ -90,10 +109,10 @@ export function SimStage({ board, glbUrl, sceneInfo = null, view, mode, meta, fi
       showMarks={false} boardDims={false} autoRotate={view === "pattern" && !calm}
       view3d={{ az: 0.5, el: 0.7 }}
     >
-      {view === "wave" && fields?.xy && <WaveField3D slice={fields.xy} paused={paused || calm} />}
-      {view === "wave" && fields?.xz && <WaveField3D slice={fields.xz} paused={paused || calm} opacity={0.8} />}
-      {view === "pulse" && pulse && <PulsePlane3D pulse={pulse} y={pulse.at_mm} frame={frame} />}
-      {view === "current" && current && <CurrentPlane3D data={current} />}
+      {view === "wave" && fields?.xy && <WaveField3D slice={fields.xy} y={at(fields.xy.at_mm)} paused={paused || calm} seeThrough={seeThrough} />}
+      {view === "wave" && fields?.xz && <WaveField3D slice={fields.xz} paused={paused || calm} opacity={0.8} yScale={ky} />}
+      {view === "pulse" && pulse && <PulsePlane3D pulse={pulse} y={at(pulse.at_mm)} frame={frame} seeThrough={seeThrough} />}
+      {view === "current" && current && <CurrentPlane3D data={current} y={at(current.at_mm) + (inside && plane === "top" ? 0 : 0.05)} seeThrough={seeThrough} />}
       {view === "pattern" && pattern && <RadiationBalloon pattern={pattern} center={balloonAt} scale={22} rangeDb={20} colorDb={10} />}
       <Outline3D meta={meta} />
     </Scene3D>
