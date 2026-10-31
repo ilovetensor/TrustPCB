@@ -231,6 +231,9 @@ class Handlers:
         data = {'phase': change.phase, 'name': PHASE_NAMES[change.phase],
                 'skipped': [{'phase': p, 'name': PHASE_NAMES[p], 'reason': r} for p, r in change.skipped],
                 'brief': prompts.phase_brief(change.phase, **self.phase_vars())}
+        if change.phase == 6 and (vc := self.version_change()):
+            data['version_change'] = vc
+            data['lead_the_summary_with'] = vc['text']
         if change.previous == 3:
             data['unreviewed_candidates'] = self.candidate_counts().get('new', 0)
             if s.auto_grouped:
@@ -406,15 +409,27 @@ class Handlers:
         from .compare import classify_findings
         now = [f for f in self.store.list_findings(s.review_id)]
         covered = {row['rule'] for row in self.store.list_candidates(s.review_id) if row['rule']} if s.phase >= 6 else None
-        out = classify_findings(self.store, s.previous['findings'], now, new_coverage=covered)
+        out = classify_findings(self.store, s.previous['findings'], now, new_coverage=covered, version_change=self.version_change(),
+                                old_review_id=s.previous['review']['id'], new_review_id=s.review_id)
         brief = lambda items: [{'code': i.get('code'), 'title': i.get('title'), 'fingerprint': i.get('fingerprint')} for i in items]
-        recorded_again = {f['fingerprint'] for f in now if f['status'] != 'superseded'}
-        waiting = [f for f in s.previous['findings'] if f['status'] in ('open', 'needs_recheck') and f['fingerprint'] not in recorded_again]
-        return {'previous_review_id': s.previous['review']['id'], 'against_version': s.previous['version_number'],
-                'still_present': brief(out['still_present']), 'changed': brief(out['changed']), 'new': brief(out['new']),
-                'not_recorded_again': brief(waiting),
+        waiting = [*out['fixed'], *[i for i in out['still_present'] if i.get('unrecorded')]]
+        data = {'previous_review_id': s.previous['review']['id'], 'against_version': s.previous['version_number'],
+                'still_present': brief(i for i in out['still_present'] if not i.get('unrecorded')), 'changed': brief(out['changed']), 'new': brief(out['new']),
+                'counts': out['counts'], 'not_recorded_again': brief(waiting),
                 'note': ('A previous finding that you do not record again is reported as fixed. Say so in the summary: how many are fixed, still present and new.' if s.phase >= 5
                          else 'Record a finding again where its issue remains. One you do not record again is reported as fixed when the review ends.')}
+        vc = self.version_change()
+        if vc:
+            data['version_change'] = {k: vc[k] for k in ('from_version', 'to_version', 'from', 'to', 'gain_db', 'direction', 'held', 'applied', 'target_met', 'text')}
+        return data
+
+    def version_change(self) -> dict | None:
+        """What changed since the previous version (as built, against the previous review's prediction). None until this review has a confirmed base."""
+        s = self.s
+        if not s.previous:
+            return None
+        from . import change
+        return change.version_change(self.store, s.review_id, s.previous['review']['id'])
 
     async def read_schematic(self, args: dict) -> ToolResult:
         board, kind, query = self.s.board, args['kind'], (args.get('query') or '').lower()

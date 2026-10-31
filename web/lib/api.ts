@@ -5,6 +5,7 @@
 
 import { netId } from "./geometry.mjs";
 import { apiGet, apiSend, ApiError, uploadFiles } from "./live";
+import type { ChangeState, VersionChange } from "./story.mjs";
 import type { Board, Evidence, Finding, ProjectSummary, Severity } from "./types";
 
 export { ApiError };
@@ -99,7 +100,18 @@ export async function listProjects(): Promise<ProjectSummary[]> {
   if (FIXTURE_MODE) return (await fx()).listProjects();
   const list = await apiGet<any[]>("projects");
   const full = await Promise.all(list.map((p) => apiGet<any>(`projects/${p.id}`).catch(() => ({ ...p, versions: [] }))));
-  return full.map(summariseProject).sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+  const rows = full.map(summariseProject);
+  // the RF column comes from the stored confirm result of the latest review, not from a guess
+  await Promise.all(rows.map(async (row) => {
+    if (row.rf !== "not_tested" || !row.latest_review_id) return;
+    const r = await getVersionRf(row.latest_review_id);
+    if (r?.status === "tested" && r.worst_s11_db != null) {
+      row.rf = r.meets_target ? "pass" : "fail";
+      const fmt = (v: number) => v.toFixed(2).replace(/\.?0+$/, "").replace("-", "\u2212");
+      row.rf_note = `${r.accepted_worst_pct != null ? `${r.accepted_worst_pct} % accepted at worst` : `${fmt(r.worst_s11_db)} dB at worst`}, target ${r.meets_target ? "met" : "not met"}`;
+    }
+  }));
+  return rows.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
 }
 
 export async function getProject(id: string): Promise<ProjectDetail | null> {
@@ -240,9 +252,38 @@ export async function getEvidenceByCode(reviewId: string): Promise<Record<string
   } catch { return {}; }
 }
 
+/* ------------------------------ RF result per version ------------------------------ */
+
+export interface VersionRf {
+  status: "tested" | "screen_only" | "not_tested"; reason: string | null;
+  worst_s11_db: number | null; mean_s11_db: number | null; accepted_worst_pct: number | null; accepted_mean_pct: number | null;
+  target_db: number | null; meets_target: boolean | null; evidence: string | null;
+}
+const num = (m: any, ...names: string[]): number | null => { for (const n of names) { const v = m?.[n]?.value; if (typeof v === "number") return v; } return null; };
+
+/** The confirmed as-built result of a review, read from its latest report snapshot. Nothing is estimated: no confirmed base means no figure. */
+export async function getVersionRf(reviewId: string): Promise<VersionRf | null> {
+  if (FIXTURE_MODE) return null;
+  try {
+    const rows = await listRevisions(reviewId);
+    if (!rows.length) return null;
+    const rf = (await getSnapshot(reviewId, rows[rows.length - 1].number)).rf as any;
+    if (!rf || rf.status !== "tested") return { status: "not_tested", reason: rf?.reason ?? null, worst_s11_db: null, mean_s11_db: null, accepted_worst_pct: null, accepted_mean_pct: null, target_db: rf?.target_db ?? null, meets_target: null, evidence: null };
+    const base = rf.confirm_base;
+    if (!base) return { status: "screen_only", reason: "Only screen runs exist: they compare changes and give no absolute result.", worst_s11_db: null, mean_s11_db: null, accepted_worst_pct: null, accepted_mean_pct: null, target_db: rf.target_db ?? null, meets_target: null, evidence: null };
+    const m = base.measurements ?? {};
+    const worst = num(m, "as_built_band_worst_s11", "s11_band_worst");
+    return {
+      status: "tested", reason: null, worst_s11_db: worst, mean_s11_db: num(m, "as_built_band_mean_s11", "s11_band_mean"),
+      accepted_worst_pct: num(m, "as_built_band_worst_accepted_power_pct", "band_worst_accepted_power_pct"), accepted_mean_pct: num(m, "as_built_band_mean_accepted_power_pct", "band_mean_accepted_power_pct"),
+      target_db: rf.target_db ?? null, meets_target: worst != null && typeof rf.target_db === "number" ? worst <= rf.target_db : null, evidence: base.code ?? null,
+    };
+  } catch { return null; }
+}
+
 /* ------------------------------ compare ------------------------------ */
 
-export interface FindingBrief { id: string; code: string; fingerprint: string; title: string; severity: Severity; class: string; status: string; dismissed_reason?: string | null; was?: FindingBrief; changes?: string[]; dismissed_on?: FindingBrief }
+export interface FindingBrief { id: string; code: string; fingerprint: string; title: string; severity: Severity; class: string; status: string; dismissed_reason?: string | null; was?: FindingBrief | null; changes?: string[]; dismissed_on?: FindingBrief; change?: ChangeState | "not_rechecked"; note?: string | null; matched_by?: string; unrecorded?: boolean }
 export interface BoardDiff {
   parts: { added: { ref: string; value: string }[]; removed: { ref: string; value: string }[]; moved: { ref: string; from: [number, number]; to: [number, number]; distance_mm: number }[]; value_changed: { ref: string; from: string; to: string }[] };
   tracks: { added: number; removed: number; length_added_mm: number; length_removed_mm: number };
@@ -252,7 +293,10 @@ export interface BoardDiff {
 export interface CompareResult {
   from: { version_id: string; number: number; review_id: string | null; counts: Record<Severity, number> | null };
   to: { version_id: string; number: number; review_id: string | null; counts: Record<Severity, number> | null };
-  findings: { fixed: FindingBrief[]; still_present: FindingBrief[]; changed: FindingBrief[]; new: FindingBrief[]; dismissed_carried: FindingBrief[]; not_rechecked: FindingBrief[] } | null;
+  findings: { fixed: FindingBrief[]; still_present: FindingBrief[]; changed: FindingBrief[]; new: FindingBrief[]; dismissed_carried: FindingBrief[]; not_rechecked: FindingBrief[];
+              counts?: Record<ChangeState | "dismissed_carried" | "not_rechecked", number> } | null;
+  /** The as-built result against the older version, with the older review's prediction. Null when either version has no confirmed antenna base. */
+  version_change?: VersionChange | null;
   board: BoardDiff | null; counts_change?: Record<string, number>; notes: string[];
 }
 export async function getCompare(from: string, to: string): Promise<CompareResult> {

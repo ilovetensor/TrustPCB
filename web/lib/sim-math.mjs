@@ -66,10 +66,15 @@ export function measurementsOfSummary(s) {
 }
 
 const withFile = (j, ...names) => j.status === "done" && names.every((n) => j.files.includes(n));
-/** The run whose field the board stage shows: the latest confirm run with a field, else the latest run with one. */
+/**
+ * The run whose field the board stage shows: the latest confirm run of the board as drawn (no what-if change), else the latest confirm run with a field,
+ * else the latest run with one. A confirm of a changed antenna (a refine attempt) is not the board the engineer has, and its numbers would sit next to the version's own.
+ */
 export function pickStageJob(jobs) {
   const withField = jobs.filter((j) => withFile(j, "field.json", "field_xy.bin"));
-  return [...withField].reverse().find((j) => j.kind === "confirm") ?? withField[withField.length - 1] ?? null;
+  const latest = [...withField].reverse();
+  const asDrawn = (j) => !(j.whatif_ops ?? []).length && !j.material;
+  return latest.find((j) => j.kind === "confirm" && asDrawn(j)) ?? latest.find((j) => j.kind === "confirm") ?? withField[withField.length - 1] ?? null;
 }
 /**
  * The run a version is compared by: the board as drawn. That is its latest confirm run with no what-if change (a confirm of a changed antenna says

@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import change
 from . import evidence as ev
 from . import partial
 from .compare import classify_findings, previous_context
@@ -182,7 +183,10 @@ def build_snapshot(store, review_id: str, *, cause: str, incomplete: bool = Fals
         'not_tested': [], 'limits': summary.get('limits') or [], 'budget': review.get('budget') or {},
         'method': _method(store, review, rows),
     }
-    snapshot['headline'] = partial.headline(snapshot['investigations'], findings, ev.target_db(review.get('goal') or {}, summary.get('rf') or {}))
+    win = partial.headline(snapshot['investigations'], findings, ev.target_db(review.get('goal') or {}, summary.get('rf') or {}))
+    snapshot['version_change'] = recheck_change(store, review_id)
+    snapshot['headline'] = ({**snapshot['version_change'], 'kind': 'version_change', 'partial_win': win} if snapshot['version_change']
+                            else ({**win, 'kind': 'partial_win'} if win else None))
     snapshot['not_tested'] = _not_tested(summary, review, rf, unreviewed)
     snapshot['changes_since_last'] = diff_snapshots(previous, snapshot) if previous else None
     return snapshot
@@ -223,13 +227,21 @@ def create_revision(store, review_id: str, *, cause: str, incomplete: bool = Fal
     return store.add_report_revision(review_id, cause, snapshot)
 
 
+def recheck_change(store, review_id: str) -> dict | None:
+    """The as-built result against the previous version's review, with the prediction it made; None for a first version or when either has no confirmed base."""
+    review = store.get_review(review_id)
+    previous = previous_context(store, review['version_id'])
+    return change.version_change(store, review_id, previous['review']['id']) if previous else None
+
+
 def version_changes(store, review_id: str, new_coverage: set[str] | None = None) -> dict | None:
-    """Fixed / still present / changed / new against the previous version's review, or None for a first version."""
+    """Every finding against the previous version's review (fixed, improved, still present, worse, new), or None for a first version."""
     review = store.get_review(review_id)
     previous = previous_context(store, review['version_id'])
     if not previous:
         return None
-    out = classify_findings(store, previous['findings'], store.list_findings(review_id), new_coverage=new_coverage)
+    out = classify_findings(store, previous['findings'], store.list_findings(review_id), new_coverage=new_coverage, version_change=recheck_change(store, review_id),
+                            old_review_id=previous['review']['id'], new_review_id=review_id)
     out['against'] = {'version_number': previous['version_number'], 'review_id': previous['review']['id']}
     return out
 
@@ -247,7 +259,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0}th,td{text-align:left;pad
 .cls-measured{background:#e5f6ee;border-color:#2a9d68;color:#145a3b}.cls-simulated{background:#e6f4fb;border-color:#22a3d6;color:#0e5a78}.cls-opinion{background:#f1ecfa;border-color:#8e6fcf;color:#46308a}.cls-not_tested{background:#eee;color:#444}
 .card{border:1px solid #d7dbe0;border-radius:8px;padding:14px 16px;margin:14px 0;break-inside:avoid}.card h3{margin-top:0}.notice{border-left:4px solid #ff9f1a;background:#fff8ec;padding:8px 12px;margin:12px 0}
 .changes{border-left:4px solid #22a3d6;background:#eef8fd;padding:8px 12px;margin:12px 0}svg.board{width:100%;height:auto;border:1px solid #d7dbe0;border-radius:6px;background:#fff}
-.counts span{margin-right:8px}ul{padding-left:20px;margin:4px 0}code{font-family:ui-monospace,Menlo,monospace;font-size:13px}.small{font-size:13px}
+.counts span{margin-right:8px}td.n,table.vc th{white-space:nowrap}ul{padding-left:20px;margin:4px 0}code{font-family:ui-monospace,Menlo,monospace;font-size:13px}.small{font-size:13px}
 @media print{main{padding:0}h2{break-after:avoid}}
 '''
 
@@ -329,6 +341,32 @@ def render_headline(h: dict) -> str:
             f'Simulated; not a substitute for a real antenna measurement.{(" See finding " + esc(h["finding"]) + ".") if h.get("finding") else ""}</p></div>')
 
 
+def render_version_change(vc: dict) -> str:
+    """The lead of a recheck: the as-built result against the previous version, whether its prediction held, and whether the target is met."""
+    a, b, frm, to = vc['from_version'], vc['to_version'], vc['from'], vc['to']
+    tone = {'improved': 'cls-measured', 'worse': 'sev-high', 'unchanged': 'cls-not_tested'}[vc['direction']]
+    rows = [('Worst S11 across the band, as built', f'{frm["band_worst_s11_db"]:g} dB', f'{to["band_worst_s11_db"]:g} dB', f'{vc["gain_db"]:+g} dB')]
+    if frm.get('band_mean_s11_db') is not None and to.get('band_mean_s11_db') is not None:
+        rows.append(('Mean S11 across the band, as built', f'{frm["band_mean_s11_db"]:g} dB', f'{to["band_mean_s11_db"]:g} dB', f'{round(frm["band_mean_s11_db"] - to["band_mean_s11_db"], 2):+g} dB'))
+    if frm.get('accepted_power_worst_pct') is not None and to.get('accepted_power_worst_pct') is not None:
+        rows.append(('Accepted power, worst point of the band', f'{frm["accepted_power_worst_pct"]:g} %', f'{to["accepted_power_worst_pct"]:g} %', f'{vc["accepted_power_gain_worst_pct"]:+g} points'))
+    if frm.get('accepted_power_mean_pct') is not None and to.get('accepted_power_mean_pct') is not None:
+        rows.append(('Accepted power, mean across the band', f'{frm["accepted_power_mean_pct"]:g} %', f'{to["accepted_power_mean_pct"]:g} %', f'{vc["accepted_power_gain_mean_pct"]:+g} points'))
+    prediction = vc.get('prediction_from_previous')
+    if prediction:
+        rows.append((f'Predicted by version {a}: {prediction["parts_text"]}', '', f'{prediction["band_worst_s11_db"]:g} dB predicted', f'measured {to["band_worst_s11_db"]:g} dB'))
+    table = (f'<table class="vc"><tr><th></th><th>Version {esc(a)}</th><th>Version {esc(b)}</th><th>Change</th></tr>'
+             + ''.join(f'<tr><td>{esc(x)}</td><td class="n">{esc(y)}</td><td class="n">{esc(z)}</td><td class="n">{esc(w)}</td></tr>' for x, y, z, w in rows) + '</table>')
+    badges = pill(tone, {'improved': 'improved', 'worse': 'worse', 'unchanged': 'unchanged'}[vc['direction']])
+    if prediction:
+        badges += ' ' + (pill('cls-measured', 'Prediction held') if vc.get('held') else pill('cls-not_tested', 'Prediction not tested') if vc.get('applied') is False else pill('sev-high', 'Prediction did not hold'))
+    badges += ' ' + (pill('cls-measured', 'Target met') if vc['target_met'] else pill('sev-medium', 'Target not met'))
+    return (f'<div class="card"><h2 style="margin-top:0;border:0">Compared with version {esc(a)}</h2><p>{badges}</p><p>{esc(vc["text"])}</p>{table}'
+            '<p class="small muted">Accepted power is 100 x (1 - |S11|^2) per frequency: a mismatch figure only, not radiated power or efficiency. '
+            f'Both results are confirm-quality simulations of the board as built (evidence {esc(frm.get("evidence"))} and {esc(to.get("evidence"))}); '
+            'not a substitute for a real antenna measurement.</p></div>')
+
+
 def render_confirmation(c: dict, title: str = 'Screen against confirm') -> str:
     """Screen against confirm: the honest comparison, with the matching re-tuned at confirm quality."""
     rows = c.get('rows') or {}
@@ -376,8 +414,13 @@ def render_html(snap: dict, images: dict | None = None) -> str:
         out.append('<div class="notice">This revision ended before its run finished. Verified changes up to that point are included; the run is marked incomplete.</div>')
     if snap.get('changes_since_last') and not snap['changes_since_last'].get('empty'):
         out.append(render_changes(snap['changes_since_last'], snap['cause']))
-    if snap.get('headline'):
-        out.append(render_headline(snap['headline']))
+    headline = snap.get('headline')
+    if headline and headline.get('kind') == 'version_change':
+        out.append(render_version_change(headline))
+        if headline.get('partial_win'):
+            out.append(render_headline(headline['partial_win']))
+    elif headline:
+        out.append(render_headline(headline))
     # 2 summary
     out.append('<h2>Summary</h2>')
     summary = snap.get('summary')
@@ -587,13 +630,24 @@ def render_finding(f: dict, snap: dict, image: str | None) -> str:
     return ''.join(out)
 
 
+CHANGE_LABEL = {'fixed': 'Fixed', 'improved': 'Improved', 'still_present': 'Still present', 'worse': 'Worse', 'new': 'New'}
+
+
 def render_version_changes(changes: dict) -> str:
-    out = [f'<p class="muted small">Compared with version {esc(changes["against"]["version_number"])}.</p>']
-    for key, label in (('fixed', 'Fixed'), ('still_present', 'Still present'), ('changed', 'Changed'), ('new', 'New'), ('dismissed_carried', 'Dismissed earlier and carried forward'), ('not_rechecked', 'Not rechecked')):
+    counts = changes.get('counts') or {}
+    summary = ', '.join(f'{counts.get(k, 0)} {CHANGE_LABEL[k].lower()}' for k in CHANGE_LABEL)
+    out = [f'<p class="muted small">Compared with version {esc(changes["against"]["version_number"])}: {esc(summary)}.</p>']
+    for key in ('fixed', 'improved', 'still_present', 'worse', 'new'):
+        items = [i for bucket in ('fixed', 'still_present', 'changed', 'new') for i in changes.get(bucket) or [] if (i.get('change') or {'fixed': 'fixed', 'new': 'new'}.get(bucket, 'still_present')) == key]
+        items.sort(key=lambda i: (SEVERITY_ORDER.index(i['severity']), i.get('code') or ''))
+        if items:
+            out.append(f'<h3>{esc(CHANGE_LABEL[key])} ({len(items)})</h3><ul>' + ''.join(
+                f'<li>{sev_pill(i["severity"])} {esc(i["title"])}{" - " + esc("; ".join(i["changes"])) if i.get("changes") else ""}'
+                f'{" <span class=muted>(" + esc(i["note"]) + ")</span>" if i.get("note") else ""}</li>' for i in items) + '</ul>')
+    for key, label in (('dismissed_carried', 'Dismissed earlier and carried forward'), ('not_rechecked', 'Not rechecked')):
         items = changes.get(key) or []
         if items:
-            out.append(f'<h3>{esc(label)} ({len(items)})</h3><ul>' + ''.join(f'<li>{sev_pill(i["severity"])} {esc(i["title"])}'
-                       f'{" - " + esc("; ".join(i["changes"])) if i.get("changes") else ""}</li>' for i in items) + '</ul>')
+            out.append(f'<h3>{esc(label)} ({len(items)})</h3><ul>' + ''.join(f'<li>{sev_pill(i["severity"])} {esc(i["title"])}</li>' for i in items) + '</ul>')
     return ''.join(out)
 
 

@@ -7,7 +7,8 @@ import {
   acceptedForJob, acceptedOf, describeFreq, describeOps, dipsOf, fixedDipsMhz, fmtPct, isDone, isFixedDip, isScreen, loadCurrent, loadCurves, loadField, loadMeta, loadPattern, loadPulse, loadSummary, measure,
   QUALITY_NOTE, zFromGamma, type Curves, type SimJob, type SimSource,
 } from "../../lib/sims";
-import type { Headline } from "../../lib/story.mjs";
+import type { Headline, VersionChange as VC } from "../../lib/story.mjs";
+import { VersionChange } from "./VersionChange";
 import { useAsync } from "../../lib/use-async";
 import { cssGradient, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
 import { reducedMotion, useNarrow, useReducedMotion } from "../../lib/hooks";
@@ -64,12 +65,18 @@ function JobCard({ job, active, overlaid, onActive, onOverlay }: { job: SimJob; 
   );
 }
 
-export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, sample = false, initialJob = null, headline = null }: {
-  reviewId: string; source: SimSource; bundle: BoardBundle | null; title: string; goalBand: Band | null; notice?: string; sample?: boolean; initialJob?: string | null; headline?: Headline | null;
+export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, sample = false, initialJob = null, headline = null, versionChange = null }: {
+  reviewId: string; source: SimSource; bundle: BoardBundle | null; title: string; goalBand: Band | null; notice?: string; sample?: boolean; initialJob?: string | null; headline?: Headline | null; versionChange?: VC | null;
 }) {
   const jobs = source.jobs;
   const doneJobs = useMemo(() => jobs.filter(isDone), [jobs]);
-  const preferred = useMemo(() => [...doneJobs].reverse().find((j) => j.kind === "confirm" && j.files.includes("field.json")) ?? [...doneJobs].reverse().find((j) => j.files.includes("field.json")) ?? doneJobs[doneJobs.length - 1] ?? null, [doneJobs]);
+  // the run shown first: the confirm run of the board as drawn (a confirm of a changed antenna is a refine attempt, not the board), else any confirm with a field, else the latest
+  const preferred = useMemo(() => {
+    const latest = [...doneJobs].reverse();
+    const asDrawn = (j: SimJob) => !(j.whatif_ops ?? []).length && !j.material;
+    const confirmWithField = latest.filter((j) => j.kind === "confirm" && j.files.includes("field.json"));
+    return confirmWithField.find(asDrawn) ?? confirmWithField[0] ?? latest.find((j) => j.files.includes("field.json")) ?? doneJobs[doneJobs.length - 1] ?? null;
+  }, [doneJobs]);
   const [activeId, setActiveId] = useState<string | null>(initialJob);
   const [overlay, setOverlay] = useState<Record<string, boolean>>({});
   const active = jobs.find((j) => j.job_id === activeId) ?? preferred;
@@ -233,6 +240,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
       {inBand != null && <span className={`stamp ${inBand ? "solid" : "sig"}`}>{inBand ? "Dip in band" : "Off target"}</span>}
       {screen ? <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span> : active?.quality === "confirm" ? <span className="stamp solid">Confirm</span> : null}
     </span>}>
+      {versionChange && <VersionChange vc={versionChange} compact />}
       {headline && <PartialWin h={headline} compact />}
       {(accepted.asBuilt || accepted.antenna || sumBand.asBuilt != null || sumBand.antenna != null) && (
         <section className="rf-band" aria-label="In-band S11 and accepted power">

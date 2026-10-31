@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 from typing import Any
 
+from . import change
 from . import evidence as ev
 from .budgets import REFUSAL_STREAK_LIMIT, BudgetConfig, BudgetTracker, Clock, Ledger
 from .findings import FindingEngine
@@ -47,7 +48,7 @@ class ReviewSession:
         self.summary_failures = 0
         self.candidates: dict[str, dict] = {}
         self.refs: dict[str, dict] = {}              # R1.. -> {evidence_id, hash, run, metrics, quality, label}
-        self.reference_quantities: list = []
+        self.reference_quantities: list = change.previous_quantities(store, previous['review']['id']) if previous else []    # the previous version's as-built result and prediction
         self.investigation_codes: dict[str, str] = {}
         self.suspect_codes: dict[str, str] = {}
         self.limits: list[dict] = []                 # budget walls and stop rules that fired

@@ -34,7 +34,7 @@
 }
 .tbl-row {
   display: grid;
-  grid-template-columns: 56px minmax(170px, 2fr) 0.9fr 1.5fr 90px 96px 120px;
+  grid-template-columns: 56px minmax(170px, 2fr) minmax(130px, 1.2fr) 1.5fr 90px 96px 120px;
   gap: 14px;
   align-items: center;
   padding: 18px 8px;
@@ -300,3 +300,11 @@ a.tbl-row:hover .tbl-name {
 .rp-tbl th {
   text-align: left;
 }
+
+/* RF match by version on the project page */
+.pg-rf { padding: 14px; display: grid; gap: 14px; }
+.pg-rf-row { display: grid; gap: 6px; min-width: 0; }
+.pg-rf-line { margin: 0; font-size: 12px; line-height: 1.5; color: var(--paper-2); overflow-wrap: anywhere; }
+.pg-rf-note { margin: 0; font-size: 11.5px; line-height: 1.45; }
+
+@media (max-width: 520px) { .tl-node { flex: 1 0 150px; padding-right: 10px; } .timeline { padding-left: 14px; padding-right: 14px; } }

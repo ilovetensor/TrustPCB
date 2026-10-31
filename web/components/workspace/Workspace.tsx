@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FIXTURE_MODE, getBoardBundle, getEvidenceByCode, getSnapshot, listRevisions, type BoardBundle } from "../../lib/api";
-import { headlineOf, screenVsConfirm, testsOf, type Headline, type StoryRound, type StoryTest } from "../../lib/story.mjs";
+import { changeByCode, headlineOf, screenVsConfirm, testsOf, versionChangeOf, type ChangeState, type Headline, type StoryRound, type StoryTest, type VersionChange } from "../../lib/story.mjs";
 import { indexBoard, resolveMark, bboxUnion } from "../../lib/geometry.mjs";
 import { useNarrow } from "../../lib/hooks";
 import { activeMarks } from "../../lib/review-reducer.mjs";
@@ -94,15 +94,15 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     return () => { live = false; };
   }, [meta?.version_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const revision = state.reportReady?.revision ?? meta?.report_revision ?? 0;
+  const revision = Math.max(state.reportReady?.revision ?? 0, meta?.report_revision ?? 0);       // the latest revision: a follow-up may have written newer ones than the report_ready event
   useEffect(() => { if (meta) void getEvidenceByCode(reviewId).then(setEvidence); }, [reviewId, revision, meta?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the report snapshot holds the partial win and the screen-against-confirm rows; there is none until the review has a report
-  const [story, setStory] = useState<{ headline: Headline | null; rounds: StoryRound[]; tests: StoryTest[] }>({ headline: null, rounds: [], tests: [] });
+  const [story, setStory] = useState<{ headline: Headline | null; change: VersionChange | null; changes: Record<string, { change: ChangeState; note: string | null; changes: string[] }>; rounds: StoryRound[]; tests: StoryTest[] }>({ headline: null, change: null, changes: {}, rounds: [], tests: [] });
   useEffect(() => {
     if (FIXTURE_MODE || !revision) return;
     let live = true;
-    listRevisions(reviewId).then((r) => (r.length ? getSnapshot(reviewId, r[r.length - 1].number) : null)).then((snap) => { if (live && snap) setStory({ headline: headlineOf(snap), rounds: screenVsConfirm(snap), tests: testsOf(snap) }); }).catch(() => {});
+    listRevisions(reviewId).then((r) => (r.length ? getSnapshot(reviewId, r[r.length - 1].number) : null)).then((snap) => { if (live && snap) setStory({ headline: headlineOf(snap), change: versionChangeOf(snap), changes: changeByCode(snap), rounds: screenVsConfirm(snap), tests: testsOf(snap) }); }).catch(() => {});
     return () => { live = false; };
   }, [reviewId, revision]);
 
@@ -231,7 +231,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
         {revision ? <Link href={`/reviews/${reviewId}/report`} className="btn sm primary">Report r{revision}</Link> : null}
       </span>
     )}>
-      <FindingsPanel headline={story.headline} onFindingCode={(code) => { const f = state.findingOrder.map((id) => state.findings[id]).find((x) => x?.code === code); if (f) selectFinding(f.id); }} state={state} evidence={evidence} selectedId={selectedId} onSelect={selectFinding} onAsk={askFinding} onSetStatus={(id, st, reason) => { void rv.setFindingStatus(id, st, reason); if (st === "dismissed") setSelectedId(null); }} />
+      <FindingsPanel headline={story.headline} versionChange={story.change} changes={story.changes} onFindingCode={(code) => { const f = state.findingOrder.map((id) => state.findings[id]).find((x) => x?.code === code); if (f) selectFinding(f.id); }} state={state} evidence={evidence} selectedId={selectedId} onSelect={selectFinding} onAsk={askFinding} onSetStatus={(id, st, reason) => { void rv.setFindingStatus(id, st, reason); if (st === "dismissed") setSelectedId(null); }} />
     </Panel>
   );
   const strip = (

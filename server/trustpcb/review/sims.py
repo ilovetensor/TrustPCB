@@ -13,12 +13,19 @@ MEDIA = {'.json': 'application/json', '.bin': 'application/octet-stream', '.png'
 
 
 def job_folder(store, job: dict | None) -> Path | None:
-    """The job's folder when it lies inside the data folder's scenarios directory."""
+    """The job's folder when it lies inside the data folder's scenarios directory.
+
+    The job row keeps an absolute path. When the data folder was moved or copied that path points outside it, so the folder named by the
+    job's scenario hash inside this data folder is used instead (the folder name is the cache key, so it is the same run).
+    """
     if not job or not job.get('job_dir'):
         return None
     root = (store.data_dir / 'scenarios').resolve()
     path = Path(job['job_dir']).resolve()
-    return path if path.is_relative_to(root) and path.is_dir() else None
+    if path.is_relative_to(root) and path.is_dir():
+        return path
+    moved = (root / path.name).resolve()
+    return moved if moved.is_relative_to(root) and moved.is_dir() and moved.name == path.name else None
 
 
 def _kind(row: dict | None, ops: list) -> str:

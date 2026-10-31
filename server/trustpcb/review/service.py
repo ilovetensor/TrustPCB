@@ -17,6 +17,8 @@ from ..runners.base import RunRequest
 from . import evidence as ev
 from . import partial, report
 from .budgets import DEPTHS, Clock, config_for
+from . import change
+from .change import candidate_print
 from .compare import board_difference, previous_context
 from .fingerprint import TargetIndex, fingerprint
 from .lab import BaselineLab, Lab
@@ -125,6 +127,21 @@ def change_summary(changes: dict | None) -> str:
     return text
 
 
+def previous_result_text(store, previous: dict) -> str:
+    """What the previous review measured for the antenna as built and what it predicted for its fix, in plain words for the recheck briefing."""
+    review_id, n = previous['review']['id'], previous['version_number']
+    built = change.as_built(store.list_evidence(review_id))
+    if not built:
+        return f'Version {n} has no confirmed antenna result, so there is no earlier antenna number to compare with.'
+    text = (f'Version {n} measured at confirm quality, as built: worst S11 across the band {built["band_worst_s11_db"]:g} dB'
+            + (f', accepted power {built["accepted_power_worst_pct"]:g} % at the worst point and {built["accepted_power_mean_pct"]:g} % on average (a mismatch figure only)'
+               if built.get('accepted_power_worst_pct') is not None and built.get('accepted_power_mean_pct') is not None else '') + '.')
+    prediction = change.prediction_of(store, review_id)
+    if prediction:
+        text += f' Its review predicted {prediction["band_worst_s11_db"]:g} dB at worst in band for these parts: {prediction["parts_text"]}. Check whether this version holds that.'
+    return text
+
+
 def _first_sentence(text: str, limit: int = 220) -> str:
     text = ' '.join((text or '').split())
     cut = re.split(r'(?<=[.!?])\s', text, maxsplit=1)[0]
@@ -145,6 +162,9 @@ def deterministic_summary(store, review_id: str, end_state: str, end_reason: str
     parts = [f'{counts[s]} {s}' for s in order if counts.get(s)]
     purpose = ((extra.get('brief') or {}).get('purpose') or '').strip()
     lines: list[str] = []
+    vc = extra.get('version_change')
+    if vc:                   # a recheck leads with what changed since the previous version
+        lines.append(vc['text'])
     try:
         win = partial.headline(report._investigations(store, review_id), store.list_findings(review_id), (extra.get('target_db')))
     except Exception:
@@ -169,8 +189,9 @@ def deterministic_summary(store, review_id: str, end_state: str, end_reason: str
         lines.append(f'{total} analyzer result(s) were cleared as harmless on this board, each with a reason in the report.')
     if extra.get('version_changes'):
         c = extra['version_changes']
-        lines.append(f'Compared with version {c["against"]["version_number"]}: {len(c.get("fixed") or [])} finding(s) fixed, {len(c.get("still_present") or []) + len(c.get("changed") or [])} still present, '
-                     f'{len(c.get("new") or [])} new.')
+        n = c.get('counts') or {}
+        lines.append(f'Findings compared with version {c["against"]["version_number"]}: {n.get("fixed", 0)} fixed, {n.get("improved", 0)} improved, {n.get("still_present", 0)} still present, '
+                     f'{n.get("worse", 0)} worse, {n.get("new", 0)} new.')
     if extra.get('unreviewed'):
         lines.append('Not reviewed: ' + ', '.join(f'{g["rule"]} ({g["count"]})' for g in extra['unreviewed'][:6]) + '.')
     if end_state != 'complete':
@@ -262,6 +283,7 @@ class ReviewRun:
             state = 'new'
             if previous and fingerprint(candidate.get('rule') or '', candidate.get('targets') or [], index) in previous['dismissed']:
                 state, carried = 'dismissed', carried + 1
+            candidate = {**candidate, 'fingerprint': candidate_print(candidate, index)}      # lets the next version recognise the same result under a new numbering
             store.add_candidate(self.review_id, candidate, state)
         await ctx.emit('candidate_batch', {'total': len(candidates), 'carried_dismissals': carried,
                                            'counts': _count_states(store, self.review_id)})
@@ -350,8 +372,9 @@ class ReviewRun:
         lines.append(f'- review depth: {review["depth"]}')
         if previous:
             listing = [f'- {f["code"]} [{f["severity"]}] {f["title"]} ({f["fingerprint"]})' for f in previous['findings'] if f['status'] in ('open', 'needs_recheck')] or ['- (none were open)']
-            lines += ['', prompts.recheck_brief(version_number=(self.store.get_version(review['version_id']) or {}).get('number', previous['version_number'] + 1), previous_review_id=previous['review']['id'], findings='\n'.join(listing),
-                                                changes=change_summary(previous.get('board_changes')))]
+            number = (self.store.get_version(review['version_id']) or {}).get('number', previous['version_number'] + 1)
+            lines += ['', prompts.recheck_brief(version_number=number, previous_version_number=previous['version_number'], previous_review_id=previous['review']['id'], findings='\n'.join(listing),
+                                                previous_result=previous_result_text(self.store, previous), changes=change_summary(previous.get('board_changes')))]
         lines += ['', prompts.phase_brief(2, **handlers.phase_vars())]
         return '\n'.join(lines)
 
@@ -429,7 +452,8 @@ class ReviewRun:
         summary['summary'] = agent_summary or deterministic_summary(store, self.review_id, end_state, reason, rf_status,
                                                                     extra={'brief': summary.get('brief'), 'dismissals': summary.get('dismissals'), 'unreviewed': unreviewed,
                                                                     'target_db': ev.target_db(review.get('goal') or {}, summary.get('rf') or {}),
-                                                                    'version_changes': _safe_changes(store, self.review_id)})
+                                                                    'version_changes': _safe_changes(store, self.review_id),
+                                                                    'version_change': _safe_change(store, self.review_id)})
         summary['end'] = {'state': end_state, 'reason': reason, 'detail': detail}
         summary['limits'] = limits
         summary['phases'] = [{'phase': c.phase, 'previous': c.previous, 'name': PHASE_NAMES[c.phase], 'skipped': [{'phase': p, 'name': PHASE_NAMES[p], 'reason': r} for p, r in c.skipped]}
@@ -448,6 +472,13 @@ class ReviewRun:
                 await session.emit_budget()
             await ctx.emit('report_ready', {'review_id': self.review_id, 'revision': revision['number'], 'end_state': end_state, 'reason': reason,
                                             'counts': store.severity_counts(self.review_id)})
+
+
+def _safe_change(store, review_id: str) -> dict | None:
+    try:
+        return report.recheck_change(store, review_id)
+    except Exception:
+        return None
 
 
 def _safe_changes(store, review_id: str) -> dict | None:

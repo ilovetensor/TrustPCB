@@ -34,11 +34,29 @@ export function CalloutLayer({
     return { balloons: cl, placed: placedMap, clusters: cl };
   }, [anchors, width, height, obstacles, selectedId, clusterRadius]);
   void clusters;
+  // dimension labels sit on their lines; when two would overlap, the later one steps up or down until it is clear
+  const labelShift = useMemo(() => {
+    const taken: Rect[] = [];
+    const out = new Map<string, number>();
+    for (const d of dims) {
+      const g = dimensionGeometry(d.a, d.b, 18);
+      const w = d.text.length * 6.6 + 12;
+      let chosen = 0, rect = { x: g.mid[0] - w / 2, y: g.mid[1] - 8, w, h: 16 };
+      for (const step of [0, 19, -19, 38, -38, 57, -57]) {
+        const r = { x: g.mid[0] - w / 2, y: g.mid[1] + step - 8, w, h: 16 };
+        chosen = step; rect = r;
+        if (!taken.some((t) => r.x < t.x + t.w + 2 && t.x < r.x + r.w + 2 && r.y < t.y + t.h + 2 && t.y < r.y + r.h + 2)) break;
+      }
+      taken.push(rect);
+      out.set(d.id, chosen);
+    }
+    return out;
+  }, [dims]);
 
   return (
     <div className="cl-root" style={{ width, height }}>
       <svg className="cl-svg" width={width} height={height} aria-hidden={false}>
-        {dims.map((d) => (<Dimension key={d.id} d={d} />))}
+        {dims.map((d) => (<Dimension key={d.id} d={d} dy={labelShift.get(d.id) ?? 0} />))}
         {balloons.map((c) => {
           const single = c.count === 1;
           const m = c.members[0] as CalloutAnchor;
@@ -101,7 +119,7 @@ export function CalloutLayer({
 const order: Severity[] = ["critical", "high", "medium", "low", "info"];
 const rank = (s: Severity) => order.indexOf(s);
 
-function Dimension({ d }: { d: DimLine }) {
+function Dimension({ d, dy = 0 }: { d: DimLine; dy?: number }) {
   const g = dimensionGeometry(d.a, d.b, 18);
   const col = `var(--sev-${d.sev})`;
   const tw = d.text.length * 6.6 + 12;
@@ -110,8 +128,9 @@ function Dimension({ d }: { d: DimLine }) {
       {g.ext.map((e, i) => (<line key={i} x1={e[0][0]} y1={e[0][1]} x2={e[1][0]} y2={e[1][1]} strokeDasharray="0" />))}
       <line x1={g.line[0][0]} y1={g.line[0][1]} x2={g.line[1][0]} y2={g.line[1][1]} className="cl-dimline" pathLength={1} />
       {g.arrows.map((a, i) => (<polygon key={i} points={a.map((p) => p.join(",")).join(" ")} fill={col} stroke="none" />))}
-      <rect x={g.mid[0] - tw / 2} y={g.mid[1] - 8} width={tw} height="16" fill="var(--panel-solid)" stroke={col} strokeWidth="0.8" />
-      <text x={g.mid[0]} y={g.mid[1]} textAnchor="middle" dy="0.34em" className="cl-dimtext" fill="var(--paper)" stroke="none">{d.text}</text>
+      {dy !== 0 && <line x1={g.mid[0]} y1={g.mid[1]} x2={g.mid[0]} y2={g.mid[1] + dy} strokeWidth="0.8" strokeDasharray="2 2" />}
+      <rect x={g.mid[0] - tw / 2} y={g.mid[1] + dy - 8} width={tw} height="16" fill="var(--panel-solid)" stroke={col} strokeWidth="0.8" />
+      <text x={g.mid[0]} y={g.mid[1] + dy} textAnchor="middle" dy="0.34em" className="cl-dimtext" fill="var(--paper)" stroke="none">{d.text}</text>
     </g>
   );
 }
