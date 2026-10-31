@@ -1,4 +1,4 @@
-"""The refine round: a bounded second attempt after a confirm that missed the target (spec sections 6 to 8)."""
+"""The refine round: a bounded second attempt after a confirm that missed the target."""
 import json
 from pathlib import Path
 

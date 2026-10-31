@@ -1,4 +1,4 @@
-"""Follow-up conversations: levels, approval, revisions, assumptions and sessions (spec section 17)."""
+"""Follow-up conversations: levels, approval, revisions, assumptions and sessions."""
 import asyncio
 import json
 from pathlib import Path

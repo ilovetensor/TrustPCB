@@ -7,7 +7,7 @@ resumes exactly after sequence N.
 import asyncio
 import json
 
-# Spec sections 14 and 17, plus the runner and session events from contracts.md.
+# Review and follow-up events, plus the runner and session events.
 REVIEW_EVENTS = frozenset({
     'phase_changed', 'budget', 'thought', 'candidate_batch', 'brief_ready', 'finding_upserted', 'marks_changed',
     'spotlight', 'investigation_updated', 'suspect_updated', 'sim_queued', 'sim_progress', 'sim_done', 'report_ready',

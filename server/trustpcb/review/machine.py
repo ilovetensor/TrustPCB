@@ -1,4 +1,4 @@
-"""The phase state machine (spec section 6). Phases only move forward and the server owns the moves.
+"""The phase state machine. Phases only move forward and the server owns the moves.
 
 0 Intake and 1 Baseline are code. 2 Understand, 3 Review, 4 Investigate and 5 Confirm use the
 agent. 6 Report is code, with the agent writing the summary when it is still running.

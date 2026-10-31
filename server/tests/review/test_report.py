@@ -1,13 +1,17 @@
-"""Reports: sections, self-contained HTML, JSON, PDF hook and frozen revisions (spec section 16)."""
+"""Reports: sections, self-contained HTML, JSON, PDF hook and frozen revisions."""
 import json
 import re
 from pathlib import Path
 
 import pytest
 
-from trustpcb.review import report
+from trustpcb.review import report, report_css, report_pdf
 
 SCRIPTS = Path(__file__).parent / 'scripts'
+
+
+def squash(css: str) -> str:
+    return re.sub(r'\s+', '', css).replace(';}', '}')
 
 
 async def standard(env):
@@ -99,7 +103,7 @@ async def test_pdf_needs_a_browser_and_uses_it_when_present(env, tmp_path, monke
     review = await standard(env)
     revision = env.store.latest_report_revision(review['id'])
     monkeypatch.delenv('TRUSTPCB_BROWSER', raising=False)
-    monkeypatch.setattr(report, 'find_browser', lambda: str(tmp_path / 'no-such-browser'))
+    monkeypatch.setattr(report_pdf, 'find_browser', lambda: str(tmp_path / 'no-such-browser'))
     with pytest.raises(ValueError, match='Chrome or Chromium'):
         await report.render_revision(store=env.store, review=review, revision=revision, fmt='pdf')
     with pytest.raises(ValueError):
@@ -140,12 +144,12 @@ def test_power_bars_hatch_the_earlier_value_and_mark_the_improved_one():
     assert html.count('<b class="before" style="width:11%">') == 1 and html.count('<b class="now" style="width:74.1%">') == 1
     assert html.index('Version 1') < html.index('class="before"') < html.index('Version 2') < html.index('class="now"')
     assert report.power_bars('x', [('a', None), ('b', 5)]) == ''
-    css = report.CSS
+    css = squash(report_css.CSS)
     assert 'repeating-linear-gradient' in css and '25%' in css and '50%' in css and '75%' in css and 'print-color-adjust:exact' in css
 
 
 def test_print_css_lets_long_cards_flow_and_keeps_images_and_rows_whole():
-    printed = report.CSS.split('@media print', 1)[1]
+    printed = squash(report_css.CSS).split('@mediaprint', 1)[1]
     assert '.card{break-inside:auto}' in printed and 'svg.board' in printed and 'tr' in printed and 'max-height' in printed
 
 

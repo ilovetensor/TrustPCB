@@ -1,4 +1,4 @@
-"""The real RF lab: `BaselineLab` plus the RF lane's setup, queue, matching search, images and the placement what-if.
+"""The real RF lab: `BaselineLab` plus the RF model's setup, queue, matching search, images and the placement what-if.
 
 `RealLab(store)` is installed at startup (see `api.py`). It plans the antenna setup from the parsed board, runs
 scenarios one at a time in the Docker solver through `SimQueue`, and answers the review's questions from the
@@ -18,7 +18,6 @@ import asyncio
 import base64
 import hashlib
 import json
-import math
 import re
 import shutil
 import time
@@ -69,7 +68,9 @@ class RealLab(BaselineLab):
             problem = 'Docker is not installed or not on the path, so the RF simulation cannot run on this machine.'
         else:
             try:
-                process = await asyncio.create_subprocess_exec(docker, 'image', 'inspect', self.image, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+                from ..rf.queue import docker_environment
+                process = await asyncio.create_subprocess_exec(docker, 'image', 'inspect', self.image, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                                                               env=docker_environment())
                 code = await asyncio.wait_for(process.wait(), timeout=20)
                 if code != 0:
                     problem = f'The simulation image {self.image} is not installed (or Docker is not running). Build it with docker/ems, or set TRUSTPCB_EMS_IMAGE.'

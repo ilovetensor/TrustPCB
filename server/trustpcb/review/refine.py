@@ -1,4 +1,4 @@
-"""The refine round (spec sections 6 to 8): one bounded second attempt after a confirm that missed the target.
+"""The refine round: one bounded second attempt after a confirm that missed the target.
 
 When Confirm ends with the target not met (`held_smaller`, `not_held`, or `held_after_retune` still short of the target) and the
 budget allows, `advance_phase` in phase 5 does not go to the report. It opens a refine round on the same investigation:
@@ -48,7 +48,7 @@ class RefineMixin:
 
     # ---- estimates and eligibility ------------------------------------------------------------
     def solver_estimates(self) -> tuple[float, float]:
-        """(screen_s, confirm_s): the longest timed run of each quality so far, else the spec figures."""
+        """(screen_s, confirm_s): the longest timed run of each quality so far, else the default estimates."""
         screen = confirm = 0.0
         for item in self.s.refs.values():
             exp = item.get('exp')

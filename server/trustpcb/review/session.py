@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from typing import Any
 
 from . import change
@@ -18,6 +19,8 @@ from .lab import Lab, scenario_hash
 from .machine import PHASE_NAMES, PhaseMachine
 from .refine import REFINE_ONLY_TOOLS, RefineState
 from .tools import ToolDef, ToolResult, fail
+
+logger = logging.getLogger('trustpcb')
 
 GATE_REFUSALS = ('agent_stopped', 'not_allowed_in_phase', 'invalid_arguments', 'budget_exhausted', 'review_complete', 'unknown_tool', 'level_not_allowed', 'no_further_evidence')
 GRACE_AFTER_SUMMARY_S = 3.0
@@ -92,7 +95,7 @@ class ReviewSession:
         return self.phase
 
     def make_scenario(self, ops: list, material: dict | None, quality: str, setup: dict | None = None) -> dict:
-        """The scenario object whose hash is the cache key (spec section 10)."""
+        """The scenario object whose hash is the cache key."""
         scenario = {'version_id': self.version_id, 'antenna_id': self.rf.get('antenna_id'), 'band': self.rf.get('band_hz') or self.goal.get('band_hz'),
                     'quality': quality, 'whatif_ops': ops, 'material': material, 'region': self.rf.get('region_bbox')}
         if setup:
@@ -288,7 +291,7 @@ class ReviewSession:
                 try:
                     payload = {**payload, 'trail': definition.trail(payload.get('input') or {})[:200]}
                 except Exception:
-                    pass
+                    logger.warning('Review %s: the trail text for tool %s could not be built; the step is shown without it', self.review_id, payload.get('name'), exc_info=True)
             self.last_progress = self.clock.now()
         elif kind == 'status' and payload.get('state') == 'max_turns':
             self.add_limit('model_turns', 'The agent reached its turn limit', turns=payload.get('max_turns'))

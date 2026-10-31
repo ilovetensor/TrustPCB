@@ -1,7 +1,7 @@
 """Analyzer context, candidate and mark helpers, and ``run_all``.
 
 Analyzers measure; they never judge. Each module exposes ``analyze(board, ctx) -> list[dict]``
-returning candidates in the shape of ``docs/specs/contracts.md``. A module may also expose
+returning candidates in the shape described in ``docs/ARCHITECTURE.md``. A module may also expose
 ``overlays(board, ctx) -> dict`` (data for the UI) which ``run_all`` stores under the module name.
 
 ``run_all`` runs every analyzer in a fixed order. One analyzer failing never stops the others;
@@ -20,9 +20,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..pcb import geom
-from ..pcb.model import Board, Geometry, UnknownTarget
+from ..pcb.model import Board, Geometry, resolve_all
 
-#: analyzers in the order of spec section 9; also the order of the output
+#: analyzers in the order they run; also the order of the output
 ANALYZER_NAMES = (
     "zones",
     "noise_proximity",
@@ -41,7 +41,7 @@ ANALYZER_NAMES = (
     "netclass_width",
 )
 
-#: spec defaults (section 9); every one can be replaced through ``AnalyzerContext.thresholds``
+#: spec defaults; every one can be replaced through ``AnalyzerContext.thresholds``
 DEFAULTS: dict[str, Any] = {
     # noise_proximity: below 10 mm
     "noise_distance_mm": 10.0,
@@ -196,16 +196,6 @@ class Emitter:
         cand.update(extra)
         self.items.append(cand)
         return cand
-
-
-def resolve_all(board: Board, targets: list[str]) -> list[dict[str, Any]]:
-    out = []
-    for t in targets:
-        try:
-            out.append(board.resolve(t).to_dict())
-        except UnknownTarget:
-            continue
-    return out
 
 
 def finalize(board: Board, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:

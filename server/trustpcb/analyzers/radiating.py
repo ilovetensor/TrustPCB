@@ -15,7 +15,6 @@ other rules. Results are cached on the analyzer context.
 
 from __future__ import annotations
 
-import math
 import re
 from dataclasses import dataclass, field
 from typing import Any

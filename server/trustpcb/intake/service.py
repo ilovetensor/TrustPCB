@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import mimetypes
 import os
 from pathlib import Path
@@ -11,6 +12,8 @@ from ..analyzers import drc_summary, run_for_version
 from ..pcb.baseline import run_baseline
 from ..pcb.model import parse_board
 from . import detect, stackup, upload
+
+logger = logging.getLogger('trustpcb')
 
 mimetypes.add_type('model/gltf-binary', '.glb')
 mimetypes.add_type('image/svg+xml', '.svg')
@@ -35,6 +38,10 @@ async def ingest(*, store, version: dict, upload_path, filename: str) -> dict[st
 
     A board file larger than TRUSTPCB_MAX_PCB_MB (default 150) is refused before parsing, and parsing is given TRUSTPCB_PARSE_TIMEOUT_S (default 240)
     seconds, so a giant or hostile file ends in a clear message instead of an upload that never returns.
+
+    Known limit: the timeout stops the wait, not the work. The parser is plain Python running in a worker thread, and a Python thread cannot be
+    interrupted from outside, so after a timeout the parse keeps using one CPU core until it finishes on its own. The size cap above is what
+    bounds that cost. Ending it for real needs a cooperative deadline inside the parser or a separate process that can be killed.
     """
     version_dir = store.version_dir(version['id'])
     result = await asyncio.to_thread(upload.ingest, upload_path, version_dir)
@@ -48,6 +55,7 @@ async def ingest(*, store, version: dict, upload_path, filename: str) -> dict[st
     try:
         board = await asyncio.wait_for(asyncio.to_thread(parse_board, result.pcb, version['id']), timeout=seconds)
     except asyncio.TimeoutError:
+        logger.warning('Reading %s timed out after %g s; the parser thread cannot be stopped and runs on until it finishes', Path(result.pcb).name, seconds)
         raise ValueError(f'Reading the board file took longer than {seconds:g} seconds, so it was abandoned. The file may be too large or damaged. '
                          'Set TRUSTPCB_PARSE_TIMEOUT_S to wait longer.') from None
     except (ValueError, IndexError, KeyError, TypeError, RecursionError) as exc:

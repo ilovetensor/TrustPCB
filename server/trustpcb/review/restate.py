@@ -14,7 +14,6 @@ a report is built; nothing stored is edited by it. It does nothing when a confir
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from . import verdict
 from .number_check import extract, sentence_spans

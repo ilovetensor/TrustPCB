@@ -297,7 +297,6 @@ async def test_ruling_out_from_one_point_is_refused_and_two_points_are_accepted(
 
 async def test_a_live_review_rewrites_the_screen_conclusions_after_confirm(env, base_model):
     import json
-    from pathlib import Path
 
     from test_refine import antenna
     from test_partial_win import DECLINE, first_steps

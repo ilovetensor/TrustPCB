@@ -11,7 +11,7 @@ Differences between KiCad versions that this module absorbs:
 * pad angles are absolute (they already include the footprint rotation).
 * footprint children are footprint-local; ``abs = footprint_xy + rotate(local, footprint_angle)``.
 
-The ids follow ``docs/specs/contracts.md``. Where a footprint repeats a pad number (several
+The ids are the target ids used across the review (see ``docs/ARCHITECTURE.md``). Where a footprint repeats a pad number (several
 ``SH`` shield pads, or unnumbered mounting holes) the first keeps ``pad:<ref>:<number>``, later
 ones become ``pad:<ref>:<number>#2``, ``#3`` and unnumbered ones ``pad:<ref>:~<n>``.
 """
@@ -1117,6 +1117,17 @@ class _Parser:
             return "Default"
 
         return lookup
+
+
+def resolve_all(board: Board, targets: list[str]) -> list[dict[str, Any]]:
+    """The geometry of every target that resolves on the board, as dicts; a target that does not resolve is skipped."""
+    out = []
+    for t in targets:
+        try:
+            out.append(board.resolve(t).to_dict())
+        except UnknownTarget:
+            continue
+    return out
 
 
 def parse_board(path: str | Path, version_id: str = "") -> Board:

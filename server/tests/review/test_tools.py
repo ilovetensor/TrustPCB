@@ -1,4 +1,4 @@
-"""The tool registry: phase gates, schemas, sizes, and the rules that keep this lane honest."""
+"""The tool registry: phase gates, schemas, sizes, and the rules that keep the review honest."""
 import re
 import types
 from pathlib import Path

@@ -1,4 +1,4 @@
-"""Placement what-if on a ghost copy of one part (spec section 17). Pure geometry on a parsed `Board`.
+"""Placement what-if on a ghost copy of one part. Pure geometry on a parsed `Board`.
 
 `try_placement(board, ref, target, rotation, extra)` moves a temporary copy of the part, measures what that
 would change and never writes anything: not the board file, not the database. The RF effect of the move is

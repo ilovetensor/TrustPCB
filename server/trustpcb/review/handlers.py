@@ -1,10 +1,11 @@
-"""Handlers for every review tool (spec sections 7 and 17), as plain Python over a session.
+"""Handlers for every review tool, as plain Python over a session.
 
 Each handler takes validated arguments and returns a `ToolResult`. Rejections come back as
 structured errors with a stable `error` code so a script, a test or a model can react to them.
 """
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -16,6 +17,8 @@ from .machine import PHASE_NAMES
 from .number_check import allowed_from_text
 from . import roles as part_roles_check
 from .tools import NUM, ToolResult, arr, fail, obj, ok, page, text
+
+logger = logging.getLogger('trustpcb')
 
 MAX_CLEAR_AREA_MM2 = 120.0       # clear_copper_region: the largest region a what-if may clear
 MAX_LENGTH_MM = 12.0             # adjust_antenna_length: +-12 mm (matches rf/whatif.py)
@@ -303,7 +306,7 @@ class Handlers:
         return short
 
     async def phase3_gate(self, args: dict | None = None) -> ToolResult | None:
-        """Leaving phase 3 needs every rule group resolved, the open-review region views taken and the layout judged (spec sections 6 and 7).
+        """Leaving phase 3 needs every rule group resolved, the open-review region views taken and the layout judged.
 
         Layout judgement: at least `MIN_LAYOUT_FINDINGS` findings from layout groups or anchored open-review opinions, unless each layout
         group without a finding has a specific reason of 60+ characters why none merits one. Enforced by the server. It can never trap the run:
@@ -499,7 +502,7 @@ class Handlers:
                     try:
                         boxes.append(self.s.engine.resolve_target(target)['bbox'])
                     except Exception:
-                        pass
+                        logger.warning('Review %s: target %s could not be placed on the board, so it does not count towards a region view', self.s.review_id, target, exc_info=True)
         return any(b[2] >= region[0] and b[0] <= region[2] and b[3] >= region[1] and b[1] <= region[3] for b in boxes)
 
     def counts_as_region_view(self, region: list[float] | None) -> bool:
@@ -639,7 +642,7 @@ class Handlers:
                     self.store.add_candidate(s.review_id, candidate)
                     added += 1
         except Exception:
-            pass
+            logger.warning('Review %s: candidates for the part roles could not be listed or registered; the review goes on without them', s.review_id, exc_info=True)
         if added:
             await self.publish_candidates()
         return ok({'saved': True, 'zones': list(roles), 'new_candidates_from_roles': added, **({'roles_corrected': corrected} if corrected else {}),

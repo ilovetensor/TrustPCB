@@ -1,7 +1,7 @@
 """One active run per project: turn lock, durable events, cancel, and interactive waiters.
 
 A "run" is any async job tied to a chat (a review or a follow-up thread). The review machine and
-the follow-up handler are owned by the Review lane; they start work with `SessionManager.start`
+the follow-up handler live in `trustpcb.review`; they start work with `SessionManager.start`
 and get a `TurnContext` to emit events, ask the user, and drive a runner.
 
     async def work(ctx: TurnContext):
@@ -20,12 +20,15 @@ Rules enforced here:
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
 from .events import TERMINAL_EVENTS
+
+logger = logging.getLogger('trustpcb')
 
 
 class SessionConflict(ValueError):
@@ -201,8 +204,8 @@ class SessionManager:
             for runner in current.runners:
                 try:
                     await runner.close()
-                except BaseException:
-                    pass
+                except BaseException:     # closing is best effort and must not stop the turn from finishing, even when cancelled
+                    logger.warning('A runner did not close cleanly after the turn ended', exc_info=True)
             if status == 'completed':
                 payload = {**ctx.final_payload}
             try:

@@ -1,4 +1,4 @@
-# Local-only agent runner
+# Local runner modules and extra requirements (see TRUSTPCB_RUNNER_MODULE and TRUSTPCB_EXTRA_REQUIREMENTS in .env.example)
 server/trustpcb/runners/local_*
 server/requirements.local.txt
 *.local.*

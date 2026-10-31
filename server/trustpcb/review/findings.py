@@ -1,4 +1,4 @@
-"""Findings with the honesty checks the server enforces (spec section 13).
+"""Findings with the honesty checks the server enforces.
 
 Every change to a finding, from the review or a follow-up, goes through `FindingEngine.prepare`:
 

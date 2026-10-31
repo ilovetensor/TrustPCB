@@ -1,4 +1,4 @@
-"""Fingerprints: a finding keeps its identity when coordinates shift (spec section 13).
+"""Fingerprints: a finding keeps its identity when coordinates shift.
 
 A fingerprint is `rule|nets|zones-or-parts`, built from the targets a finding points at, so moving a
 track a little between versions does not make it a different finding.

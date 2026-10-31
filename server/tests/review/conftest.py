@@ -1,4 +1,4 @@
-"""Shared setup for the review lane: a real parsed board, a fake Lab, a fake clock and a scripted agent."""
+"""Shared setup for the review tests: a real parsed board, a fake Lab, a fake clock and a scripted agent."""
 import asyncio
 import json
 import sys
@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from trustpcb import runners
 from trustpcb.review.lab import BadMatchingRequest, LabUnavailable
 from trustpcb.pcb.model import parse_board
 from trustpcb.review import service

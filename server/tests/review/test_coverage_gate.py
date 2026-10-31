@@ -1,7 +1,6 @@
 """The phase 3 gates the server enforces: every rule group resolved, the open review looked at, and no way to trap the run."""
 import json
 
-import pytest
 
 from gate_steps import DEFAULT_RULES, REASON, clear, dismiss, views
 from trustpcb.review import budgets, report

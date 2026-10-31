@@ -1,5 +1,4 @@
 """A recheck leads with what changed since the previous version, and findings keep their identity when the same results are grouped differently."""
-import pytest
 
 from trustpcb.review import change, compare, report
 from trustpcb.review.service import deterministic_summary

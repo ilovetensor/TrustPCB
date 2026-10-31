@@ -1,4 +1,4 @@
-"""Follow-up conversations after the report (spec section 17).
+"""Follow-up conversations after the report.
 
 A message runs at the lowest level that can answer it: Answer (6 tool calls), Check (15) or Test
 (approved by the user, with its own small budget). Every change to a finding goes through the same
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from typing import Any
 
@@ -18,12 +19,13 @@ from . import evidence as ev
 from . import report
 from .budgets import FOLLOWUP_CALLS, FOLLOWUP_INPUT_TOKENS, FOLLOWUP_LEVELS, Clock, followup_config
 from .findings import SEVERITIES, FindingRejected, check_numbers, check_wording
-from .handlers import MARK_SCHEMA
 from .lab import LabUnavailable
 from .machine import PhaseMachine
 from .session import GATE_REFUSALS, ReviewSession
 from .toolset import ALL_LEVELS, CHECK_UP, FINDING_PROPS, TEST, AllHandlers, build_review_tools, define
 from .tools import NUM, ToolDef, ToolRegistry, ToolResult, arr, fail, obj, ok, page, text
+
+logger = logging.getLogger('trustpcb')
 
 LEVEL_ORDER = {'answer': 0, 'check': 1, 'test': 2}
 QUIET_RUNS_LIMIT = 2
@@ -471,6 +473,7 @@ class FollowupHandlers(AllHandlers):
                         return False
             return True
         except Exception:
+            logger.warning('Follow-up: re-running the analyzer for finding %s failed, so the finding is not confirmed by code', finding.get('code'), exc_info=True)
             return False
 
     async def propose_finding_change(self, args: dict) -> ToolResult:
@@ -611,7 +614,7 @@ class FollowupRun:
             fresh_rf = await self.lab.rf_status(version_id=review['version_id'], goal=review.get('goal'))
             rf = {**rf, **fresh_rf}
         except Exception:
-            pass
+            logger.warning('Follow-up: the current RF status could not be read, so the stored one is used', exc_info=True)
         from .compare import previous_context
         session = FollowupSession(thread=thread, user_text=self.text, store=store, lab=self.lab, ctx=ctx, review=review, board=board, clock=self.clock,
                                   goal=review['goal'] or {}, rf=rf, previous=previous_context(store, review['version_id']), poll_s=self.poll_s)

@@ -82,7 +82,7 @@ def test_symlink_in_folder_rejected(tmp_path):
     assert code_of(ingest, d, tmp_path / "v2") == "symlink"
 
 
-@pytest.mark.parametrize("name", ["run.sh", "evil.exe", "x.py", "lib.dll", "weird.xyz", "noextension"])
+@pytest.mark.parametrize("name", ["run.sh", "evil.exe", "x.py", "lib.dll", "weird.xyz", "noextension", "jobs.kicad_jobset"])
 def test_unknown_and_executable_types_rejected(tmp_path, name):
     z = make_zip(tmp_path / "u.zip", {"a.kicad_pcb": PCB_TEXT, name: "x"})
     assert code_of(ingest, z, tmp_path / "v") == "unknown_type"
