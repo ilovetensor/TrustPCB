@@ -170,7 +170,14 @@ async def test_compare_results_gives_deltas_for_every_band_view(lab, finished):
 async def test_tune_matching_returns_standard_values_for_the_engineer(lab, finished):
     out = await lab.tune_matching(review_id=None, version_id='v-nrf', result=finished, params={'band_hz': [2.4e9, 2.4835e9], 'target_db': -10})
     assert out['components'] and all(c['unit'] in ('nH', 'pF', 'ohm') and c['value'] > 0 for c in out['components'])
-    assert set(out['predicted']) == {'s11_min_db', 'band_worst_db', 'band_best_db'} and 'own tool' in out['note']
+    assert set(out['predicted']) == {'s11_min_db', 'f_min_hz', 'band_worst_db', 'band_best_db', 'band_mean_db'} and 'own tool' in out['note']
+    assert out['parts'] and all({'ref', 'position', 'kind', 'value', 'was', 'now'} <= set(p) for p in out['parts']) and out['dips'] is not None and out['zin_band_centre']['f_hz'] and out['curve']['freq_hz']
+    # the same parts applied explicitly give the same band result: this is how the screen's parts are locked at confirm quality
+    again = await lab.tune_matching(review_id=None, version_id='v-nrf', result=finished, params={'band_hz': [2.4e9, 2.4835e9], 'target_db': -10,
+                                                                                               'changes': [{'ref': p['ref'], 'kind': p['kind'], 'value': p['value']} for p in out['parts']]})
+    assert again['predicted']['band_worst_db'] == pytest.approx(out['predicted']['band_worst_db'], abs=0.01)
+    with pytest.raises(LabUnavailable, match='not in the matching network'):
+        await lab.tune_matching(review_id=None, version_id='v-nrf', result=finished, params={'changes': [{'ref': 'R99', 'kind': 'C', 'value': 1e-12}]})
     with pytest.raises(LabUnavailable):
         await lab.tune_matching(review_id=None, version_id='v-nrf', result={'job_id': 'nope'}, params={})
 

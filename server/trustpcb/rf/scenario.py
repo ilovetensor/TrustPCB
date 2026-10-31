@@ -26,12 +26,12 @@ from . import mesh as meshmod
 from . import whatif
 from .types import NotSimulatable, RfSetup
 
-MODEL_VERSION = "rf-model-2"
+MODEL_VERSION = "rf-model-3"  # 3: 801 sweep points at both qualities (dips no longer sit on a 5.7 MHz grid); changes every cache key
 
 RUN = {
     # end_criteria is energy decay in dB; n_freq points across the sweep
-    "screen": {"end_criteria": -40.0, "max_timesteps": 150_000, "n_freq": 301},
-    "confirm": {"end_criteria": -45.0, "max_timesteps": 300_000, "n_freq": 401},
+    "screen": {"end_criteria": -40.0, "max_timesteps": 150_000, "n_freq": 801},
+    "confirm": {"end_criteria": -45.0, "max_timesteps": 300_000, "n_freq": 801},
 }
 MAX_THREADS = 6
 #: The lumped port always excites across the substrate (ground layer to feed layer). The worker takes this from

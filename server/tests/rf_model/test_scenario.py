@@ -49,6 +49,14 @@ def test_job_files_and_y_flip(nrf_job, nrf_setup):
     assert meta["y_convention"]["scenario_y"] == "-board_y"
 
 
+def test_the_sweep_has_801_points_so_dips_are_not_on_a_coarse_grid(nrf_job, nrf_setup):
+    sc = json.loads((nrf_job / "scenario.json").read_text())
+    assert sc["n_freq"] == 801 and S.RUN["screen"]["n_freq"] == 801 and S.RUN["confirm"]["n_freq"] == 801
+    lo, hi = nrf_setup.sweep_hz
+    assert (hi - lo) / (sc["n_freq"] - 1) < 2.5e6               # 301 points left a 5.7 MHz grid on the same sweep
+    assert S.MODEL_VERSION == "rf-model-3"                        # the old cache keys (rf-model-2, 301 points) are not reused
+
+
 def test_port_on_real_copper_both_ends(nrf_job):
     w = _worker()
     sc = json.loads((nrf_job / "scenario.json").read_text())

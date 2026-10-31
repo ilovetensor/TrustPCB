@@ -13,7 +13,7 @@ from trustpcb.review.lab_real import RealLab
 from trustpcb.rf.queue import SimQueue
 
 HOST = 'http://127.0.0.1:8118'
-NRF_BASE_HASH = '9ee1c94d3ed62c5e2eff'          # the nRF base scenario at screen quality (rf-model-2, band 2.4 to 2.4835 GHz)
+NRF_BASE_HASH = '6c4fdf521cd1c1ecaa8d'          # the nRF base scenario at screen quality (rf-model-3: 801 sweep points; band 2.4 to 2.4835 GHz)
 
 
 def payload(result):
@@ -28,7 +28,7 @@ async def test_scripted_review_runs_the_stand_in_solver_and_shows_the_agent_the_
     events = [e['type'] for e in store.events(review['chat_id'])]
     assert {'sim_queued', 'sim_progress', 'sim_done'} <= set(events)
     run = payload(tool_results(store, review, 'run_simulation')[0])
-    assert run['ref'] == 'R1' and run['trust']['status'] and run['compare_only'] and 'Antenna alone' in run['rf_summary']
+    assert run['ref'] == 'R1' and run['trust']['status'] and run['compare_only'] and 'Antenna alone' in run['rf_summary'] and run['in_band']['band_mhz'] == [2400.0, 2483.5]
     assert any(k.startswith('antenna_only') for k in run['rf_detail']) and run['measurements']['antenna_only_band_worst_s11']['unit'] == 'dB'
     done = [e['payload'] for e in store.events(review['chat_id']) if e['type'] == 'sim_done'][0]
     assert done['curve']['freq_hz'] and done['quality'] == 'screen'
@@ -52,15 +52,15 @@ async def test_cached_solver_run_through_a_scripted_review_and_the_api(tmp_path,
     run = payload(tool_results(store, review, 'run_simulation')[0])
     assert run['trust']['status'] == 'ok' and run['cached'] is False and run['quality'] == 'screen' and 'Do not quote' in run['compare_only']
     detail = run['rf_detail']
-    assert [round(d['frequency_mhz']) for d in detail['s11_dips']] == [1866, 1986, 2185, 2425, 2641]     # every dip, not only the deepest
-    assert detail['first_series_resonance_mhz'] == pytest.approx(1673.5, abs=0.1)
-    assert detail['antenna_only_band_worst_db'] == pytest.approx(-2.18, abs=0.01) and detail['as_built_band_worst_db'] == pytest.approx(-1.32, abs=0.01) and detail['basis'] == 'as_built'
-    assert run['meets_target'] is False and run['measurements']['s11_min']['value'] == pytest.approx(-16.83, abs=0.01)
-    assert 'Antenna alone' in run['rf_summary'] and 'As built' in run['rf_summary']
+    assert len(detail['s11_dips']) >= 3 and any(round(d['frequency_mhz']) in range(1850, 1885) for d in detail['s11_dips'])     # every dip, not only the deepest
+    assert detail['first_series_resonance_mhz'] == pytest.approx(1673.5, rel=0.03)         # the 301 point sweep gave 1673.5 MHz; the finer sweep stays within 3 percent
+    assert detail['antenna_only_band_worst_db'] == pytest.approx(-2.18, abs=0.3) and detail['as_built_band_worst_db'] == pytest.approx(-1.32, abs=0.3) and detail['basis'] == 'as_built'
+    assert run['meets_target'] is False and run['in_band']['worst_s11_db'] == pytest.approx(-1.32, abs=0.3) and run['band_centre_impedance']['character'] == 'inductive'
+    assert 'Antenna alone' in run['rf_summary'] and 'as built' in run['rf_summary']
     views = tool_results(store, review, 'view_result')
     assert len(views) == 2 and not any(v.get('is_error') for v in views)
     tuned = payload(tool_results(store, review, 'tune_matching')[0])
-    assert tuned['components'] or tuned.get('predicted')
+    assert tuned['parts_changed'] and tuned['kind'] == 'matching' and tuned['solver_s'] == 0
 
     with TestClient(create_app(data_dir=store.data_dir, token='t'), base_url=HOST, headers={'X-TrustPCB-Token': 't'}) as client:
         sims = client.get(f"/api/reviews/{review['id']}/sims").json()

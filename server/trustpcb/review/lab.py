@@ -18,7 +18,11 @@ Shapes (all JSON-friendly dicts, lengths in mm, frequencies in Hz):
       The Lab must not emit events (the review emits sim_queued, sim_progress and sim_done) and must stop
       the solver when the awaiting task is cancelled.
   view_board / view_result -> {mime, data_b64, caption}
-  tune_matching -> {topology, components: [{name, kind, value, unit}], predicted: {s11_min_db, ...}, note}
+  tune_matching -> {topology, components: [{name, kind, value, unit}], parts: [{ref, position, kind, value (SI), was, now}] (changed parts only),
+                    predicted: {s11_min_db, f_min_hz, band_worst_db, band_best_db, band_mean_db}, dips?, first_series_resonance_hz?,
+                    zin_band_centre?: {f_hz, re, im}, curve?: {freq_hz, s11_db}, best_single_change?, note}
+      params: band_hz, target_db, and optionally `changes` [{ref, kind: L|C|None, value (SI)}] to apply explicit parts instead of searching.
+      The review calls it for an experiment (screen runs, zero solver time) and again at confirm quality: parts locked, then free.
   compare_results -> {measurements?: {name: {value, unit}}, note}
   try_placement -> {ref, target, new_position, distances: [...], overlaps: [...], conflicts: [...], ghost: {...}, rough_length_change_mm}
   read_datasheet -> {names: [...]} without a name, otherwise {name, page, pages, text}
@@ -37,6 +41,10 @@ Progress = Callable[[dict], Awaitable[None]]
 
 class LabUnavailable(RuntimeError):
     """The capability is not installed on this machine. Reported to the agent as a plain message."""
+
+
+class BadMatchingRequest(LabUnavailable):
+    """The parts asked for cannot be applied (a part that is not in the network, a value that is not positive). The agent can correct it."""
 
 
 class Lab(Protocol):
