@@ -397,19 +397,29 @@ class RealLab(BaselineLab):
     # ---- job folders -------------------------------------------------------------------------------------
 
     def job_dir(self, run: dict) -> Path | None:
-        """The folder holding a run's solver output, found from its job id or scenario hash."""
+        """The folder holding a run's solver output, found from its job id or scenario hash.
+
+        A job row keeps the absolute folder it was written to. When the data folder was moved or copied that path lies outside it, so
+        the folder of the same name inside this data folder is used (the name is the cache key, so it is the same run), as the
+        dashboard does. The `scenario_hash` stored in review evidence is the review's own key, not a folder name, so the job row's
+        hash is tried first."""
+        from .sims import job_folder
+        root = (self.store.data_dir / 'scenarios').resolve()
         candidates = []
         job_id = run.get('job_id') or (run.get('result') or {}).get('job_id')
         if job_id:
             row = self.store.get_sim_job(job_id)
-            if row and row.get('job_dir'):
-                candidates.append(Path(row['job_dir']))
+            if row:
+                candidates.append(job_folder(self.store, row))
+                if re.fullmatch(r'[0-9a-f]{8,40}(-[0-9a-f]{8}){0,2}', str(row.get('scenario_hash') or '')):
+                    candidates.append(root / str(row['scenario_hash']))
         sc_hash = run.get('scenario_hash') or (run.get('result') or {}).get('scenario_hash')
         if sc_hash and re.fullmatch(r'[0-9a-f]{8,40}(-[0-9a-f]{8}){0,2}', str(sc_hash)):
-            candidates.append(self.store.data_dir / 'scenarios' / str(sc_hash))
-        root = (self.store.data_dir / 'scenarios').resolve()
+            candidates.append(root / str(sc_hash))
         for path in candidates:
-            resolved = path.resolve()
+            if path is None:
+                continue
+            resolved = Path(path).resolve()
             if resolved.is_relative_to(root) and (resolved / 's11.json').is_file():
                 return resolved
         return None

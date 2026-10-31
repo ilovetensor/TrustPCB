@@ -429,7 +429,7 @@ def _outline_geo(g: dict, color: str, u: float, fill_opacity: float, width_scale
     return ""
 
 
-def annotate(svg: str, marks: list[dict], board: Board | None = None, *, labels: bool = True) -> str:
+def annotate(svg: str, marks: list[dict], board: Board | None = None, *, labels: bool = True, spread: bool = False) -> str:
     """Overlay ``marks`` on a layer SVG and return the combined SVG string.
 
     Each mark is a dict ``{type, targets, label?, value?, resolved?, number?, severity?, color?}``
@@ -437,12 +437,14 @@ def annotate(svg: str, marks: list[dict], board: Board | None = None, *, labels:
     Without ``resolved`` the targets are resolved against ``board``. Marks that cannot be
     resolved are skipped. The overlay is one ``<g id="marks">`` placed last, so the same group
     can be used on its own in a separate SVG over the viewer (use :func:`marks_svg`).
+    With ``spread`` the numbered bubbles are moved apart so none sits on another, and a second bubble of the
+    same number next to an existing one is not drawn again (for printed reports).
     """
     m = _VB.search(svg)
     if not m:
         raise ValueError("annotate needs an SVG with a viewBox")
     vx, vy, vw, vh = (float(v) for v in m.group(1).split())
-    overlay = _marks_group(marks, board, vw, vh, labels)
+    overlay = _marks_group(marks, board, vw, vh, labels, spread, (vx, vy, vw, vh))
     idx = svg.rfind("</svg>")
     if idx < 0:
         raise ValueError("annotate needs a complete SVG")
@@ -457,9 +459,10 @@ def marks_svg(marks: list[dict], board: Board, opts: RenderOptions | None = None
     return "".join(head) + _marks_group(marks, board, vw, vh, labels) + "</svg>"
 
 
-def _marks_group(marks: list[dict], board: Board | None, vw: float, vh: float, labels: bool) -> str:
+def _marks_group(marks: list[dict], board: Board | None, vw: float, vh: float, labels: bool, spread: bool = False, view: tuple | None = None) -> str:
     u = max(vw, vh) / 100.0
     u = max(0.35, min(u, 2.5))
+    placed: list[tuple[float, float, str]] | None = [] if spread else None
     out = ['<g id="marks" data-role="marks">']
     for i, mark in enumerate(marks, start=1):
         geos = _mark_geometries(mark, board)
@@ -478,25 +481,25 @@ def _marks_group(marks: list[dict], board: Board | None, vw: float, vh: float, l
         out.append(f'<g data-mark-type={quoteattr(str(typ))} data-targets={quoteattr(tids)}>')
         anchor = _anchor(geos)
         if typ == "pin":
-            out.append(_pin(anchor, number, color, u, label if labels else None, flat))
+            out.append(_pin(anchor, number, color, u, label if labels else None, flat, placed=placed, view=view))
         elif typ == "object":
             for g in flat:
                 out.append(_outline_geo(g, color, u, 0.18))
-            out.append(_pin(anchor, number, color, u, label if labels else None, [], leader=True))
+            out.append(_pin(anchor, number, color, u, label if labels else None, [], leader=True, placed=placed, view=view))
         elif typ == "path":
             for g in flat:
                 out.append(_outline_geo(g, color, u, 0.0, width_scale=1.3))
-            out.append(_pin(anchor, number, color, u, label if labels else None, [], leader=True))
+            out.append(_pin(anchor, number, color, u, label if labels else None, [], leader=True, placed=placed, view=view))
         elif typ == "region":
             for g in flat:
                 out.append(_outline_geo(g, color, u, 0.14, dashed=True))
-            out.append(_pin(anchor, number, color, u, label if labels else None, [], leader=True))
+            out.append(_pin(anchor, number, color, u, label if labels else None, [], leader=True, placed=placed, view=view))
         elif typ == "link":
             out.append(_link(geos, color, u, label if labels else None, value))
         elif typ == "sketch":
             out.append(_sketch(geos, color, u, label if labels else None))
         else:
-            out.append(_pin(anchor, number, color, u, label if labels else None, flat))
+            out.append(_pin(anchor, number, color, u, label if labels else None, flat, placed=placed, view=view))
         out.append("</g>")
     out.append("</g>")
     return "".join(out)
@@ -512,13 +515,40 @@ def _anchor(geos: list[dict]) -> tuple[float, float]:
     return sum(c[0] for c in centers) / len(centers), sum(c[1] for c in centers) / len(centers)
 
 
-def _pin(anchor: tuple[float, float], number: Any, color: str, u: float, label: str | None, flat: list[dict], leader: bool = False) -> str:
+def _bubble_spot(ax: float, ay: float, r: float, number: Any, placed: list, view: tuple | None) -> tuple[float, float] | None:
+    """A bubble position near the anchor that keeps clear of the bubbles already placed and inside the view; None when the same number is already right there."""
+    key = str(number)
+    for k in range(48):
+        ring, step = divmod(k, 8)
+        angle = math.radians(-45 + 45 * step)           # up and right first, then round the anchor, then further out
+        dist = r * 1.5 * math.sqrt(2) * (1 + 0.9 * ring)
+        bx, by = ax + dist * math.cos(angle), ay + dist * math.sin(angle)
+        if view is not None:
+            vx, vy, vw, vh = view
+            if not (vx + r <= bx <= vx + vw - r and vy + r <= by <= vy + vh - r):
+                continue
+        if k == 0 and any(n == key and math.hypot(bx - px, by - py) < 2.6 * r for px, py, n in placed):
+            return None
+        if all(math.hypot(bx - px, by - py) >= 2.1 * r for px, py, _ in placed):
+            return bx, by
+    return ax + r * 1.5, ay - r * 1.5
+
+
+def _pin(anchor: tuple[float, float], number: Any, color: str, u: float, label: str | None, flat: list[dict], leader: bool = False,
+         placed: list | None = None, view: tuple | None = None) -> str:
     ax, ay = anchor
     r = 1.15 * u
     out: list[str] = []
     for g in flat:  # a pin on an object also outlines the object so alignment is visible
         out.append(_outline_geo(g, color, u * 1.4, 0.35, 0.8))
-    bx, by = ax + r * 1.5, ay - r * 1.5
+    if placed is None:
+        bx, by = ax + r * 1.5, ay - r * 1.5
+    else:
+        spot = _bubble_spot(ax, ay, r, number, placed, view)
+        if spot is None:
+            return "".join(out) + f'<circle cx="{_n(ax)}" cy="{_n(ay)}" r="{_n(u * 0.28)}" fill="none" stroke="{color}" stroke-width="{_n(u * 0.12)}"/>'
+        bx, by = spot
+        placed.append((bx, by, str(number)))
     out.append(f'<line x1="{_n(ax)}" y1="{_n(ay)}" x2="{_n(bx)}" y2="{_n(by)}" stroke="{color}" stroke-width="{_n(u * 0.12)}"/>')
     out.append(f'<circle cx="{_n(ax)}" cy="{_n(ay)}" r="{_n(u * 0.28)}" fill="none" stroke="{color}" stroke-width="{_n(u * 0.12)}"/>')
     out.append(f'<circle cx="{_n(bx)}" cy="{_n(by)}" r="{_n(r)}" fill="{color}" stroke="#ffffff" stroke-width="{_n(u * 0.12)}"/>')
