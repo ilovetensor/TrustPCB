@@ -127,6 +127,12 @@ def validate_ops(ops, board, setup: RfSetup) -> None:
                 raise WhatIfError("duplicate_operation", "only one adjust_antenna_length per scenario")
             if setup.kind != "trace":
                 raise WhatIfError("not_a_trace_antenna", "adjust_antenna_length applies to trace antennas only")
+            if getattr(setup, "antenna_footprint", None):
+                raise WhatIfError(
+                    "footprint_antenna",
+                    f"the radiating copper is the drawn shape of footprint {setup.antenna_footprint}, not tracks, so its length cannot be trimmed or extended here; "
+                    "change the footprint (a different library antenna) instead",
+                )
             if not math.isfinite(op.delta_mm) or abs(op.delta_mm) > MAX_LENGTH_DELTA_MM + 1e-9:
                 raise WhatIfError("out_of_limits", f"adjust_antenna_length is limited to +-{MAX_LENGTH_DELTA_MM:g} mm, got {op.delta_mm}")
             if setup.open_end is None:
@@ -162,6 +168,8 @@ def validate_ops(ops, board, setup: RfSetup) -> None:
             ant_box = box(*setup.antenna_bbox)
             if Point(fp.x, fp.y).distance(ant_box) > REMOVE_NEAR_MM:
                 raise WhatIfError("not_near_antenna", f"{op.ref} is more than {REMOVE_NEAR_MM:g} mm from the antenna")
+            if op.ref == getattr(setup, "antenna_footprint", None):
+                raise WhatIfError("antenna_part", f"{op.ref} is the antenna itself; removing it is not a what-if the model supports")
             matching = {e.ref for e in (setup.network.elements if setup.network else [])}
             port_ref = setup.port_on.split(":")[1] if setup.port_on and setup.port_on.count(":") >= 2 else None
             if op.ref in matching or op.ref == port_ref:
@@ -200,7 +208,7 @@ def apply_to_items(items: list[Item], ops, board, setup: RfSetup) -> tuple[list[
             notes.append(n)
         elif isinstance(op, RemoveNearbyPart):
             before = len(items)
-            items = [i for i in items if not (i.kind == "pad" and i.ref == op.ref)]
+            items = [i for i in items if not (i.kind in ("pad", "gfx") and i.ref == op.ref)]
             notes.append(f"removed the copper of {op.ref} ({before - len(items)} pad shapes)")
     return items, notes
 

@@ -204,6 +204,7 @@ def _build_mesh(model: geo.CopperModel, setup: RfSetup, quality: str, eps_r, nar
     out_box = {"x": (reg[0] - pad, reg[2] + pad), "y": (reg[1] - pad, reg[3] + pad)}
     # narrow antenna tracks: seed the mesh finer than the track width / min_across along their extent
     narrow = [i for i in model.items if i.antenna and i.kind == "track" and i.points and i.width and i.width < 1.6]
+    shape_seeds = [(i, _outline_points(i.geom)) for i in model.items if i.antenna and i.kind in ("gfx", "pad") and i.min_width and i.min_width < 1.6]
     fixed: dict[str, list[float]] = {"x": [], "y": []}
     seeds: dict[str, list[tuple[float, float]]] = {"x": [], "y": []}
     locked: dict[str, set] = {"x": set(), "y": set()}
@@ -234,6 +235,15 @@ def _build_mesh(model: geo.CopperModel, setup: RfSetup, quality: str, eps_r, nar
         for it in narrow:
             h_n = narrow_scale * it.width / (q["min_across"] + 1.2)
             for (ax_, ay_), (bx_, by_) in zip(it.points[:-1], it.points[1:]):
+                length = math.hypot(bx_ - ax_, by_ - ay_)
+                n = max(1, int(length / 0.3))
+                for k in range(n + 1):
+                    t = k / n
+                    seeds[axis].append((ax_ + (bx_ - ax_) * t if axis == "x" else ay_ + (by_ - ay_) * t, h_n))
+        # antenna copper drawn as polygons (a footprint's printed antenna): seed along the outline by the shape's narrowest width
+        for it, pts_ in shape_seeds:
+            h_n = narrow_scale * it.min_width / (q["min_across"] + 1.2)
+            for (ax_, ay_), (bx_, by_) in zip(pts_[:-1], pts_[1:]):
                 length = math.hypot(bx_ - ax_, by_ - ay_)
                 n = max(1, int(length / 0.3))
                 for k in range(n + 1):
@@ -273,6 +283,11 @@ def _build_mesh(model: geo.CopperModel, setup: RfSetup, quality: str, eps_r, nar
     zfix = list(zs)
     zseeds = []
     hz_sub = min(q["hz_sub"], h_sub)
+    # A dielectric thinner than the usual z cell (a 0.2 mm prepreg between the outer and the first inner copper) must hold a whole cell
+    # and its neighbours must not jump: the grading breaks down into oscillating cells when a gap is under half the target size.
+    gaps_z = [b_ - a_ for a_, b_ in zip(zs[:-1], zs[1:]) if b_ - a_ > 1e-6]
+    if gaps_z and min(gaps_z) < hz_sub:
+        hz_sub = min(gaps_z)
     for s in slabs:
         zfix += [s["zmin"], s["zmax"]]
     zlo, zhi = min(zs) - pad, max(zs) + pad
@@ -343,6 +358,17 @@ def _report(mesh: Mesh, model, setup: RfSetup, q, quality: str, thirds: int, lam
     return rep
 
 
+def _outline_points(geom) -> list[tuple[float, float]]:
+    """Boundary vertices of a polygonal shape as one polyline (exteriors and holes), for seeding the mesh along it."""
+    pts: list[tuple[float, float]] = []
+    for poly in getattr(geom, "geoms", [geom]):
+        if poly.geom_type != "Polygon":
+            continue
+        for ring in [poly.exterior, *poly.interiors]:
+            pts += [(float(a), float(b)) for a, b in ring.coords]
+    return pts
+
+
 def _cells_across(model, setup: RfSetup, x: np.ndarray, y: np.ndarray):
     """Smallest (feature width / local cell across it) over antenna tracks and resolvable gaps."""
     best, where = None, None
@@ -361,4 +387,14 @@ def _cells_across(model, setup: RfSetup, x: np.ndarray, y: np.ndarray):
                 c = i.width / max(hx, hy)
                 if best is None or c < best:
                     best, where = c, f"{i.source} at ({mx:.1f}, {my:.1f})"
+        elif i.kind in ("gfx", "pad") and i.min_width:
+            # a drawn polygon: its narrowest width over the largest local cell found along its outline
+            pts_ = _outline_points(i.geom)
+            if len(pts_) < 2:
+                continue
+            step = max(1, len(pts_) // 400)
+            worst = max(max(_local_cell(x, px_), _local_cell(y, -py_)) for px_, py_ in pts_[::step])
+            c = i.min_width / worst
+            if best is None or c < best:
+                best, where = c, f"{i.source} (narrowest part {i.min_width:g} mm)"
     return best, where
