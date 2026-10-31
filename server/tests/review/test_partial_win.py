@@ -77,6 +77,9 @@ async def test_a_finding_that_reports_it_passes_and_the_report_leads_with_it(par
     assert snapshot['headline']['outcome'] == 'improved_short_of_target' and snapshot['headline']['finding'] == 'F-001' and snapshot['headline']['best']['mode'] == 'free_retune'
     html = (await report.render_revision(store=env.store, review=review, revision=env.store.latest_report_revision(review['id']), fmt='html')).decode()
     assert 'Improved, target not met' in html and html.index('Improved, target not met') < html.index('<h2>Summary</h2>') and 'Accepted power' in html
+    assert html.index('Improved, target not met') < html.index('class="power"') < html.index('<h2>Summary</h2>')
+    assert report.power_bars('x', [('a', None), ('b', 50)]) == ''
+    assert 'width:100%' in report.power_bars('x', [('a', 130)])
 
 
 async def test_after_two_refusals_the_server_adds_the_stored_result_to_the_finding(partial_env):

@@ -16,7 +16,7 @@ function Thumb({ curve, id, band, job, source }: { curve: unknown; id: string; b
   const own = normaliseCurve(curve);
   const fetched = useAsync(!own && job && source && job.files.includes("s11.json") ? () => loadCurves(source, job).then((c) => c.antenna) : null, `th:${job?.job_id}:${job?.files.length}`).data ?? null;
   const c = own ?? fetched;
-  return <div className="ex-graph">{c ? <TuningGraph curves={[{ id, label: id, f_ghz: c.f_ghz, s11_db: c.s11_db }]} band={band ?? undefined} height={46} compact /> : <span className="idx dim">NO CURVE</span>}</div>;
+  return <div className="ex-graph">{c ? <TuningGraph curves={[{ id, label: id, f_ghz: c.f_ghz, s11_db: c.s11_db }]} band={band ?? undefined} height={29} compact /> : <span className="idx dim">NO CURVE</span>}</div>;
 }
 
 /** Experiment strip: base, each test, confirmed. Updates live with sim events: queued, progress, done with its curve. */
@@ -41,15 +41,17 @@ export function ExperimentStrip({ state, reviewId, band, rfNote, jobs = [], sour
           const f0ghz = f0 == null ? null : e.measurements?.resonance ? f0 / 1000 : f0 / 1e9;
           const label = e.kind === "base" ? "BASE" : e.kind === "confirm" ? "CONFIRMED" : `TEST ${exps.slice(0, i + 1).filter((x) => x.kind === "whatif").length}`;
           const ok = band && f0ghz != null && s11 != null ? s11 <= band.target_db && f0ghz >= band.lo_ghz && f0ghz <= band.hi_ghz : null;
-          const df = e.delta?.f_hz as number | undefined;
+          // the first series resonance is the length indicator; the deepest dip can jump between unrelated features of the curve
+          const shift = e.delta?.series_res_hz as number | undefined;
           const body = (
             <>
               <div className="ex-top"><span className="idx">{label}</span>{chip(e.suspect)}<span style={{ flex: 1 }} />{ok === true && <span className="stamp sig">In band</span>}{e.trust !== "ok" && <span className="stamp">Trust {e.trust}</span>}</div>
               <Thumb curve={e.curve} id={e.id} band={band} job={job} source={source} />
               <div className="ex-name" title={e.label}>{e.id} {e.label}</div>
               <div className="mono ex-num">
-                {e.measurements && Object.keys(e.measurements).length ? measurementLine(e.measurements).slice(0, 2).map((m) => (<span key={m.k}><b>{m.v}</b> {m.u} </span>)) : "-"}
-                {df != null && <span className="dim">{df >= 0 ? "+" : "−"}{Math.abs(df / 1e6).toFixed(0)} MHz</span>}
+                {shift != null
+                  ? <span title={`Shift of the first series resonance against the base run, the indicator that moves with antenna length.${e.measurements ? ` ${measurementLine(e.measurements).slice(0, 2).map((m) => `${m.k} ${m.v} ${m.u}`).join(", ")}.` : ""}`}>1st series <b>{shift >= 0 ? "+" : "−"}{Math.abs(shift / 1e6).toFixed(0)}</b> MHz</span>
+                  : e.measurements && Object.keys(e.measurements).length ? measurementLine(e.measurements).slice(0, 2).map((m) => (<span key={m.k}><b>{m.v}</b> {m.u} </span>)) : "-"}
               </div>
               {e.quality === "screen" && <div className="idx ex-q" title="Screen runs are for comparing. Do not read them as absolute numbers.">SCREEN, COMPARE ONLY</div>}
             </>

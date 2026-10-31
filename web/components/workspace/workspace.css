@@ -697,6 +697,11 @@
 .ex-cell.confirm {
   border-color: var(--paper);
 }
+/* the card kind shares its name with the what-if chat block, whose spacing would collapse the run name */
+.ex-cell.whatif {
+  gap: 3px;
+  padding: 6px 8px;
+}
 .ex-cell.link {
   color: inherit;
   text-decoration: none;
@@ -727,10 +732,10 @@
   height: 14px;
 }
 .ex-graph {
-  height: 42px;
+  height: 29px;
 }
 .ex-prog {
-  height: 42px;
+  height: 29px;
   display: flex;
   align-items: center;
 }

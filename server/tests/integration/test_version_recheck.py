@@ -181,4 +181,4 @@ async def test_a_v2_summary_that_does_not_open_with_the_change_since_v1_is_refus
     snapshot = store.latest_report_revision(second['id'])['snapshot']
     assert snapshot['headline']['kind'] == 'version_change' and snapshot['version_change']['text'] == vc['text']
     html = (await report.render_revision(store=store, review=second, revision=store.latest_report_revision(second['id']), fmt='html')).decode()
-    assert html.index('Compared with version 1') < html.index('<h2>Summary</h2>')
+    assert html.index('Compared with version 1') < html.index('class="power"') < html.index('<h2>Summary</h2>')

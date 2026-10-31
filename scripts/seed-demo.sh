@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prepare a read-only demo from a finished data directory.
 #
-#   scripts/seed-demo.sh <finished-data-dir> [target-dir]
+#   scripts/seed-demo.sh [--allow-any-runner] <finished-data-dir> [target-dir]
 #
 # Copies the data directory of finished reviews (the one TRUSTPCB_DATA_DIR pointed at, default .trustpcb/) to target-dir
 # (default .trustpcb-demo/ in the repository root), then prints the command that serves it read-only:
@@ -10,11 +10,18 @@
 #
 # The source is never changed. The database is copied with SQLite's online backup, so a source that is open elsewhere still copies
 # consistently. A source with a review or simulation still running is refused: the demo would show it as interrupted.
+# A source with a review that did not run on Muse is refused too, because a public demo stands for work done with Meta models.
+# --allow-any-runner accepts it for a private demo; each report still names the runner and model that wrote it.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+any_runner=0
+if [[ "${1:-}" == "--allow-any-runner" ]]; then
+  any_runner=1
+  shift
+fi
 if [[ $# -lt 1 || $# -gt 2 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && exit 0 || exit 2
 fi
 source_dir="$(cd "$1" 2>/dev/null && pwd)" || { echo "seed-demo: $1 is not a directory" >&2; exit 1; }
@@ -30,7 +37,7 @@ if [[ -n "$(ls -A "$target_dir")" ]]; then
   exit 1
 fi
 
-python3 - "$database" <<'PY'
+python3 - "$database" "$any_runner" <<'PY'
 import sqlite3, sys
 db = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
 reviews = db.execute("SELECT count(*) FROM reviews WHERE status IN ('queued','running')").fetchone()[0]
@@ -43,6 +50,9 @@ if reviews or jobs:
     sys.exit(f"seed-demo: {reviews} review(s) and {jobs} simulation(s) are still running in that data directory. Wait for them to finish.")
 if not finished:
     sys.exit("seed-demo: that data directory has no reviews to show.")
+other = db.execute("SELECT count(*) FROM reviews WHERE json_extract(profile, '$.runner') IS NOT 'muse_api'").fetchone()[0]
+if other and sys.argv[2] != "1":
+    sys.exit(f"seed-demo: {other} review(s) did not run on Muse. Use a Muse data directory, or pass --allow-any-runner for a private demo.")
 print(f"{finished} review(s) found.")
 PY
 

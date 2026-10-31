@@ -166,7 +166,7 @@ scripts/seed-demo.sh <finished-data-dir>            # copies it to .trustpcb-dem
 TRUSTPCB_DEMO_READONLY=1 TRUSTPCB_DATA_DIR=.trustpcb-demo npm run dev
 ```
 
-With `TRUSTPCB_DEMO_READONLY=1` the backend refuses every `POST`, `PATCH`, `PUT` and `DELETE` with `403` and a clear message, and the web app hides upload, start, dismiss and chat and shows a "Read-only demo" notice. Set `TRUSTPCB_REPO_URL` to put a link to the repository in that notice. `seed-demo.sh` refuses a data directory with a review still running, and never changes its source. The copy includes the boards that were uploaded to it, so only seed from a data directory you may share. The demo is still a local app (loopback only); this is not hosted-use hardening.
+With `TRUSTPCB_DEMO_READONLY=1` the backend refuses every `POST`, `PATCH`, `PUT` and `DELETE` with `403` and a clear message, and the web app hides upload, start, dismiss and chat and shows a "Read-only demo" notice. Set `TRUSTPCB_REPO_URL` to put a link to the repository in that notice. `seed-demo.sh` refuses a data directory with a review still running or with a review that did not run on Muse (`--allow-any-runner` accepts that for a private demo), and never changes its source. The copy includes the boards that were uploaded to it, so only seed from a data directory you may share. The demo is still a local app (loopback only); this is not hosted-use hardening.
 
 ### Sample boards
 
