@@ -18,6 +18,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import async_playwright
+
 from . import change
 from . import evidence as ev
 from . import partial
@@ -718,32 +721,39 @@ def find_browser() -> str | None:
     configured = os.environ.get('TRUSTPCB_BROWSER')
     if configured and Path(configured).exists():
         return configured
-    for name in ('chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable', 'chrome'):
+    for name in ('chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable', 'chrome', 'microsoft-edge', 'brave-browser'):
         found = shutil.which(name)
         if found:
             return found
-    mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-    return mac if Path(mac).exists() else None
+    for app in ('Google Chrome', 'Chromium', 'Microsoft Edge', 'Brave Browser'):
+        mac = f'/Applications/{app}.app/Contents/MacOS/{app}'
+        if Path(mac).exists():
+            return mac
+    return None
+
+
+async def print_pdf(source: Path, browser: str | None) -> bytes:
+    async with async_playwright() as driver:
+        instance = await driver.chromium.launch(executable_path=browser)   # None is the browser Playwright installed
+        try:
+            page = await instance.new_page()
+            await page.goto(source.as_uri(), wait_until='load')
+            return await page.pdf(format='A4', print_background=True, margin={'top': '12mm', 'bottom': '12mm', 'left': '12mm', 'right': '12mm'})
+        finally:
+            await instance.close()
 
 
 async def html_to_pdf(document: str, browser: str | None = None) -> bytes:
-    browser = browser or find_browser()
-    if not browser:
-        raise ValueError('PDF export needs Chrome or Chromium installed. Open the HTML report and print it to PDF instead.')
+    """Prints through Playwright, because `--print-to-pdf` on a full browser never returned here."""
     with tempfile.TemporaryDirectory(prefix='trustpcb-pdf-') as tmp:
-        source, target = Path(tmp) / 'report.html', Path(tmp) / 'report.pdf'
+        source = Path(tmp) / 'report.html'
         source.write_text(document, encoding='utf-8')
-        process = await asyncio.create_subprocess_exec(
-            browser, '--headless=new', '--disable-gpu', '--no-pdf-header-footer', f'--user-data-dir={tmp}/profile', f'--print-to-pdf={target}', source.as_uri(),
-            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
         try:
-            await asyncio.wait_for(process.wait(), timeout=90)
+            return await asyncio.wait_for(print_pdf(source, browser or find_browser()), timeout=90)
         except asyncio.TimeoutError:
-            process.kill()
             raise ValueError('PDF export timed out.') from None
-        if not target.is_file() or target.stat().st_size == 0:
-            raise ValueError('The browser did not produce a PDF.')
-        return target.read_bytes()
+        except PlaywrightError:
+            raise ValueError('PDF export needs Chrome or Chromium. Run npm run setup, or open the HTML report and print it to PDF instead.') from None
 
 
 async def rf_stills(store, review: dict, snap: dict) -> dict:
