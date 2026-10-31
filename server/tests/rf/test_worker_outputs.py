@@ -6,6 +6,7 @@ a coarse patch scenario and validates what it writes.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import pathlib
@@ -28,6 +29,15 @@ FILES = ["progress.jsonl", "s11.json", "zin.json", "pattern.json", "field.json",
 
 def load(job, name):
     return json.loads((job / name).read_text())
+
+
+def pulse(job, pj):
+    """Pulse frames from 0 to 1. A solver job holds float32; the web fixture is packed to gzipped uint8 on a square-root curve."""
+    if pj.get("encoding") != "gzip":
+        return f32(job, pj["file"], pj["shape"])
+    q = np.frombuffer(gzip.decompress((job / pj["file"]).read_bytes()), dtype=np.uint8)
+    assert q.size == int(np.prod(pj["shape"])), f"{pj['file']}: {q.size} values, sidecar says {pj['shape']}"
+    return (q / 255.0) ** 2
 
 
 def f32(job, name, shape):
@@ -86,7 +96,7 @@ def check_job(job: pathlib.Path):
             assert e[ax][1] > e[ax][0]
 
     pj = load(job, "pulse.json")
-    a = f32(job, pj["file"], pj["shape"])
+    a = pulse(job, pj)
     assert 1 <= pj["shape"][0] <= 80 and max(pj["shape"][1:]) <= 256
     assert len(pj["times_s"]) == pj["shape"][0] and a.min() >= 0 and a.max() == pytest.approx(1.0, abs=0.01)
 
