@@ -14,6 +14,8 @@ import { PulsePlane3D } from "../rf/WaveField3D";
 import { WaveField3D } from "../rf/WaveField3D";
 import { TuningGraph } from "../rf/charts";
 import { ClassStamp, FixtureBadge, Icon, Logo, SevBar } from "../ui";
+import { PowerPair } from "../rf/PowerPair";
+import { acceptedPct } from "../../lib/sims";
 import dynamic from "next/dynamic";
 
 const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false });
@@ -56,10 +58,63 @@ const noop = () => {};
 
 const STEPS = [
   ["01", "Upload", "Drop a KiCad project. TrustPCB reads the real geometry of every track, pad and part."],
-  ["02", "Baseline", "KiCad rule checks and nine analyzers measure the board in code, with no AI involved."],
+  ["02", "Baseline", "KiCad rule checks and code analyzers measure the board, with no AI involved."],
   ["03", "Investigate", "An agent forms hypotheses and runs real electromagnetic simulations to test them."],
   ["04", "Mark up", "Every issue is pinned to a real object on the board, with the numbers that prove it."],
 ];
+
+/** The numbers of the bundled nRF52840 sample run (public/fixtures/nrf-sim), read from its own files. Null when they are absent: the strip then stays qualitative. */
+interface StoryNumbers { base: number; asBuiltWorstDb: number; bestWorstDb: number; dipGhz: number; firstSeriesGhz: number | null; shortenedDipGhz: number | null; shortenedMm: number | null }
+function useStoryNumbers(): StoryNumbers | null {
+  const [n, setN] = useState<StoryNumbers | null>(null);
+  useEffect(() => {
+    let live = true;
+    const j = (u: string) => fetch(`/fixtures/nrf-sim/${u}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(u))));
+    Promise.all([j("summary.json"), j("tune_matching.json"), j("whatif_shorten_6mm_screen/summary.json").catch(() => null), j("whatif_shorten_6mm_screen/meta.json").catch(() => null)]).then(([s, t, w, m]) => {
+      const base = s?.s11?.as_built?.band_worst_db, best = t?.best?.result?.band_worst_db, dip = s?.sim?.f_res;
+      if (![base, best, dip].every((v) => typeof v === "number")) return;
+      const op = (m?.scenario?.whatif_ops ?? []).find((o: { op: string }) => o.op === "adjust_antenna_length");
+      if (live) setN({ base: acceptedPct(base)!, asBuiltWorstDb: base, bestWorstDb: best, dipGhz: dip / 1e9, firstSeriesGhz: s.sim.first_series_resonance_hz ? s.sim.first_series_resonance_hz / 1e9 : null, shortenedDipGhz: w?.sim?.f_res ? w.sim.f_res / 1e9 : null, shortenedMm: op ? Math.abs(op.delta_mm) : null });
+    }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  return n;
+}
+
+const HOW = [
+  ["Measure", "Code measures the board first: shorts, clearances, return paths, the length and shape of the antenna feed."],
+  ["Suspect", "The agent lists what could explain a problem, for example the antenna length, the matching parts or nearby copper."],
+  ["Screen", "A quick solver run per suspect, for comparing only. It rules suspects out and points at the likely cause."],
+  ["Confirm", "The best candidate is run again at higher quality. Only the confirmed numbers are quoted, and the report says when the screen was too optimistic."],
+];
+
+function HowItWorks() {
+  const n = useStoryNumbers();
+  const best = n ? acceptedPct(n.bestWorstDb) : null;
+  return (
+    <section className="ld-sec">
+      <div className="ld-sec-head"><span className="idx">03 / HOW AN INVESTIGATION WORKS</span><h2 className="serif">Suspects, then evidence.</h2></div>
+      <ol className="ld-steps">
+        {HOW.map(([t, d], i) => (<li key={t} className="hair panel"><span className="idx">{String(i + 1).padStart(2, "0")}</span><h3>{t}</h3><p>{d}</p></li>))}
+      </ol>
+      {n && best != null && (
+        <div className="ld-story hair panel">
+          <div className="ld-story-copy">
+            <span className="idx">EXAMPLE: THE BUNDLED nRF52840 SAMPLE RUN, NOT YOUR BOARD</span>
+            <p>
+              As drawn, this antenna&apos;s deepest dip sits at <b className="mono">{n.dipGhz.toFixed(2)} GHz</b>{n.firstSeriesGhz ? <> and its first series resonance at <b className="mono">{n.firstSeriesGhz.toFixed(2)} GHz</b></> : null}, far below the 2.4 GHz band, so the worst S11 in the band is <b className="mono">{n.asBuiltWorstDb.toFixed(1)} dB</b>.
+              {n.shortenedDipGhz && n.shortenedMm ? <> A screen run with the antenna {n.shortenedMm} mm shorter moves the dip to <b className="mono">{n.shortenedDipGhz.toFixed(2)} GHz</b>, the direction the length says it should.</> : null}
+              {" "}Re-tuning the matching parts alone reaches <b className="mono">{n.bestWorstDb.toFixed(1)} dB</b> worst in the band: better, but not the <span className="mono">-10 dB</span> target. That is reported as improved, target not met, with the parts to try.
+            </p>
+          </div>
+          <PowerPair size="md" note={false}
+            before={{ value: n.base, label: "As drawn", sub: "worst point of the band" }}
+            after={{ value: best, label: "Matching parts re-tuned", sub: "worst point of the band, calculated on the solver result" }} />
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function Landing() {
   const calm = useReducedMotion();
@@ -164,8 +219,10 @@ export function Landing() {
         </ol>
       </section>
 
+      <HowItWorks />
+
       {projects.length > 0 && <section className="ld-sec">
-        <div className="ld-sec-head"><span className="idx">03 / {FIXTURE_MODE ? "SAMPLE REVIEWS" : "YOUR BOARDS"}</span><h2 className="serif">{FIXTURE_MODE ? "See finished reviews." : "Pick up where you left off."}</h2></div>
+        <div className="ld-sec-head"><span className="idx">04 / {FIXTURE_MODE ? "SAMPLE REVIEWS" : "YOUR BOARDS"}</span><h2 className="serif">{FIXTURE_MODE ? "See finished reviews." : "Pick up where you left off."}</h2></div>
         <div className="ld-cards">
           {projects.slice(0, 3).map((p, i) => (
             <Link key={p.id} href={p.latest_review_id ? `/reviews/${p.latest_review_id}` : `/projects/${p.id}`} className="ld-card hair panel">
@@ -174,7 +231,7 @@ export function Landing() {
               <p className="dim">{p.kind}</p>
               <div className="ld-card-graph">
                 {fx && p.rf !== "n/a" && <TuningGraph curves={i === 1 ? [{ id: "a", label: "a", ...fx.curve2 }] : [{ id: "a", label: "a", ...fx.curve }, { id: "b", label: "b", ...fx.curve2 }]} band={fx.band} height={64} compact />}
-                {!fx && <div className="dim mono" style={{ fontSize: 11, padding: "20px 0" }}>{p.rf === "n/a" ? "No radio part detected." : "RF not tested."}</div>}
+                {!fx && <div className="dim mono" style={{ fontSize: 11, padding: "20px 0" }}>{p.rf === "n/a" ? "No radio part detected." : "Open the review for its RF result."}</div>}
               </div>
               <div className="ld-card-foot"><SevBar counts={p.counts} size="sm" /><span className="link-arrow mono idx">OPEN</span></div>
             </Link>

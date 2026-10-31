@@ -4,7 +4,8 @@ import "../pages/pages.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { FIXTURE_MODE, getBoardBundle, getReview, normaliseBoard, type BoardBundle, type ReviewMeta } from "../../lib/api";
+import { FIXTURE_MODE, getBoardBundle, getReview, getSnapshot, listRevisions, normaliseBoard, type BoardBundle, type ReviewMeta } from "../../lib/api";
+import { headlineOf, type Headline } from "../../lib/story.mjs";
 import { liveSource, listSims, NRF_BOARD, nrfSampleSource, type SimJob, type SimSource } from "../../lib/sims";
 import { Icon, Panel, TopBar } from "../ui";
 import { RfLabView, type Band } from "./RfLab";
@@ -62,6 +63,13 @@ function RfLive({ reviewId, job }: { reviewId: string; job: string | null }) {
   const [bundle, setBundle] = useState<BoardBundle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { jobs, error: simError } = useSims(reviewId, true);
+  const [headline, setHeadline] = useState<Headline | null>(null);
+  // the partial win lives in the report snapshot; no report yet means no headline
+  useEffect(() => {
+    let live = true;
+    listRevisions(reviewId).then((r) => (r.length ? getSnapshot(reviewId, r[r.length - 1].number) : null)).then((snap) => { if (live) setHeadline(headlineOf(snap)); }).catch(() => { if (live) setHeadline(null); });
+    return () => { live = false; };
+  }, [reviewId]);
   useEffect(() => {
     let live = true;
     getReview(reviewId).then(async (m) => {
@@ -78,7 +86,7 @@ function RfLive({ reviewId, job }: { reviewId: string; job: string | null }) {
   if (source && source.jobs.length > 0) {
     return (
       <>
-        <RfLabView reviewId={reviewId} source={source} bundle={bundle} initialJob={job} title={meta ? `${meta.project_name}, ${meta.version_label}` : ""} goalBand={goalBand} />
+        <RfLabView reviewId={reviewId} source={source} bundle={bundle} initialJob={job} title={meta ? `${meta.project_name}, ${meta.version_label}` : ""} goalBand={goalBand} headline={headline} />
         {error && <p className="chat-err" role="alert" style={{ position: "fixed", bottom: 12, left: 12, zIndex: 20 }}>{error}</p>}
       </>
     );

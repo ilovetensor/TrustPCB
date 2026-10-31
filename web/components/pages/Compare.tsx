@@ -11,7 +11,7 @@ import { Board2D, type ActiveMarkItem } from "../board2d/Board2D";
 import { useScene } from "../board2d/useScene";
 import { DEFAULT_LAYERS } from "../board2d/layers";
 import { CompareFixture } from "./CompareFixture";
-import { CompareTuning, PatternLayer, useCompareSims, A_COLOR, B_COLOR, PATTERN_VIEWS, type PatternViewKey } from "./CompareRf";
+import { CompareHeadline, CompareTuning, PatternLayer, useCompareSims, A_COLOR, B_COLOR, PATTERN_VIEWS, type PatternViewKey } from "./CompareRf";
 import { FieldCanvas2D } from "../rf/FieldCanvas2D";
 import { bestRun, useRunData } from "../../lib/use-run-data";
 import { describeFreq, isScreen } from "../../lib/sims";
@@ -165,6 +165,7 @@ function CompareLive() {
                   {!bothSims && <p className="idx">{sims.done ? "RESONANCE: NOT COMPARED. BOTH VERSIONS NEED A SIMULATION IN THEIR REVIEWS FOR THAT." : "LOOKING FOR SIMULATIONS."}</p>}
                 </div>
               </Panel>
+              {bothSims && (<CompareHeadline jobA={jobA} jobB={jobB} dataA={dataA} dataB={dataB} nA={nA} nB={nB} band={rfBand} />)}
               {bothSims && sims.a && sims.b && (
                 <CompareTuning sourceA={sims.a} sourceB={sims.b} jobA={jobA} jobB={jobB} onPickA={setPickA} onPickB={setPickB} dataA={dataA} dataB={dataB} nA={nA} nB={nB} band={rfBand} />
               )}

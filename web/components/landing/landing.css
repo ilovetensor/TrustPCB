@@ -282,3 +282,10 @@
     padding-top: 70px;
   }
 }
+
+.ld-story { display: grid; grid-template-columns: 1fr minmax(320px, 0.9fr); gap: 32px; align-items: center; padding: 24px 28px; margin-top: 18px; }
+.ld-story-copy { display: flex; flex-direction: column; gap: 10px; }
+.ld-story-copy .idx { white-space: normal; }
+.ld-story-copy p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--paper-2); max-width: 64ch; }
+.ld-story-copy b { color: var(--paper); font-weight: 500; }
+@media (max-width: 860px) { .ld-story { grid-template-columns: 1fr; padding: 18px; gap: 20px; } }

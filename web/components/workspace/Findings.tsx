@@ -4,6 +4,9 @@ import { SEVERITY_ORDER, sortFindings, type ReviewState } from "../../lib/review
 import { findingLabel, findingNumber } from "../../lib/review-view";
 import type { Evidence, Finding, Severity } from "../../lib/types";
 import { ClassStamp, Icon, SevGlyph } from "../ui";
+import { PartialWin } from "../rf/PartialWin";
+import type { Headline } from "../../lib/story.mjs";
+import type { Mark } from "../../lib/types";
 
 const evidenceLine = (e: Evidence): { tool: string; text: string; vals: string } => {
   const v = (e.values ?? {}) as Record<string, any>;
@@ -12,7 +15,8 @@ const evidenceLine = (e: Evidence): { tool: string; text: string; vals: string }
   return { tool: e.source_tool, text: e.title ?? v.title ?? e.summary ?? "", vals };
 };
 
-export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, onSetStatus }: {
+export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, onSetStatus, headline = null, onFindingCode }: {
+  headline?: Headline | null; onFindingCode?: (code: string) => void;
   state: ReviewState; evidence: Record<string, Evidence>; selectedId: string | null; onSelect: (id: string | null) => void; onAsk: (id: string) => void;
   onSetStatus: (id: string, status: "dismissed" | "open", reason?: string) => void;
 }) {
@@ -40,6 +44,7 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
         <div className="fp-cand mono"><span className="idx">CANDIDATES</span><span>{c.reviewed}/{c.total} reviewed</span><div className="meter"><b style={{ width: `${(c.reviewed / c.total) * 100}%` }} /></div></div>
       )}
       <div className="fp-list">
+        {headline && <PartialWin h={headline} compact onFinding={onFindingCode} />}
         {list.length === 0 && (
           <p className="empty">{all.length === 0 ? (state.status === "running" || state.status === "idle" ? "No findings yet. Each one appears here, with its numbered balloon on the board, the moment the agent records it." : "This review recorded no findings.") : "No findings at this level."}</p>
         )}
@@ -79,6 +84,7 @@ function FindingCard({ f, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }
       {sel && (
         <div className="fc-body rise">
           <div className="fc-stamps"><ClassStamp cls={f.class} />{f.source === "followup" && <span className="stamp">Found in follow-up</span>}</div>
+          <MarksSummary marks={f.marks ?? []} />
           <Sec k="WHAT" t={f.what} />
           <Sec k="WHY IT MATTERS" t={f.why_it_matters} />
           <Sec k="RECOMMENDATION" t={f.recommendation} />
@@ -123,3 +129,25 @@ function FindingCard({ f, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }
 }
 const Sec = ({ k, t }: { k: string; t: string }) => (<div className="fc-sec"><span className="idx">{k}</span><p>{t}</p></div>);
 const List = ({ k, items }: { k: string; items: string[] }) => (<div className="fc-sec"><span className="idx">{k}</span><ul>{items.map((i) => (<li key={i}>{i}</li>))}</ul></div>);
+
+/** What the finding draws on the board: counts by kind, the zones a layout finding names, and what a dashed sketch means. */
+function MarksSummary({ marks }: { marks: Mark[] }) {
+  if (!marks.length) return null;
+  const by: Record<string, number> = {};
+  let items = 0;
+  const zones = new Map<string, number>();
+  for (const m of marks) {
+    by[m.type] = (by[m.type] ?? 0) + 1;
+    items += m.targets.length;
+    if (m.type === "region" && m.role) zones.set(m.role, (zones.get(m.role) ?? 0) + 1);
+  }
+  const KIND: Record<string, string> = { pin: "pin", object: "highlighted object", path: "route", region: "zone", link: "distance link", sketch: "sketch" };
+  return (
+    <div className="fc-sec fc-marks">
+      <span className="idx">ON THE BOARD</span>
+      <p>{Object.entries(by).map(([k, n]) => `${n} ${KIND[k] ?? k}${n > 1 ? "s" : ""}`).join(", ")} covering {items} item{items === 1 ? "" : "s"}. {items > 12 ? "Pins are numbered; the rest dim until you select this finding." : ""}</p>
+      {zones.size > 0 && <p className="fc-zones">{[...zones.entries()].map(([role, n]) => (<span key={role} className="stamp">{role.replace(/_/g, " ")}{n > 1 ? ` x${n}` : ""}</span>))}</p>}
+      {by.sketch > 0 && <p className="dim fc-sketchnote"><svg width="26" height="6" aria-hidden><path d="M1 3h24" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2 4" strokeLinecap="round" /></svg> Dashed sketch: a way it could go, display only. It is never a real route.</p>}
+    </div>
+  );
+}

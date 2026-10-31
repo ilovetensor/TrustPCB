@@ -8,3 +8,11 @@ export function measurementsOfSummary(s: Summary): Record<string, Measure>;
 export function pickStageJob(jobs: SimJob[]): SimJob | null;
 export function bestRun(jobs: SimJob[]): SimJob | null;
 export function boardYRange(v_mm: [number, number]): [number, number];
+export function acceptedPct(s11_db: number | null | undefined): number | null;
+export interface AcceptedSide { worst: number | null; mean: number | null }
+export function acceptedFromCurve(curve: { f_ghz: number[]; s11_db: number[] } | null | undefined, band: [number, number] | null | undefined): { worst: number; mean: number } | null;
+export function acceptedOf(measurements: Record<string, Measure> | null | undefined): { asBuilt: AcceptedSide | null; antenna: AcceptedSide | null; headline: AcceptedSide | null };
+export function fixedDipsMhz(jobs: { measurements?: Record<string, Measure> }[] | null | undefined): number[];
+export function isFixedDip(f_ghz: number, fixedMhz: number[] | null | undefined, tolMhz?: number): boolean;
+export function sameGeometry(hashA: string | null | undefined, hashB: string | null | undefined): boolean | null;
+export function fmtPct(v: number | null | undefined): string;

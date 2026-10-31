@@ -3,7 +3,8 @@ import "./workspace.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { FIXTURE_MODE, getBoardBundle, getEvidenceByCode, type BoardBundle } from "../../lib/api";
+import { FIXTURE_MODE, getBoardBundle, getEvidenceByCode, getSnapshot, listRevisions, type BoardBundle } from "../../lib/api";
+import { headlineOf, screenVsConfirm, testsOf, type Headline, type StoryRound, type StoryTest } from "../../lib/story.mjs";
 import { indexBoard, resolveMark, bboxUnion } from "../../lib/geometry.mjs";
 import { useNarrow } from "../../lib/hooks";
 import { activeMarks } from "../../lib/review-reducer.mjs";
@@ -96,6 +97,15 @@ export function Workspace({ reviewId }: { reviewId: string }) {
   const revision = state.reportReady?.revision ?? meta?.report_revision ?? 0;
   useEffect(() => { if (meta) void getEvidenceByCode(reviewId).then(setEvidence); }, [reviewId, revision, meta?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // the report snapshot holds the partial win and the screen-against-confirm rows; there is none until the review has a report
+  const [story, setStory] = useState<{ headline: Headline | null; rounds: StoryRound[]; tests: StoryTest[] }>({ headline: null, rounds: [], tests: [] });
+  useEffect(() => {
+    if (FIXTURE_MODE || !revision) return;
+    let live = true;
+    listRevisions(reviewId).then((r) => (r.length ? getSnapshot(reviewId, r[r.length - 1].number) : null)).then((snap) => { if (live && snap) setStory({ headline: headlineOf(snap), rounds: screenVsConfirm(snap), tests: testsOf(snap) }); }).catch(() => {});
+    return () => { live = false; };
+  }, [reviewId, revision]);
+
   const index = useMemo(() => (board ? indexBoard(board) : null), [board]);
   const findingsMeta = useMemo(() => buildMeta(state.findingOrder.map((id) => state.findings[id])), [state.findingOrder, state.findings]);
   const marks = useMemo(() => activeMarks(state), [state]);
@@ -137,8 +147,18 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     const fp = board.footprints.find((f) => f.ref === w.ref);
     const to = (Array.isArray(w.new_position) ? w.new_position : w.to) as [number, number] | undefined;
     if (!fp || !to) return null;
-    return { ref: w.ref, from: [fp.x, fp.y], to, size: [fp.bbox[2] - fp.bbox[0], fp.bbox[3] - fp.bbox[1]], label: w.label ?? "What-if, not your board" };
+    return { ref: w.ref, from: [fp.x, fp.y], to, size: [fp.bbox[2] - fp.bbox[0], fp.bbox[3] - fp.bbox[1]], label: w.label ?? "What-if, not your board", ring: w.ghost?.ring, pads: w.ghost?.pads };
   }, [state.followup.whatif, board]);
+
+  // a new what-if brings the camera to the ghost part and the parts around it
+  const whatifSeen = useRef<unknown>(null);
+  useEffect(() => {
+    if (!ghost || whatifSeen.current === state.followup.whatif) return;
+    whatifSeen.current = state.followup.whatif;
+    // the chat floats over the right half of the stage: bring the ghost into the left half by fitting extra board to its right
+    const r = 8, room = narrow ? 0 : 34;
+    setFocus({ bbox: [Math.min(ghost.from[0], ghost.to[0]) - r, Math.min(ghost.from[1], ghost.to[1]) - r, Math.max(ghost.from[0], ghost.to[0]) + r + room, Math.max(ghost.from[1], ghost.to[1]) + r] as BBox, nonce: Date.now() + Math.random(), maxScale: 9 });
+  }, [ghost, state.followup.whatif, narrow]);
 
   const sel: SelectedChip[] = useMemo(() => {
     const out: SelectedChip[] = [];
@@ -189,7 +209,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
   );
   const phase = (
     <Panel className="ws-phase" delay={80} crop={false}>
-      <PhaseTracker phase={state.phase} status={state.status} compact={narrow} />
+      <PhaseTracker phase={state.phase} status={state.status} compact={narrow} refine={state.refine} />
     </Panel>
   );
   const budget = (
@@ -199,7 +219,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
   );
   const trail = (
     <Panel className="ws-trail" idx="TRAIL" title="Investigation" delay={240} bodyClass="fill" actions={<span className="idx">{state.trail.length} ENTRIES</span>}>
-      <Trail state={state} onSelectFinding={selectFinding} />
+      <Trail state={state} onSelectFinding={selectFinding} story={story.rounds} tests={story.tests} />
     </Panel>
   );
   const findings = (
@@ -211,7 +231,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
         {revision ? <Link href={`/reviews/${reviewId}/report`} className="btn sm primary">Report r{revision}</Link> : null}
       </span>
     )}>
-      <FindingsPanel state={state} evidence={evidence} selectedId={selectedId} onSelect={selectFinding} onAsk={askFinding} onSetStatus={(id, st, reason) => { void rv.setFindingStatus(id, st, reason); if (st === "dismissed") setSelectedId(null); }} />
+      <FindingsPanel headline={story.headline} onFindingCode={(code) => { const f = state.findingOrder.map((id) => state.findings[id]).find((x) => x?.code === code); if (f) selectFinding(f.id); }} state={state} evidence={evidence} selectedId={selectedId} onSelect={selectFinding} onAsk={askFinding} onSetStatus={(id, st, reason) => { void rv.setFindingStatus(id, st, reason); if (st === "dismissed") setSelectedId(null); }} />
     </Panel>
   );
   const strip = (

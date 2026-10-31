@@ -4,15 +4,18 @@ import Link from "next/link";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { BoardBundle } from "../../lib/api";
 import {
-  describeFreq, describeOps, dipsOf, isDone, isScreen, loadCurrent, loadCurves, loadField, loadMeta, loadPattern, loadPulse, loadSummary, measure,
+  acceptedForJob, acceptedOf, describeFreq, describeOps, dipsOf, fixedDipsMhz, fmtPct, isDone, isFixedDip, isScreen, loadCurrent, loadCurves, loadField, loadMeta, loadPattern, loadPulse, loadSummary, measure,
   QUALITY_NOTE, zFromGamma, type Curves, type SimJob, type SimSource,
 } from "../../lib/sims";
+import type { Headline } from "../../lib/story.mjs";
 import { useAsync } from "../../lib/use-async";
 import { cssGradient, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
 import { reducedMotion, useNarrow, useReducedMotion } from "../../lib/hooks";
 import { Icon, Logo, Panel } from "../ui";
 import { SimStage, type SimView } from "./SimStage";
 import { SmithChart, TuningGraph, type CurveSpec } from "./charts";
+import { PartialWin } from "./PartialWin";
+import { ACCEPTED_LABEL, PowerBar } from "./PowerPair";
 
 export interface Band { lo_ghz: number; hi_ghz: number; target_db: number }
 type Trace = "antenna" | "both" | "as_built";
@@ -34,6 +37,7 @@ function JobCard({ job, active, overlaid, onActive, onOverlay }: { job: SimJob; 
   const dip = measure(job, "s11_dip_1"), depth = measure(job, "s11_dip_1_depth") ?? measure(job, "s11_min");
   const res = measure(job, "resonance");
   const f = dip ?? res;
+  const acc = acceptedOf(job.measurements).headline?.worst ?? null;
   return (
     <div className={`rf-job ${active ? "on" : ""} ${done ? "" : "wait"}`}>
       <button className="rf-job-main" onClick={onActive} disabled={!done} aria-pressed={active} title={done ? "Show this run" : `This run is ${job.status}`}>
@@ -48,6 +52,7 @@ function JobCard({ job, active, overlaid, onActive, onOverlay }: { job: SimJob; 
         {ops && <span className="rf-job-ops mono">{ops}</span>}
         <span className="rf-job-num mono">
           {done && f != null && depth != null ? <><b>{(f / 1000).toFixed(3)}</b> GHz <b>{depth.toFixed(1)}</b> dB</> : done ? "no numbers recorded" : job.status}
+          {done && acc != null && <span className="rf-acc" title={ACCEPTED_LABEL}><b>{fmtPct(acc)}</b> % accepted</span>}
           {job.trust && <span className={`stamp ${job.trust.status === "ok" ? "" : "sig"}`} title={job.trust.reasons.join("; ") || undefined}>Trust {job.trust.status === "ok" ? "ok" : "failed"}</span>}
         </span>
         {!done && job.status !== "failed" && job.status !== "canceled" && job.status !== "timeout" && job.status !== "interrupted" && (
@@ -59,8 +64,8 @@ function JobCard({ job, active, overlaid, onActive, onOverlay }: { job: SimJob; 
   );
 }
 
-export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, sample = false, initialJob = null }: {
-  reviewId: string; source: SimSource; bundle: BoardBundle | null; title: string; goalBand: Band | null; notice?: string; sample?: boolean; initialJob?: string | null;
+export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, sample = false, initialJob = null, headline = null }: {
+  reviewId: string; source: SimSource; bundle: BoardBundle | null; title: string; goalBand: Band | null; notice?: string; sample?: boolean; initialJob?: string | null; headline?: Headline | null;
 }) {
   const jobs = source.jobs;
   const doneJobs = useMemo(() => jobs.filter(isDone), [jobs]);
@@ -124,7 +129,15 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   }, [overlayCurves, antenna, asBuilt, trace, active]);
   const mainCurve = specs[specs.length - 1] ?? null;
 
-  const { dips, fromSummary } = useMemo(() => dipsOf(trace === "as_built" ? null : summary, trace === "as_built" ? asBuilt : antenna), [summary, antenna, asBuilt, trace]);
+  const { dips: rawDips, fromSummary } = useMemo(() => dipsOf(trace === "as_built" ? null : summary, trace === "as_built" ? asBuilt : antenna), [summary, antenna, asBuilt, trace]);
+  // dips that stayed put when the geometry changed are not the antenna's resonance (a `fixed_dip_N` measurement of any run of this review)
+  const fixedMhz = useMemo(() => fixedDipsMhz(jobs), [jobs]);
+  const dips = useMemo(() => rawDips.map((d) => ({ ...d, fixed: isFixedDip(d.f_ghz, fixedMhz) })), [rawDips, fixedMhz]);
+  const accepted = useMemo(() => acceptedForJob(active, curves, bandHz), [active, curves, bandHz]);
+  const sumBand = {
+    asBuilt: summary?.s11?.as_built?.band_worst_db ?? (active ? measure(active, "as_built_band_worst_s11") : null),
+    antenna: summary?.s11?.antenna_only?.band_worst_db ?? (active ? measure(active, "antenna_only_band_worst_s11") : null),
+  };
   const fsr = summary?.sim?.first_series_resonance_hz;
   useEffect(() => { setMarker(dips[0]?.f_ghz ?? null); }, [k, dips.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -206,7 +219,6 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   const numbers: [string, string][] = [];
   if (sim) {
     if (sim.f_res != null && sim.s11_min_db != null) numbers.push(["Deepest dip", `${ghz(sim.f_res)} GHz ${sim.s11_min_db.toFixed(1)} dB`]);
-    if (fsr) 
     if (sim.bandwidth) numbers.push(["-10 dB range", `${ghz(sim.bandwidth.f_low_hz)} to ${ghz(sim.bandwidth.f_high_hz)}`]);
   }
   if (summary?.s11?.antenna_only) numbers.push(["Band worst S11", `${summary.s11.antenna_only.band_worst_db.toFixed(1)} dB${summary.s11.as_built ? ` / ${summary.s11.as_built.band_worst_db.toFixed(1)} as built` : ""}`]);
@@ -221,6 +233,23 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
       {inBand != null && <span className={`stamp ${inBand ? "solid" : "sig"}`}>{inBand ? "Dip in band" : "Off target"}</span>}
       {screen ? <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span> : active?.quality === "confirm" ? <span className="stamp solid">Confirm</span> : null}
     </span>}>
+      {headline && <PartialWin h={headline} compact />}
+      {(accepted.asBuilt || accepted.antenna || sumBand.asBuilt != null || sumBand.antenna != null) && (
+        <section className="rf-band" aria-label="In-band S11 and accepted power">
+          <div className="rf-band-s11">
+            <span className="idx">S11 IN THE BAND, WORST POINT</span>
+            <div className="rf-band-big mono">{sumBand.asBuilt != null ? <>{sumBand.asBuilt.toFixed(1).replace("-", "−")}<small> dB</small></> : sumBand.antenna != null ? <>{sumBand.antenna.toFixed(1).replace("-", "−")}<small> dB</small></> : "-"}</div>
+            <span className="idx">{sumBand.asBuilt != null ? "AS BUILT" : "ANTENNA ALONE"}</span>
+            {sumBand.asBuilt != null && sumBand.antenna != null && <span className="mono rf-band-small">{sumBand.antenna.toFixed(1).replace("-", "−")} dB antenna alone</span>}
+            {band && <span className="mono rf-band-small">target {band.target_db} dB</span>}
+          </div>
+          <div className="rf-band-acc">
+            {accepted.asBuilt && <PowerBar value={accepted.asBuilt.worst} label="Accepted power, as built" sub={accepted.asBuilt.mean != null ? `worst point, mean ${fmtPct(accepted.asBuilt.mean)} %` : "worst point"} size="md" />}
+            {accepted.antenna && <PowerBar value={accepted.antenna.worst} label="Accepted power, antenna alone" sub={accepted.antenna.mean != null ? `worst point, mean ${fmtPct(accepted.antenna.mean)} %` : "worst point"} tone="before" size="sm" />}
+          </div>
+          <p className="idx rf-band-cap">{ACCEPTED_LABEL}{(accepted.asBuilt?.fromCurve || (!accepted.asBuilt && accepted.antenna?.fromCurve)) ? ". Worked out here from this run's own S11 curve." : ""}</p>
+        </section>
+      )}
       <div className="rf-row">
         <span className="idx">S11 AND BAND</span><span style={{ flex: 1 }} />
         {asBuilt && (
@@ -232,7 +261,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
         )}
       </div>
       {specs.length ? (
-        <TuningGraph curves={specs} band={band} marker={marker} onMarker={setMarker} height={214} dips={dips} vlines={fsr ? [{ f_ghz: fsr / 1e9, label: "1st series res." }] : undefined} />
+        <TuningGraph curves={specs} band={band} marker={marker} onMarker={setMarker} height={214} dips={dips} vlines={fsr ? [{ f_ghz: fsr / 1e9, label: "1st series res. (length)" }] : undefined} />
       ) : <p className="dim">{curves === null ? "Loading the S11 curve." : "This run has no S11 curve."}</p>}
       <div className="rf-leg mono">
         {specs.slice().reverse().map((c) => (<span key={c.id}><i style={{ background: c.color, opacity: c.dashed ? 0.8 : 1 }} />{c.label}</span>))}
@@ -247,10 +276,16 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
           <span className="idx">S11 DIPS{fromSummary ? "" : ", FOUND ON THE CURVE"}</span>
           {dips.length > 0 ? (
             <ol className="rf-dips mono" aria-label="S11 dips">
-              {dips.map((d, i) => (<li key={i}><b>{i + 1}</b><span>{d.f_ghz.toFixed(3)}</span><span>{d.db.toFixed(1)} dB</span>{band && d.f_ghz >= band.lo_ghz && d.f_ghz <= band.hi_ghz && <span className="stamp solid">In band</span>}</li>))}
+              {dips.map((d, i) => (
+                <li key={i} className={d.fixed ? "fixed" : undefined}>
+                  <b>{i + 1}</b><span>{d.f_ghz.toFixed(3)}</span><span>{d.db.toFixed(1)} dB</span>
+                  {band && d.f_ghz >= band.lo_ghz && d.f_ghz <= band.hi_ghz && <span className="stamp solid">In band</span>}
+                  {d.fixed && <span className="rf-fixed" title="This dip stayed at the same frequency when the antenna geometry changed, so it is not the antenna's own resonance. Rely on the in-band numbers and the first series resonance.">Fixed dip, unknown origin, not the antenna&apos;s resonance</span>}
+                </li>
+              ))}
             </ol>
           ) : <p className="dim" style={{ margin: 0, fontSize: 12 }}>No dip below -3 dB.</p>}
-          {fsr ? <p className="dim rf-fsr mono"><i />1st series resonance {ghz(fsr)} GHz, where the reactance crosses zero</p> : null}
+          {fsr ? <p className="dim rf-fsr mono"><i /><b>Length indicator:</b> 1st series resonance {ghz(fsr)} GHz, where the reactance crosses zero. It moves with the antenna length.</p> : null}
         </div>
       </div>
       {summary?.plausibility?.map((p, i) => (<p key={i} className="rf-warn">{p}</p>))}

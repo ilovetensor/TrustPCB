@@ -25,9 +25,11 @@ for (const spec of specs) {
   await page.waitForTimeout(wait);
   if (process.env.CLICK) { for (const sel of process.env.CLICK.split("||")) { await page.click(sel).catch(() => logs.push("click fail " + sel)); await page.waitForTimeout(1800); } }
   if (process.env.SCROLL) { await page.evaluate((y) => window.scrollTo(0, y), Number(process.env.SCROLL)); await page.waitForTimeout(1500); }
+  if (process.env.SCROLLEL) { const [sel, y] = process.env.SCROLLEL.split("::"); await page.evaluate(([q, v]) => { const el = document.querySelector(q); if (el) el.scrollTop = Number(v); }, [sel, y]); await page.waitForTimeout(600); }
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   const file = path.join(outDir, `${name}-${w}x${h}.png`);
-  await page.screenshot({ path: file, fullPage: process.env.FULL === "1" });
+  const clip = process.env.CLIP ? Object.fromEntries(process.env.CLIP.split(",").map((v, i) => [["x", "y", "width", "height"][i], Number(v)])) : undefined;
+  await page.screenshot({ path: file, fullPage: process.env.FULL === "1", clip });
   console.log(file, "hscroll", overflow);
   for (const l of logs.slice(0, 8)) console.log("  ", l);
   await page.close();
