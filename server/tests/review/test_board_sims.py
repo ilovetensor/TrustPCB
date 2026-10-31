@@ -196,6 +196,27 @@ async def test_every_extent_combination_reaches_the_right_phases(simenv):
         assert review['end_state'] == 'complete', (extent, review['summary']['end'])
 
 
+async def test_leaving_investigate_with_a_chosen_check_untested_is_refused_once(simenv):
+    simenv.lab.rf = dict(NO_RADIO)
+    review = await power_review(simenv, extent=('layout', 'power', 'thermal'))        # power is investigated and closed; thermal never is
+    texts = [json.dumps(p.get('content')) for n, p in results(simenv, review['chat_id'], 'advance_phase')]
+    refused = [t for t in texts if 'checks_not_run' in t]
+    assert len(refused) == 1 and 'thermal' in refused[0] and 'power' not in refused[0].split('not_run')[-1][:60]
+    assert 5 in phases_of(simenv, review)       # the second advance_phase went through
+
+
+async def test_datasheets_chosen_but_never_used_is_refused_once_in_understand(simenv, monkeypatch):
+    monkeypatch.setattr(ext, 'parts_ready', lambda: (True, ''))
+    simenv.lab.parts_ready = True
+    simenv.lab.rf = dict(NO_RADIO)
+    script = [BRIEF, step('advance_phase'), step('advance_phase'), *clear(), step('advance_phase'), step('advance_phase'), step('advance_phase'),
+              step('submit_summary', summary='Only the rules and layout were reviewed in this run.', top_actions=['Check the board.'])]
+    review = await simenv.review(script, goal=GOAL, extent=['layout', 'power', 'datasheets'])
+    texts = [json.dumps(p.get('content')) for n, p in results(simenv, review['chat_id'], 'advance_phase')]
+    assert sum('datasheets_unused' in t for t in texts) == 1 and 'lookup_part' in texts[0]
+    assert 3 in phases_of(simenv, review) and review['end_state'] == 'complete'
+
+
 async def test_quick_reviews_record_a_chosen_simulation_as_not_run(simenv):
     simenv.lab.rf = dict(NO_RADIO)
     script = [BRIEF, step('advance_phase'), *clear(), step('advance_phase'), step('submit_summary', summary='Only the rules and layout were reviewed.', top_actions=['Check the board.'])]

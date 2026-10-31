@@ -137,3 +137,13 @@ async def test_a_later_investigation_reuses_the_stored_base(env):
     results = contents(env, review, 'run_simulation')
     assert '"cached":true' in results[2] and 'base_required' not in results[3]
     assert env.lab.count('run_scenario') == 3        # one base, two experiments: the second base was free
+
+
+def test_an_investigation_with_a_suspect_closed_untested_can_still_close():
+    from trustpcb.review.budgets import config_for, Ledger
+    ledger = Ledger(config_for('standard', True))
+    inv = ledger.open_investigation('i1', 'I1')
+    inv.matching_runs = 1
+    suspect = ledger.add_suspect(inv, 's1', 'S1', 'Narrow track')
+    ledger.close_suspect(suspect, 'inconclusive', 'closed before any test', 'base')
+    assert ledger.closing_gaps(inv) == []

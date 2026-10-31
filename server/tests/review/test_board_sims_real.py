@@ -119,3 +119,9 @@ async def test_thermal_takes_the_copper_loss_of_the_power_run(realenv):
     assert any(a['name'] == 'copper loss from the power simulation' for a in heat['assumptions'])
     plain = [r for r in realenv.store.list_evidence(review['id']) if r['type'] == 'board_sim' and (r['values'] or {}).get('label') == 'without it'][0]['values']
     assert plain['run_hash'] != heat['run_hash'] and plain['measurements']['peak_rise']['value'] != heat['measurements']['peak_rise']['value']
+
+
+def test_trust_view_names_the_net_of_each_power_check():
+    from trustpcb.review.simview import trust_view
+    view = trust_view({'status': 'ok', 'checks': [{'id': 'current_continuity', 'status': 'ok', 'net': 'VBUS_F', 'detail': 'a'}, {'id': 'current_continuity', 'status': 'ok', 'net': 'GND', 'return_path': True}]})
+    assert [c['check'] for c in view['checks']] == ['current continuity (VBUS_F)', 'current continuity (GND, ground return)']

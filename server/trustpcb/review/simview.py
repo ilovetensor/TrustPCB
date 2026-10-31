@@ -27,7 +27,10 @@ def trust_view(trust: dict | None, status: str | None = None) -> dict:
         if isinstance(c, dict):
             name = c.get('check') or c.get('name') or c.get('id') or 'check'
             ok = c.get('ok') if isinstance(c.get('ok'), bool) else c.get('status') != 'failed'
-            checks.append({'check': str(name).replace('_', ' '), 'ok': ok, **({'detail': str(c['detail'])[:300]} if c.get('detail') else {})})
+            label = str(name).replace('_', ' ')
+            if c.get('net'):                          # a power run checks each net on its own: say which, so the rows differ
+                label += f' ({c["net"]}{", ground return" if c.get("return_path") else ""})'
+            checks.append({'check': label, 'ok': ok, **({'detail': str(c['detail'])[:300]} if c.get('detail') else {})})
     return {'status': (trust or {}).get('status') if (trust or {}).get('status') in ('ok', 'failed') else None, 'checks': checks}
 
 

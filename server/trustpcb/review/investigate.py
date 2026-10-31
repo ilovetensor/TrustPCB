@@ -463,9 +463,14 @@ class InvestigationMixin(BoardSimMixin):
             return fail('suspect_closed', f'Suspect {suspect.code} is already closed as {suspect.status} and stays closed.', rule='no_reopening')
         trusted_tests = [e for e in suspect.experiments if e.kind in ('whatif', 'matching') and e.ok]
         verdict = args['verdict']
+        inv_of = s.ledger.investigations[suspect.investigation_id]
         if verdict in ('confirmed', 'ruled_out') and not trusted_tests:
-            return fail('not_supported', f'A suspect can be {verdict.replace("_", " ")} only after at least one trusted experiment (a what-if or a matching experiment). Run one, or conclude it as inconclusive.')
-        sim_kind = s.ledger.investigations[suspect.investigation_id].sim_kind
+            return fail('not_supported', f'A suspect can be {verdict.replace("_", " ")} only after at least one trusted experiment (a what-if or a matching experiment). Run one' + ('.' if inv_of.sim_kind else ', or conclude it as inconclusive.'))
+        if verdict == 'inconclusive' and inv_of.sim_kind and s.config.full_investigation and not s.ledger.suspect_tested(suspect) and self.closing_budget_allows_more(inv_of):
+            # a suspect closed with no test can never be tested, and the investigation cannot close until every suspect is tested: refuse here, not later, so the run cannot deadlock
+            return fail('test_first', f'{suspect.code} has not been tested yet. Run a what-if for it first; conclude it as inconclusive only after a test that did not settle it, or when the budget is used.',
+                        suspect=suspect.code, experiments_left=max(0, s.config.experiments_per_investigation - inv_of.experiments))
+        sim_kind = inv_of.sim_kind
         effect = 'at least 10 % better primary metric than the base' if sim_kind else 'at least 1 dB better worst in-band S11 than the base'
         gained = lambda e: f'{e.delta["gain_pct"]:.1f} %' if sim_kind else f'{ev.gain_db(e.delta):.1f} dB'
         if verdict == 'confirmed' and not any(ev.is_improvement(e.delta) or (not sim_kind and ev.meets_target(e.metrics, s.goal, s.rf)) for e in trusted_tests):

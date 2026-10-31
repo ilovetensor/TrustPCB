@@ -94,6 +94,9 @@ class ReviewSession:
         self.coverage_refusals = 0
         self.role_refusals = 0                          # refusals of the board brief for a part role that contradicts the symbol value
         self.partial_refusals = 0                       # refusals of advance_phase for a partial win the finding does not report yet
+        self.part_lookups = 0                           # lookup_part and read_datasheet calls made (datasheets chosen)
+        self.lookup_refusals = 0                        # refusals of advance_phase out of phase 2 while datasheets were chosen and never used (once)
+        self.kinds_refusals = 0                         # refusals of advance_phase out of phase 4 while a chosen simulation kind has no investigation (once)
         self.coverage_waived: dict | None = None
         self.stop_reason: str | None = None
         self.stop_detail: str = ''

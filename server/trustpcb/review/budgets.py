@@ -602,6 +602,7 @@ class Ledger:
         need = min(MIN_SUSPECTS_TESTED, len(inv.suspects))
         untested = [x for x in inv.suspects if not self.suspect_tested(x) and not x.closed]
         tested = len(inv.suspects) - len([x for x in inv.suspects if not self.suspect_tested(x)])
+        need = min(need, tested + len(untested))      # a suspect already closed without a test can never be tested: asking for it would make the investigation impossible to close
         if tested < need:
             gaps.append(f'only {tested} of {need} required suspects tested; not tested yet: ' + ', '.join(f'{x.code} ({x.title})' for x in untested[:3]))
         return gaps

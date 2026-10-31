@@ -20,7 +20,7 @@
 .sl-kinds button:disabled { opacity: 0.4; pointer-events: none; }
 .sl-kinds small { color: var(--paper-3); font-size: 11px; }
 .sl-maps { display: flex; flex-wrap: wrap; border-radius: var(--r-md); }
-.sl-maps button { flex: 1 1 auto; justify-content: center; height: 32px; }
+.sl-maps button { flex: 1 1 auto; justify-content: center; height: auto; min-height: 32px; padding-block: 6px; line-height: 1.25; text-align: center; white-space: normal; }
 .sl-row2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .sl-live { display: flex; flex-direction: column; gap: 6px; }
 .sl-pulse { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--signal); animation: blink 1.4s ease-in-out infinite; vertical-align: middle; }
