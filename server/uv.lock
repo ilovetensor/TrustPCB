@@ -505,6 +505,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "h5py" },
+    { name = "httpx" },
     { name = "numpy" },
     { name = "pillow" },
     { name = "pypdf" },
@@ -527,6 +528,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116.1,<1" },
     { name = "h5py", specifier = ">=3.12,<4" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "numpy", specifier = ">=2,<3" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "pypdf", specifier = ">=6,<7" },
