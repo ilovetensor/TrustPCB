@@ -1,4 +1,4 @@
-// The antenna story, read from a report snapshot: the partial win, and what screen predicted against what confirm measured.
+// The antenna story, read from a report snapshot: the partial win, and what screen predicted against what the confirm run gave.
 // Pure functions over stored data. Nothing here estimates anything; a missing field stays missing.
 
 export const OUTCOME_TEXT = {
@@ -86,7 +86,7 @@ function normalise(h, investigation) {
 }
 
 /**
- * Screen against confirm, per investigation round: what the quick screen predicted and what the confirm run measured, for the base and for the change.
+ * Screen against confirm, per investigation round: what the quick screen predicted and what the confirm run gave (both simulated), for the base and for the change.
  * Each entry: {investigation, round, outcome, statement, rows: [{label, screenRef, screen, confirmRef, confirm}]} with worst in-band S11 in dB.
  */
 export function screenVsConfirm(snapshot) {

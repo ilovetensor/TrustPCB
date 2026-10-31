@@ -6,6 +6,10 @@ TrustPCB is an open-source inspection layer for circuit boards. You upload a KiC
 
 Upload a new version later and TrustPCB rechecks it and shows what changed.
 
+![A finished review of the sample board in the web app: the 3D board with numbered findings, the investigation trail on the left, the findings list on the right](docs/images/review-3d.jpg)
+
+*A finished review of the bundled nRF52840 sample board (`samples/nrf52840-node/`), in the review workspace: the board in 3D with findings marked on it, the investigation trail, and the confirmed antenna result with its target not met. The solver numbers are real openEMS output and are labelled Simulated; this is a sample board, not a customer design.*
+
 ## The inspector rule
 
 **TrustPCB never edits a design.** It reads your files, never changes them, and never produces modified KiCad or manufacturing files. Recommendations are written as steps for you to apply in your own tool. Your upload is copied before anything touches it, and the checks run on the copy.
@@ -33,6 +37,10 @@ Plain code does the measuring first, with no AI involved. Then the agent investi
 
 **RF lab (printed antennas):** TrustPCB cuts the antenna region out of your board and simulates it with [openEMS](https://www.openems.de/) in a Docker container. You get an S11 tuning graph, a Smith chart, a 3D radiation pattern, an animated field and a surface-current view, all drawn from real solver output. It can also test what-if changes to the antenna model and calculate matching parts. Nothing is drawn that the solver did not produce.
 
+![The RF lab page for version 1 of the sample board: the list of solver runs on the left, the animated field over the 3D board in the middle, the tuning result and accepted power on the right](docs/images/rf-lab.jpg)
+
+*The RF lab for version 1 of the sample board: the solver runs, the electric field over the board at 2.442 GHz (time slowed so it is visible), and the confirmed as-built result. Everything on this page is a simulation of a model of the board, not a lab measurement.*
+
 ## How the agent investigates, with physics as the judge
 
 The agent is Muse (`muse-spark-1.3`) running a tool loop over Meta's Messages API. It can only use the TrustPCB tools. It cannot read files, run commands or browse.
@@ -56,12 +64,18 @@ Everything TrustPCB shows carries one of four labels:
 
 | Label | Meaning |
 |---|---|
-| **Measured** | A tool measured it on your board geometry (for example a distance, a count, a KiCad check result). |
-| **Simulated** | An openEMS run produced it, and it passed the trust checks. |
+| **Measured** | A tool measured it on your board geometry (for example a distance, a count, a KiCad check result). Only KiCad and the layout analyzers measure. |
+| **Simulated** | An openEMS run produced it, and it passed the trust checks. A simulated number is never called measured. |
 | **Engineering opinion** | Muse's judgment without a measurement behind it. Opinion cannot be rated critical. |
 | **Not tested** | It was not checked, and the reason is stated (for example Docker was missing, or the antenna type is not supported). |
 
 Assumptions, such as a default board stackup, are listed in the report rather than hidden.
+
+**Rechecks and predictions.** When you upload a new version that changes only matching parts, the antenna copper is the same, so version 2's number is the same solver run recalculated with version 2's parts. It is not an independent result. TrustPCB says so: the badge reads "Same solver run, new parts" and the text "Consistent with the prediction: same solver run, recalculated with version 2's parts". "Prediction held" appears only when the geometry changed and a separate confirm run was done.
+
+![Compare view of version 1 and version 2 of the sample board: the board overlay, open finding counts, and the version change panel showing accepted power rising from 11 to 74 percent, the earlier prediction, and the badge Same solver run, new parts](docs/images/compare-versions.jpg)
+
+*Version 1 against version 2 of the sample board. Only the matching parts differ, so the version 2 figure comes from the same solver run and is shown as consistent with the earlier prediction, not as an independent confirmation. The target is still not met, and it says so.*
 
 ## Architecture
 
@@ -103,14 +117,18 @@ npm run setup
 # 2. Build the openEMS solver image (needed for RF simulation; takes a while)
 docker build -f docker/ems/Dockerfile -t trustpcb-ems:dev .
 
-# 3. Configure
+# 3. Configure (optional: every setting has a default)
 cp .env.example .env     # then edit .env
 
 # 4. Start the backend (8118) and the web app (3118)
 npm run dev
 ```
 
-Open http://127.0.0.1:3118 (the launcher opens it for you; set `TRUSTPCB_NO_OPEN=1` to stop that).
+Open http://127.0.0.1:3118 (the launcher opens it for you; set `TRUSTPCB_NO_OPEN=1` to stop that). `npm run dev` generates a fresh random token on every launch and shares it with both services; it refuses to start if port 8118 or 3118 is taken, and Ctrl+C stops both services.
+
+On a fresh clone there is no model runner, so the app uses the **scripted** runner (see "Connecting Muse"). The scripted runner calls no model: the interface, upload, KiCad checks and layout analyzers all work, but the review itself is a fixed script and finds nothing on your board. Set `TRUSTPCB_RUNNER=muse_api` and a key for real reviews. The launcher also reads an optional git-ignored `server/requirements.local.txt` (extra packages for a development runner); with no such file it changes nothing.
+
+To check a production build of the web app: `npm run build`, then `npm --prefix web run start`.
 
 The image name defaults to `trustpcb-ems:dev`; override it with `TRUSTPCB_EMS_IMAGE`. The solver code in `worker/` is mounted into the container at run time, so changing it needs no rebuild.
 
@@ -138,6 +156,17 @@ To check KiCad discovery on its own: `node scripts/check-kicad.mjs`.
 When `TRUSTPCB_RUNNER` is not set (a fresh clone), or is set to `scripted`, the app uses the scripted runner. It follows a fixed script and calls no model, so it is useful for trying the interface and for tests, but it does not review your board.
 
 Each review is bound to one runner profile, shown in the UI and stored with the review. There is no automatic fallback from one runner to another. Token spend is recorded per review.
+
+### Read-only demo
+
+To show finished reviews without letting anyone upload or start a review, serve a finished data directory read-only:
+
+```sh
+scripts/seed-demo.sh <finished-data-dir>            # copies it to .trustpcb-demo/ (a second argument chooses the target)
+TRUSTPCB_DEMO_READONLY=1 TRUSTPCB_DATA_DIR=.trustpcb-demo npm run dev
+```
+
+With `TRUSTPCB_DEMO_READONLY=1` the backend refuses every `POST`, `PATCH`, `PUT` and `DELETE` with `403` and a clear message, and the web app hides upload, start, dismiss and chat and shows a "Read-only demo" notice. Set `TRUSTPCB_REPO_URL` to put a link to the repository in that notice. `seed-demo.sh` refuses a data directory with a review still running, and never changes its source. The copy includes the boards that were uploaded to it, so only seed from a data directory you may share. The demo is still a local app (loopback only); this is not hosted-use hardening.
 
 ### Sample boards
 
@@ -170,6 +199,17 @@ No test calls a live model. The slow tests use Docker and the solver image.
 - **Your board data goes to Meta.** In a Muse review, rendered board images, part and net data and text from your files are sent to the Muse API. Do not upload a board you are not allowed to share.
 - **Network use at build time.** The web app loads its fonts through `next/font/google`, which downloads them when the web app builds or starts.
 
+## When something is missing
+
+| Missing | What happens |
+|---|---|
+| `kicad-cli` | The backend starts and logs a warning. Upload still works and says that KiCad checks, statistics and the 3D model were skipped. `/api/bootstrap` reports the reason. |
+| Docker or the solver image | RF reports **Not tested** with that reason. Everything else works. |
+| Muse key | With `TRUSTPCB_RUNNER=muse_api` and no `MODEL_API_KEY`, the review stops at its first model call with a message that the key is not set. The scripted runner needs no key. |
+| A second review while one runs | Refused with a visible message (HTTP 409); the upload screen links to the running review. |
+| A zip with no board, or a file that is not a KiCad board | Refused with the reason (HTTP 422). A board file over 150 MB, or one that takes over 240 s to read, is refused too. |
+| The app restarts mid-review | The review is marked **interrupted** (not complete) and says so. Any solver container left running is killed at the next start. |
+
 ## Configuration
 
 All settings are optional environment variables; see `.env.example` for the full list. The common ones:
@@ -182,6 +222,10 @@ All settings are optional environment variables; see `.env.example` for the full
 | `TRUSTPCB_DATA_DIR` | Where projects, uploads and the database live (default `.trustpcb/`) |
 | `KICAD_CLI_PATH` | Path to `kicad-cli` if it is not found automatically |
 | `TRUSTPCB_EMS_IMAGE` | Solver image name (default `trustpcb-ems:dev`) |
+| `TRUSTPCB_DEMO_READONLY` | `1` refuses every change and hides upload and start (read-only demo) |
+| `TRUSTPCB_REPO_URL` | Repository link shown in the read-only demo notice |
+| `TRUSTPCB_MAX_PCB_MB` | Largest board file read, in MB (default 150) |
+| `TRUSTPCB_PARSE_TIMEOUT_S` | Longest time spent reading a board file (default 240) |
 
 ## Repository layout
 
@@ -191,8 +235,8 @@ worker/            run_scenario.py, runs inside the solver container with no app
 docker/ems/        pinned openEMS image build
 web/               Next.js app (2D board, 3D scene, RF lab, report)
 samples/           demo boards
-scripts/           launcher, setup, KiCad check, Muse smoke test, test runners
-docs/              specs and the hackathon disclosure
+scripts/           launcher, setup, KiCad check, Muse smoke test, demo seeding, test runners
+docs/              specs, README images (docs/images/) and the hackathon disclosure
 ```
 
 The product spec is in `docs/specs/`. The hackathon disclosure is in `docs/HACKATHON.md`.

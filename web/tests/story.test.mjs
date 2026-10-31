@@ -7,14 +7,14 @@ import { acceptedPct, acceptedFromCurve, acceptedOf, fixedDipsMhz, isFixedDip, s
 // The investigation of a real finished Standard review (screen runs, then confirm runs, then a refine round). Numbers are the solver's.
 const snap = JSON.parse(fs.readFileSync(new URL("./data/real_investigation.json", import.meta.url)));
 
-test("screen against confirm: what screen predicted and what confirm measured, per round", () => {
+test("screen against confirm: what screen predicted and what the confirm run gave, per round", () => {
   const story = screenVsConfirm(snap);
   assert.equal(story.length, 2, "first attempt and refine round 1");
   const first = story[0];
   assert.equal(first.round, 0);
   const change = first.rows.find((r) => r.label === "With the change");
   assert.ok(change.screen < -10, "the screen predicted a pass");
-  assert.ok(change.confirm > -5, "confirm measured far less");
+  assert.ok(change.confirm > -5, "confirm gave far less");
   assert.ok(change.screen < change.confirm, "screen overstated");
   assert.equal(first.rows[0].label, "As built");
   assert.equal(story[1].round, 1);
@@ -81,7 +81,7 @@ test("same geometry is the part of the job hash before the first dash", () => {
 });
 
 test("a recheck's headline is the version change, and its own partial win rides inside it", () => {
-  const vc = { kind: "version_change", from_version: 1, to_version: 2, from: { band_worst_s11_db: -0.5 }, to: { band_worst_s11_db: -5.78 }, gain_db: 5.28, direction: "improved", held: true, partial_win: null };
+  const vc = { kind: "version_change", from_version: 1, to_version: 2, from: { band_worst_s11_db: -0.5 }, to: { band_worst_s11_db: -5.78 }, gain_db: 5.28, direction: "improved", consistent: true, same_solver_run: true, independent_check: false, held: null, partial_win: null };
   assert.equal(versionChangeOf({ headline: vc }).gain_db, 5.28);
   assert.equal(versionChangeOf({ headline: vc, version_change: vc }).to_version, 2);
   assert.equal(headlineOf({ headline: vc }), null, "no partial win inside");

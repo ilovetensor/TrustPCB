@@ -66,10 +66,10 @@ def test_a_severity_drop_is_an_improvement_and_a_rise_is_worse(env):
     assert out['counts']['improved'] == 1 and out['counts']['worse'] == 1
 
 
-def confirm_base(store, review, worst, mean_s11, power_worst, power_mean):
+def confirm_base(store, review, worst, mean_s11, power_worst, power_mean, **extra):
     m = {'as_built_band_worst_s11': worst, 'as_built_band_mean_s11': mean_s11, 'as_built_band_worst_accepted_power_pct': power_worst, 'as_built_band_mean_accepted_power_pct': power_mean}
     return store.add_evidence(review['id'], 'confirm', 'confirm_result', {'kind': 'simulated', 'quality': 'confirm', 'label': 'confirm base', 'trust': {'status': 'ok', 'reasons': []},
-                                                                       'measurements': {k: {'value': v, 'unit': 'dB' if 's11' in k else '%'} for k, v in m.items()}, 'metrics': {'basis': 'as_built'}})
+                                                                       'measurements': {k: {'value': v, 'unit': 'dB' if 's11' in k else '%'} for k, v in m.items()}, 'metrics': {'basis': 'as_built'}, **extra})
 
 
 def partial_win(store, review, predicted, parts):
@@ -99,19 +99,39 @@ def test_the_version_change_compares_the_as_built_result_with_the_previous_predi
     vc = change.version_change(env.store, new['id'], old['id'])
     assert (vc['from_version'], vc['to_version'], vc['gain_db'], vc['direction']) == (1, 2, 5.28, 'improved')
     assert vc['from']['accepted_power_worst_pct'] == 10.9 and vc['to']['accepted_power_worst_pct'] == 73.6 and vc['to']['accepted_power_mean_pct'] == 85.2
-    assert vc['prediction_from_previous']['band_worst_s11_db'] == -5.78 and vc['applied'] is True and vc['held'] is True and vc['difference_db'] == 0.0
+    assert vc['prediction_from_previous']['band_worst_s11_db'] == -5.78 and vc['applied'] is True and vc['difference_db'] == 0.0
+    assert vc['consistent'] is True and vc['held'] is None and vc['independent_check'] is False, 'no separate run is known, so the prediction is only consistent, never "held"'
     assert vc['target_met'] is False and vc['text'].startswith('Compared with version 1, the as-built worst S11 across the band improved from -0.5 dB to -5.78 dB, a gain of 5.28 dB.')
-    assert 'the prediction held' in vc['text'] and 'target of -10 dB is not met' in vc['text']
+    assert 'Consistent with the prediction: same solver run, recalculated with version 2\'s parts' in vc['text'] and 'target of -10 dB is not met' in vc['text']
+    assert 'measured' not in vc['text'].replace('not a lab measurement', '') and 'prediction held' not in vc['text']
     assert report.build_snapshot(env.store, new['id'], cause='review')['headline']['kind'] == 'version_change'
 
 
 def test_a_prediction_that_missed_by_more_than_1_db_did_not_hold_and_unapplied_parts_are_not_tested(env):
     old, new = recheck_pair(env, measured=-3.9)
     vc = change.version_change(env.store, new['id'], old['id'])
-    assert vc['held'] is False and vc['difference_db'] == 1.88 and 'did not hold' in vc['text']
+    assert vc['consistent'] is False and vc['held'] is None and vc['difference_db'] == 1.88 and 'Not consistent with the prediction' in vc['text'] and 'did not hold' not in vc['text']
     old, new = recheck_pair(env, new_parts=('not fitted', '2.2 nH'))
     vc = change.version_change(env.store, new['id'], old['id'])
-    assert vc['applied'] is False and vc['held'] is None and 'prediction was not tested' in vc['text']
+    assert vc['applied'] is False and vc['held'] is None and vc['consistent'] is None and 'prediction was not tested' in vc['text']
+
+
+def test_the_same_solver_output_is_consistent_and_only_a_separate_run_can_hold(env):
+    store = env.store
+    job = lambda scenario_hash: store.create_sim_job(scenario_hash, status='done')['id']
+    old, new = two_reviews(env)
+    confirm_base(store, old, -0.5, -0.53, 10.9, 11.6, job_id=job('abc'))
+    partial_win(store, old, -5.78, PARTS)
+    confirm_base(store, new, -5.78, -8.48, 73.6, 85.2, job_id=job('abc-1a2b3c4d'))            # the same geometry key, finalised again with its own parts
+    vc = change.version_change(store, new['id'], old['id'])
+    assert vc['same_solver_run'] is True and vc['independent_check'] is False and vc['consistent'] is True and vc['held'] is None
+    assert 'Consistent with the prediction: same solver run' in vc['text'] and 'prediction held' not in vc['text']
+    old2, new2 = two_reviews(env)
+    confirm_base(store, old2, -0.5, -0.53, 10.9, 11.6, job_id=job('abc'))
+    partial_win(store, old2, -5.78, PARTS)
+    confirm_base(store, new2, -5.3, -8.48, 73.6, 85.2, job_id=job('def-1a2b3c4d'))          # different geometry, its own confirm run
+    vc = change.version_change(store, new2['id'], old2['id'])
+    assert vc['same_solver_run'] is False and vc['independent_check'] is True and vc['held'] is True and 'so the prediction held' in vc['text'] and 'A separate confirm run' in vc['text']
 
 
 def test_no_version_change_without_a_confirmed_base_in_both_reviews(env):
@@ -140,6 +160,9 @@ def test_a_recheck_summary_must_lead_with_the_version_change(env):
     assert problem and 'version 1' in problem and vc['text'] in problem
     assert change.lead_problem(vc['text'] + ' The copper is the same.', vc) is None
     assert change.lead_problem('Anything at all.', None) is None
+    held = vc['text'].replace('Consistent with the prediction: same solver run', 'The prediction held: it was confirmed by the measured -5.78 dB')
+    problem = change.lead_problem(held, vc)
+    assert problem and '"held"' in problem and 'measured' in problem, 'the same solver run is neither a confirmation nor a measurement'
     allowed = change.quantities(vc)
     from trustpcb.review.number_check import check_text
     assert check_text(vc['text'], allowed) == []              # the sentence the server writes passes the number check

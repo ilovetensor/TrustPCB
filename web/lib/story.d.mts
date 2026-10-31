@@ -24,7 +24,7 @@ export interface VersionChange {
   from: VersionSide; to: VersionSide; gain_db: number; direction: "improved" | "worse" | "unchanged";
   accepted_power_gain_worst_pct?: number | null; accepted_power_gain_mean_pct?: number | null;
   prediction_from_previous: { source: string; parts: PartChange[]; ops?: unknown[]; parts_text: string; band_worst_s11_db: number; accepted_power_worst_pct?: number | null; accepted_power_mean_pct?: number | null; evidence?: string | null } | null;
-  applied: boolean | null; held: boolean | null; difference_db: number | null; hold_tolerance_db: number; target_db: number; target_met: boolean; text: string;
+  applied: boolean | null; same_solver_run?: boolean | null; independent_check?: boolean; consistent?: boolean | null; held: boolean | null; difference_db: number | null; hold_tolerance_db: number; target_db: number; target_met: boolean; text: string;
 }
 export function versionChangeOf(snapshot: any): VersionChange | null;
 export function changeByCode(snapshot: any): Record<string, { change: ChangeState; note: string | null; changes: string[] }>;

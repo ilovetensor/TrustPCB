@@ -84,6 +84,23 @@ class SimQueue:
                 n += 1
         return n
 
+    async def kill_orphans(self) -> int:
+        """Kill solver containers an earlier process left running (it was killed before it could stop them). Best effort: no Docker means nothing to do.
+
+        Call at start-up only. Only containers named with this app's prefix are touched.
+        """
+        if shutil.which(self.docker) is None and not Path(self.docker).is_file():
+            return 0
+        try:
+            listing = await asyncio.create_subprocess_exec(self.docker, "ps", "-q", "--filter", f"name={CONTAINER_PREFIX}", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            out, _ = await asyncio.wait_for(listing.communicate(), timeout=10)
+            ids = out.decode().split() if listing.returncode == 0 else []
+            for container in ids:
+                await self._kill(container)
+            return len(ids)
+        except (asyncio.TimeoutError, OSError):
+            return 0
+
     def cached_summary(self, scenario_hash: str) -> dict[str, Any] | None:
         d = self.store.scenario_dir(scenario_hash)
         res, summ = d / "result.json", d / "summary.json"
