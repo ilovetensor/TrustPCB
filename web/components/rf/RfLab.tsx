@@ -13,7 +13,7 @@ import { useAsync } from "../../lib/use-async";
 import { cssGradient, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
 import { reducedMotion, tabProps, tablistKeys, useNarrow, useReducedMotion } from "../../lib/hooks";
 import { Icon, Panel } from "../ui";
-import { SimStage, type SimView } from "./SimStage";
+import { planeInfo, SimStage, type FieldPlane, type SimView } from "./SimStage";
 import { SmithChart, TuningGraph, type CurveSpec } from "./charts";
 import { PartialWin } from "./PartialWin";
 import { ACCEPTED_LABEL, PowerBar } from "./PowerPair";
@@ -87,6 +87,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
 
   const [view, setView] = useState<SimView>("wave");
   const [mode, setMode] = useState<"2d" | "3d">("3d");
+  const [plane, setPlane] = useState<FieldPlane>("top");
   const [trace, setTrace] = useState<Trace>("both");
   const [marker, setMarker] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
@@ -168,13 +169,17 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   })();
   const loading = (view === "wave" && fields.data === undefined) || (view === "pulse" && pulse.data === undefined && needPulse) || (view === "current" && current.data === undefined && needCur) || (view === "pattern" && pattern.data === undefined && needPat);
   const unavailable = active && !canShow(active, view);
+  const pl = planeInfo(bundle?.board ?? ({ stackup: { layers: [] } } as never), view, fields.data, current.data, pulse.data);
+  const planeNote = pl.inside && pl.atMm != null && mode === "3d"
+    ? plane === "top" ? ` The solver sampled this at z = ${pl.atMm.toFixed(2)} mm, inside the board; it is drawn on the top face so the board does not hide it.` : ` Drawn at the solver's own plane, z = ${pl.atMm.toFixed(2)} mm, seen through the board.`
+    : "";
 
   const stage = (
     <div className="rf-stage">
       {bundle && active ? (
         <SimStage
           board={bundle.board} glbUrl={bundle.glbUrl} sceneInfo={bundle.scene} view={view} mode={mode} meta={meta}
-          fields={fields.data} current={current.data} pulse={pulse.data} pattern={pattern.data} frame={frame} paused={paused} calm={calm} insets={insets}
+          fields={fields.data} current={current.data} pulse={pulse.data} pattern={pattern.data} frame={frame} paused={paused} calm={calm} insets={insets} plane={plane}
         />
       ) : <div className="rf-loading idx">{bundle ? "No finished run yet" : "Loading the board"}</div>}
       {loading && <div className="rf-loading idx">Loading the {VIEWS.find((v) => v.key === view)!.why} data</div>}
@@ -208,7 +213,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
         <div className="rf-ramp-l num">
           {view === "wave" ? <><span>negative</span><span>0</span><span>positive</span></> : view === "pattern" ? <><span>{pattern.data ? `${(pattern.data.dmax_dbi - 10).toFixed(0)} dBi` : ""}</span><span>{pattern.data ? `${pattern.data.dmax_dbi.toFixed(1)} dBi max` : ""}</span></> : <><span>0</span><span>{view === "current" ? "99.5th pct" : "peak"}</span></>}
         </div>
-        <p className="dim">{freqNote || "Real openEMS output drawn on this version's board model."}</p>
+        <p className="dim">{freqNote || "Real openEMS output drawn on this version's board model."}{planeNote}</p>
         {view === "pattern" && pattern.data && <p className="dim">Peak {pattern.data.dmax_dbi.toFixed(1)} dBi at theta {pattern.data.dmax_theta_deg} deg, phi {pattern.data.dmax_phi_deg} deg (the bright dot). Radius covers the top 20 dB, colour the top 10 dB.</p>}
         {view === "current" && <p className="dim">Heat on the top copper. Sharp edges can exceed the scale.</p>}
       </div>
@@ -217,6 +222,12 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
           <button aria-pressed={mode === "3d" || view === "pattern"} onClick={() => setMode("3d")}><Icon name="cube" size={11} /> 3D</button>
           <button aria-pressed={mode === "2d" && view !== "pattern"} disabled={view === "pattern"} onClick={() => setMode("2d")}><Icon name="board" size={11} /> 2D</button>
         </div>
+        {pl.inside && pl.atMm != null && mode === "3d" && view !== "pattern" && (
+          <div className="seg" role="group" aria-label="Where the field is drawn">
+            <button aria-pressed={plane === "top"} onClick={() => setPlane("top")} title="Draw the field just above the board's top face">Top face</button>
+            <button aria-pressed={plane === "solver"} onClick={() => setPlane("solver")} title="Draw the field at the height the solver sampled it, seen through the board">Solver plane z {pl.atMm.toFixed(1)}</button>
+          </div>
+        )}
         <span className="idx rf-dashed" title="The dashed box is the region the solver modelled. The red ring is the port.">Dashed box: modelled region</span>
       </div>
     </Panel>

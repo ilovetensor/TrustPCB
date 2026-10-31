@@ -212,8 +212,7 @@ function BoardModelScene({
   board, glbUrl, explode, marks, index, selectedId, showMarks, pickedId, onPick, onReady,
 }: BoardSceneProps) {
   const gltf = useGLTF(glbUrl);
-  const refs = useMemo(() => new Set(board.footprints.map((f) => f.ref)), [board]);
-  const model: BoardModel = useMemo(() => buildBoardModel(gltf.scene.clone(true), refs), [gltf, refs]);
+  const model: BoardModel = useMemo(() => buildBoardModel(gltf.scene.clone(true), board), [gltf, board]);
   const groupRefs = useRef<Record<LayerGroupKey, THREE.Group | null>>({ components: null, topCu: null, substrate: null, botCu: null });
   const eased = useRef(explode);
   const readyFired = useRef(false);
