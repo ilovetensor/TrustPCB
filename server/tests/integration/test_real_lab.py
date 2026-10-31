@@ -219,3 +219,27 @@ async def test_datasheets_are_listed_and_read_page_by_page(lab, version):
     (folder / 'broken.pdf').write_bytes(b'not a pdf')
     with pytest.raises(LabUnavailable, match='could not be read'):
         await lab.read_datasheet(version_id='v-nrf', name='broken.pdf')
+
+
+def test_job_dir_finds_the_same_named_folder_when_the_data_folder_moved(store, tmp_path):
+    """A job row keeps an absolute folder. After the data folder is moved or copied that path lies outside it: the same-named folder inside is used."""
+    lab = RealLab(store, queue=SimQueue(store, docker='docker'))
+    name = 'ab12cd34ef56ab12cd34-5cf3ad05'
+    inside = store.scenario_dir(name)
+    (inside / 's11.json').write_text('{}')
+    old = tmp_path / 'old-data' / 'scenarios' / name
+    old.mkdir(parents=True)
+    (old / 's11.json').write_text('{}')
+    job = store.create_sim_job(name, job_dir=old, status='done')
+    assert lab.job_dir({'job_id': job['id']}) == inside.resolve()
+    assert lab.job_dir({'job_id': job['id'], 'scenario_hash': '0123456789abcdef'}) == inside.resolve()       # an evidence key that names no folder is ignored
+
+
+def test_job_dir_is_none_when_no_same_named_folder_exists_inside_the_data_folder(store, tmp_path):
+    lab = RealLab(store, queue=SimQueue(store, docker='docker'))
+    elsewhere = tmp_path / 'old-data' / 'scenarios' / 'ffeeddccbbaa99887766'
+    elsewhere.mkdir(parents=True)
+    (elsewhere / 's11.json').write_text('{}')
+    job = store.create_sim_job('ffeeddccbbaa99887766', job_dir=elsewhere, status='done')
+    assert lab.job_dir({'job_id': job['id']}) is None
+    assert lab.job_dir({'job_id': 'no-such-job'}) is None

@@ -12,6 +12,7 @@ import base64
 import html
 import json
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime, timezone
@@ -288,6 +289,38 @@ def sev_pill(sev: str) -> str:
 
 def class_pill(cls: str) -> str:
     return pill(f'cls-{cls}', CLASS_LABEL.get(cls, cls))
+
+
+METRIC_NAMES = {
+    'resonance': 'Deepest dip', 's11_min': 'Lowest S11', 's11_band_worst': 'Worst S11 in the band', 's11_band_mean': 'Mean S11 in the band',
+    'band_worst_accepted_power_pct': 'Accepted power, worst point of the band', 'band_mean_accepted_power_pct': 'Accepted power, mean across the band',
+    'antenna_only_band_worst_accepted_power_pct': 'Accepted power, worst point of the band, antenna alone',
+    'antenna_only_band_mean_accepted_power_pct': 'Accepted power, mean across the band, antenna alone',
+    'as_built_band_worst_accepted_power_pct': 'Accepted power, worst point of the band, as built',
+    'as_built_band_mean_accepted_power_pct': 'Accepted power, mean across the band, as built',
+    'antenna_only_band_worst_s11': 'Worst S11 in the band, antenna alone', 'antenna_only_band_mean_s11': 'Mean S11 in the band, antenna alone',
+    'as_built_band_worst_s11': 'Worst S11 in the band, as built', 'as_built_band_mean_s11': 'Mean S11 in the band, as built',
+    'band_centre_resistance': 'Resistance at the band centre', 'band_centre_reactance': 'Reactance at the band centre', 'band_centre_frequency': 'Band centre frequency',
+    'bandwidth': 'Bandwidth below -10 dB', 'peak_directivity': 'Peak directivity', 'radiation_efficiency': 'Radiation efficiency',
+    'input_resistance': 'Input resistance', 'input_reactance': 'Input reactance', 'first_series_resonance': 'First series resonance',
+    'delta_s11': 'Change in lowest S11', 'delta_band_mean': 'Change in mean S11 in the band',
+    'delta_band_worst_accepted_power': 'Change in accepted power, worst point of the band', 'delta_band_mean_accepted_power': 'Change in accepted power, mean across the band',
+    'delta_first_series_resonance': 'Change in first series resonance', 'delta_resonance': 'Change in deepest dip', 'delta_bandwidth': 'Change in bandwidth',
+    'delta_peak_directivity': 'Change in peak directivity',
+}
+
+
+def metric_name(key: str) -> str:
+    """The name a reader sees for a stored measurement key. Only the display changes; an unknown key is shown as plain words."""
+    key = str(key)
+    if key in METRIC_NAMES:
+        return METRIC_NAMES[key]
+    dip = re.fullmatch(r's11_dip_(\d+)(_depth)?', key)
+    if dip:
+        return f'S11 dip {dip.group(1)} {"depth" if dip.group(2) else "frequency"}'
+    words = key.replace('_', ' ').strip()
+    words = re.sub(r'\bs11\b', 'S11', words, flags=re.I)
+    return (words[:1].upper() + words[1:]) if words else key
 
 
 def measurement_text(item: dict) -> str:
@@ -582,13 +615,13 @@ def render_rf(rf: dict, images: dict | None = None) -> str:
         parts.append(f'<div class="card"><h3>{esc(title)} ({esc(item["code"])})</h3>')
         if item.get('curve'):
             parts.append(curve_svg(item['curve'], rf.get('band_hz'), target))
-        parts.append('<table class="metrics">' + ''.join(f'<tr><td>{esc(k.replace("_", " "))}</td><td class="n">{esc(measurement_text(v))}</td></tr>' for k, v in (item.get('measurements') or {}).items()) + '</table></div>')
+        parts.append('<table class="metrics">' + ''.join(f'<tr><td>{esc(metric_name(k))}</td><td class="n">{esc(measurement_text(v))}</td></tr>' for k, v in (item.get('measurements') or {}).items()) + '</table></div>')
     if rf.get('meets_target') is not None:
         parts.append(f'<p>Target ({esc(target)} dB across the band): {pill("cls-measured" if rf["meets_target"] else "sev-high", "met" if rf["meets_target"] else "not met")}</p>')
     if rf.get('screen_runs'):
         parts.append('<p class="muted">Only screen runs exist. They compare changes with the base and give no absolute result.</p>')
     for key, title, caption in (('rf_field', 'Field still', 'Electric field in the board plane at the design frequency, from the confirm run.'),
-                                ('rf_pattern', 'Radiation pattern', 'Directivity from the confirm run. A simulation, not a chamber measurement.')):
+                                ('rf_pattern', 'Radiation pattern', pattern_caption(images.get('rf_pattern_freq_hz'), rf.get('band_hz')))):
         if images.get(key):
             parts.append(f'<div class="card"><h3>{esc(title)}</h3>{images[key]}<p class="muted small">{esc(caption)}{" " + esc(images[key + "_note"]) if images.get(key + "_note") else ""}</p></div>')
     missing = images.get('rf_missing') or {}
@@ -641,7 +674,7 @@ def render_finding(f: dict, snap: dict, image: str | None) -> str:
                 continue
             values = e['values']
             label = values.get('title') or values.get('label') or e['type']
-            numbers = ', '.join(f'{k.replace("_", " ")} {measurement_text(v)}' for k, v in (values.get('measurements') or {}).items() if isinstance(v, dict))
+            numbers = '; '.join(f'{metric_name(k)}: {measurement_text(v)}' for k, v in (values.get('measurements') or {}).items() if isinstance(v, dict))
             tag = f' [{values.get("quality")}, trust {(values.get("trust") or {}).get("status")}]' if values.get('kind') == 'simulated' else ''
             out.append(f'<li><code>{esc(code)}</code> {esc(label)}{esc(tag)}{": " + esc(numbers) if numbers else ""}</li>')
         if len(f['evidence']) > EVIDENCE_SHOWN:
@@ -795,6 +828,29 @@ def _still_sources(rows: list[dict]) -> list[tuple[dict, dict | None]]:
     return [(r, w) for r, w in out if not (r['id'] in seen or seen.add(r['id']))]
 
 
+def _pattern_freq_hz(lab, run: dict) -> float | None:
+    """The frequency the stored far field was computed at, read from the run's pattern.json (None when it cannot be read)."""
+    try:
+        job = lab.job_dir(run)
+        value = json.loads((job / 'pattern.json').read_text()).get('f_hz') if job else None
+        return float(value) if value else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def pattern_caption(freq_hz: float | None, band_hz: list | None) -> str:
+    """What the radiation-pattern still says about its frequency: inside the band, or plainly at the dip and outside it."""
+    base = 'Directivity from the confirm run. A simulation, not a chamber measurement.'
+    if not freq_hz:
+        return base
+    ghz = f'{freq_hz / 1e9:.3f} GHz'
+    if band_hz and len(band_hz) == 2 and band_hz[0] <= freq_hz <= band_hz[1]:
+        return f'{base} Computed at {ghz}, inside the band.'
+    band = f' ({band_hz[0] / 1e9:.5g} to {band_hz[1] / 1e9:.5g} GHz)' if band_hz and len(band_hz) == 2 else ''
+    return (f'{base} The solver computes the far field only at the deepest S11 dip, {ghz}, which is outside the board\'s band{band}. '
+            'This pattern is therefore not the pattern in the band.') if band_hz and len(band_hz) == 2 else f'{base} Computed at the deepest S11 dip, {ghz}, not necessarily at the design frequency.'
+
+
 async def rf_stills(store, review: dict, snap: dict) -> dict:
     """Field and radiation-pattern stills from the best confirm run, as inline images. The Lab supplies the PNG bytes
     (`view_result` kinds `field` and `pattern`); anything it cannot draw is reported in `rf_missing`, never invented."""
@@ -819,6 +875,10 @@ async def rf_stills(store, review: dict, snap: dict) -> dict:
                     data = image.get('data_b64') or (base64.b64encode(image['png']).decode() if image.get('png') else None)
                     if not data:
                         raise ValueError('the lab returned no image')
+                    if kind == 'pattern':
+                        freq = _pattern_freq_hz(lab, run)
+                        if freq:
+                            out['rf_pattern_freq_hz'] = freq
                     out['rf_' + kind] = f'<img alt="{kind} still" class="still" src="data:{image.get("mime", "image/png")};base64,{data}">'
                     if stands_in_for is not None:
                         out['rf_' + kind + '_note'] = f'Drawn from confirm run {row["values"].get("ref") or row["code"]}, the solver run the winning matching change was calculated on.'
