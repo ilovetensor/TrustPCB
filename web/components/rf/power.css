@@ -4,12 +4,14 @@
 .pw-head { display: flex; flex-direction: column; gap: 1px; }
 .pw-sub { color: var(--paper-3); text-align: left; }
 .pw-line { display: flex; align-items: center; gap: 14px; }
-.pw-track { position: relative; flex: 1; height: 14px; border-radius: 999px; background: var(--panel-3); overflow: hidden; }
-.pw.lg .pw-track { height: 22px; }
-.pw.sm .pw-track { height: 8px; }
-.pw-track b { position: absolute; left: 0; top: 0; bottom: 0; display: block; border-radius: 999px; transition: width 1.15s var(--ease); }
-.pw-row.before .pw-track b { background: var(--paper-3); }
-.pw-row.now .pw-track b { background: var(--paper); }
+.pw-track { position: relative; flex: 1; height: 22px; border-radius: 4px; border: 1px solid var(--hair-2); background: var(--hair-3); overflow: hidden; }
+.pw.lg .pw-track { height: 34px; }
+.pw.sm .pw-track { height: 12px; border-radius: 3px; }
+/* quarter ticks at 25, 50 and 75 percent, drawn over the fill */
+.pw-track::after { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; mix-blend-mode: difference; background: linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)) 25% 0 / 1px 100% no-repeat, linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)) 50% 0 / 1px 100% no-repeat, linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)) 75% 0 / 1px 100% no-repeat; }
+.pw-track b { position: absolute; left: 0; top: 0; bottom: 0; display: block; transition: width 1.15s var(--ease); }
+.pw-row.before .pw-track b { background: repeating-linear-gradient(135deg, var(--paper-3) 0 3px, transparent 3px 6px); border-right: 2px solid var(--paper-3); }
+.pw-row.now .pw-track b { background: var(--paper); border-right: 2px solid var(--signal); }
 .pw-num { min-width: 4.4ch; text-align: right; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--paper); }
 .pw.lg .pw-num { font-size: 40px; min-width: 3.6ch; }
 .pw.sm .pw-num { font-size: 13px; font-weight: 500; }
