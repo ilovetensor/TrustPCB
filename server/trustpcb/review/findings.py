@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import claims, lint, verdict
+from . import claims, lint, simtrust, verdict
 from . import evidence as ev
 from .fingerprint import TargetIndex, fingerprint, rule_of
 from .lint import Problem
@@ -189,7 +189,14 @@ def claim_problems(texts: dict[str, str], *, scope_rows: list[dict], universe: l
     """Everything the text claims that the cited evidence or the confirm verdict does not support (see claims.py and verdict.py)."""
     rounds = verdict.rounds_from_rows(universe)
     found = verdict.problems(texts, rounds, target_db=target_db, rows=universe)
+    if require_attached:       # a finding that stands on a board simulation (power, thermal, signal) is held to that simulation's own confirm verdict
+        for sim_kind in sorted({(r.get('values') or {}).get('sim_kind') for r in scope_rows if (r.get('values') or {}).get('sim_kind')}):
+            sim_rounds = verdict.rounds_from_rows(universe, sim_kind=sim_kind)
+            if sim_rounds:
+                found += verdict.problems(texts, sim_rounds, target_db=None, rows=universe)
     found += claims.check(texts, scope_rows=scope_rows, universe=universe, allowed=allowed, board=board, require_attached=require_attached)
+    found += simtrust.stated_as_fact(texts, scope_rows=scope_rows, allowed=allowed)
+    found += simtrust.signal_problems(texts, universe=universe)       # a number from a run that used a default input is conditional, never a fact
     if require_attached:       # a finding: wording the evidence cannot show (refused once, see lint.py). A summary is judged by its own gate.
         found += lint.problems(texts, board=board, rows=universe, codes=[r.get('code') for r in scope_rows if r.get('code')])
     return found
@@ -358,10 +365,21 @@ class FindingEngine:
                 raise FindingRejected('trust_failed', f'Evidence {row["code"]} failed its trust checks and cannot support a finding.', evidence=row['code'])
         # Once confirm results exist, a finding that stands on simulation must stand on them: confirm numbers, not screen numbers.
         sim_rows = [r for r in rows if (r['values'] or {}).get('kind') == 'simulated']
-        if sim_rows and not any((r['values'] or {}).get('quality') == 'confirm' for r in sim_rows) and any(
+        rf_rows = [r for r in sim_rows if not (r['values'] or {}).get('sim_kind')]
+        if rf_rows and not any((r['values'] or {}).get('quality') == 'confirm' for r in rf_rows) and any(
                 r['type'] == ev.CONFIRM and ((r['values'] or {}).get('trust') or {}).get('status') == 'ok' for r in self.evidence_rows()):
             raise FindingRejected('confirm_required', 'Confirm-quality results exist for this review. A finding about the antenna must cite and quote them (the confirm evidence codes from confirm_result), not screen runs alone.')
+        for kind in sorted({(r['values'] or {}).get('sim_kind') for r in sim_rows if (r['values'] or {}).get('sim_kind')}):
+            confirmed = [r for r in self.evidence_rows() if r['type'] == ev.BOARD_SIM and (r['values'] or {}).get('sim_kind') == kind and (r['values'] or {}).get('quality') == 'confirm'
+                         and ((r['values'] or {}).get('trust') or {}).get('status') == 'ok' and not (r['values'] or {}).get('comparison')]
+            cited = [r for r in sim_rows if (r['values'] or {}).get('sim_kind') == kind]
+            if confirmed and not any((r['values'] or {}).get('quality') == 'confirm' for r in cited):
+                raise FindingRejected('confirm_required', f'Confirm-quality {kind} results exist for this review ({", ".join(r["code"] for r in confirmed[:3])}). A finding about {kind} must cite and quote them, not screen runs alone.')
+        rows = simtrust.attach_assumption_rows(self.evidence_rows(), rows)       # the inputs travel with the numbers
         class_ = ev.derive_class(rows)
+        capped = simtrust.severity_problem(merged['severity'], rows)
+        if capped:
+            raise FindingRejected(capped[0], capped[1])
         if class_ == 'opinion' and merged['severity'] == 'critical':
             raise FindingRejected('severity_not_supported', 'Engineering opinion cannot be critical. Choose high or lower, or link evidence from a tool.')
         # anchors -------------------------------------------------------------------------
@@ -465,6 +483,10 @@ class FindingEngine:
             not_tested.append(caveat)
             notes.append(caveat)
         assumption_names = list(args.get('assumptions') if args.get('assumptions') is not None else (existing or {}).get('assumptions') or [])
+        with_defaults = simtrust.assumption_lines(rows, assumption_names)         # every default input of a cited simulation is listed, by code
+        if with_defaults != assumption_names:
+            notes.append('The server listed the default inputs of the cited simulation under assumptions: ' + '; '.join(with_defaults[len(assumption_names):])[:300])
+            assumption_names = with_defaults
         reason = str(args.get('severity_reason') or '').strip()
         if reason and len(reason) >= MIN_SEVERITY_REASON and candidate_ids:
             hints = [str(known[c].get('severity_hint')) for c in candidate_ids if known.get(c) and known[c].get('severity_hint') in SEVERITIES]

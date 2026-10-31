@@ -4,10 +4,10 @@ export interface TrailEntry { id: string; kind: string; text: string; seq: numbe
 export interface Suspect { id: string; code?: string; title: string; status: string; conclusion?: string; /** refine round that added this suspect */ round?: number }
 export interface Investigation { id: string; code?: string; question: string; status: string; outcome?: any; goodEnough?: boolean; suspects: Suspect[] }
 export interface Measurement { value: number; unit: string }
-export interface Experiment { id: string; label: string; kind: string; quality?: string; suspect?: string; hash?: string; solveS?: number; measurements: Record<string, Measurement>; delta: Record<string, number> | null; curve: any; trust: string; ok: boolean; meetsTarget?: boolean; evidence?: string }
-export interface Sim { id: string; label: string; kind: string; quality?: string; suspect?: string; hash?: string; change: string | null; status: string; pct: number; step: string; measurements?: Record<string, Measurement>; curve?: any }
+export interface Experiment { id: string; label: string; kind: string; simKind?: "power" | "thermal" | "signal" | null; quality?: string; suspect?: string; hash?: string; solveS?: number; measurements: Record<string, Measurement>; delta: Record<string, number> | null; curve: any; trust: string; ok: boolean; meetsTarget?: boolean; evidence?: string }
+export interface Sim { id: string; label: string; kind: string; /** power, thermal or signal for a board simulation, else null */ simKind?: "power" | "thermal" | "signal" | null; quality?: string; suspect?: string; hash?: string; change: string | null; status: string; pct: number; step: string; /** set while the job waits for the shared solver */ waiting?: { position: number | null; ahead: number | null } | null; measurements?: Record<string, Measurement>; curve?: any }
 export interface Quota { used: number; limit: number; left?: number }
-export interface Budget { phase?: number; depth?: string; wall_s?: Quota; solver_s?: Quota; turns?: Quota; images?: Quota; investigations?: Quota; confirm_runs?: Quota; input_tokens?: Quota; output_tokens?: Quota; [k: string]: any }
+export interface Budget { phase?: number; depth?: string; wall_s?: Quota; solver_s?: Quota; turns?: Quota; images?: Quota; investigations?: Quota; confirm_runs?: Quota; input_tokens?: Quota; output_tokens?: Quota; /** time spent waiting for the solver behind other reviews: not charged to the time limit */ solver_wait_s?: { used: number; cap: number; waiting: boolean }; [k: string]: any }
 export interface Brief { purpose: string; part_roles?: Record<string, string>; risks?: { text: string; targets?: string[] }[]; priorities?: string[]; unknowns?: string[]; wireless?: any; roles?: Record<string, string[]>; zones: Record<string, string[]> }
 export interface Proposal { request_id: string | null; what: string; why: string; eta_s: number; plan?: any; limits?: any; status: "pending" | "approved" | "declined" }
 export interface PendingRequest { request_id: string; kind: "test" | "permission" | "question"; payload: Record<string, any>; status: "pending" | "approved" | "declined" }
@@ -15,7 +15,7 @@ export interface FollowupMessage { id: string; role: "user" | "agent"; text: str
 export interface FollowupState { level: string | null; selected: string[]; messages: FollowupMessage[]; proposal: Proposal | null; whatif: any; running: boolean; /** turn whose reply end_followup has closed */ endedTurn: string | null }
 export interface ReviewState {
   mode: "review" | "thread"; status: "idle" | "running" | "complete" | "failed" | "canceled"; endState: string | null; failure: string | null; phase: number; seen: number;
-  budget: Budget | null; /** ms timestamp of the last budget event */ budgetAt: number | null; trail: TrailEntry[]; findings: Record<string, Finding>; findingOrder: string[]; marks: Mark[]; brief: Brief | null;
+  budget: Budget | null; /** ms timestamp of the last budget event */ budgetAt: number | null; /** waiting for a free review slot: its place in the line; null once it works */ queue: { position: number | null; ahead: number | null; working: number | null; limit: number | null; message: string } | null; trail: TrailEntry[]; findings: Record<string, Finding>; findingOrder: string[]; marks: Mark[]; brief: Brief | null;
   refine: { round: number; rounds: number | null; investigation: string | null } | null;
   cleared: { id: string; rule: string | null; count: number; reason: string }[];
   skipped: { phase: number; name: string; reason: string }[];

@@ -5,6 +5,7 @@ const simFile = "(?:(?:s11|s11_as_built|zin|pattern|field|pulse|current|result|s
 const routes = [
   ["GET", /^health$/],
   ["GET", /^bootstrap$/],
+  ["GET", /^runs$/],
   ["GET", /^projects$/],
   ["POST", /^projects$/],
   ["GET", new RegExp(`^projects/${ids}$`)],
@@ -14,15 +15,22 @@ const routes = [
   ["GET", new RegExp(`^reviews/${ids}$`)],
   ["GET", new RegExp(`^reviews/${ids}/(stream|events|findings|assumptions|report|sims)$`)],
   ["GET", new RegExp(`^sim/${ids}/files/${simFile}$`)],
+  // power, heat and signal runs: the run itself, and the raster of one of its overlays
+  ["GET", new RegExp(`^reviews/${ids}/sims/${ids}$`)],
+  ["GET", new RegExp(`^reviews/${ids}/sims/${ids}/overlay/${ids}(?:\\.${ids})*$`)],     // an overlay id may carry a layer name such as vdrop_F.Cu, never ".."
   ["GET", new RegExp(`^reviews/${ids}/report/revisions$`)],
   ["GET", new RegExp(`^reviews/${ids}/report/${ids}\\.(html|pdf|json)$`)],
-  ["POST", new RegExp(`^reviews/${ids}/(cancel|threads)$`)],
+  ["POST", new RegExp(`^reviews/${ids}/(cancel|threads|restart)$`)],
   ["POST", new RegExp(`^threads/${ids}/(messages|cancel)$`)],
   ["GET", new RegExp(`^threads/${ids}/(stream|events)$`)],
   ["POST", new RegExp(`^requests/${ids}/respond$`)],
   ["GET", new RegExp(`^findings/${ids}/history$`)],
   ["PATCH", new RegExp(`^findings/${ids}$`)],
+  ["GET", /^settings\/keys$/],
   ["GET", /^compare$/],
+  ["GET", /^settings\/keys$/],
+  ["PUT", /^settings\/keys\/[A-Z_]+$/],
+  ["DELETE", /^settings\/keys\/[A-Z_]+$/],
   ["GET", new RegExp(`^artifacts/${ids}$`)],
 ];
 export function allowedRoute(method, path) {

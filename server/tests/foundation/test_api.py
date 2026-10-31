@@ -89,7 +89,7 @@ def store_of():
 def test_service_functions_are_called_with_the_documented_arguments(client, store_of, fakes):
     calls = {}
 
-    def start_review(*, store, manager, version_id, goal, depth):
+    def start_review(*, store, manager, version_id, goal, depth, extent=None):
         calls['review'] = (version_id, goal, depth)
         return {'review_id': 'r1'}
 
@@ -351,7 +351,7 @@ def test_start_cancel_and_respond_through_the_api(client, store_of, fakes):
         {'text': 'begin'}, {'interact': 'test', 'payload': {'title': 'Run?'}},
         {'if_answer': {'allow': True}, 'then': [{'text': 'approved'}, {'sleep': 30}], 'else': [{'text': 'declined'}]}])
 
-    async def start_review(*, store, manager, version_id, goal, depth):
+    async def start_review(*, store, manager, version_id, goal, depth, extent=None):
         review = store.create_review(version_id, goal=goal, depth=depth)
         from trustpcb.runners.base import RunRequest
 
@@ -376,7 +376,10 @@ def test_start_cancel_and_respond_through_the_api(client, store_of, fakes):
 
     asked = wait_for('test')
     second = client.post(f"/api/versions/{version['id']}/reviews", json={})
-    assert second.status_code == 409  # one run at a time per project
+    assert second.status_code == 200  # a second review is not blocked by the first: runs belong to their own chat
+    second_chat = store.get_review(second.json()['review_id'])['chat_id']
+    assert client.post(f"/api/reviews/{second.json()['review_id']}/cancel").json() == {'status': 'canceled'}
+    assert [e['type'] for e in store.events(second_chat)][-1] == 'canceled'
     assert client.post(f"/api/requests/{asked['payload']['request_id']}/respond", json={}).status_code == 400
     assert client.post(f"/api/requests/{asked['payload']['request_id']}/respond", json={'allow': True}).json() == {'status': 'received'}
     wait_for('request_resolved')

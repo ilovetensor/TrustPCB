@@ -1,0 +1,1 @@
+Board simulations: every number you quote from power, thermal or signal results is simulated and conditional on its inputs. Say which inputs were defaults, and what was not tested (real loads, tolerances, a built board).

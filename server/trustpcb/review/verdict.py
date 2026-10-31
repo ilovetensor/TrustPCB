@@ -43,11 +43,15 @@ def meets_target(confirmation: dict) -> bool:
     return bool(confirmation.get('meets_target') or free.get('meets_target') or (confirmation.get('best') or {}).get('meets_target'))
 
 
-def rounds_from_rows(rows: list[dict]) -> list[dict]:
-    """The confirm comparisons of a review, oldest first: [{evidence, refine, outcome, hold, held, meets_target, ...}]."""
+def rounds_from_rows(rows: list[dict], sim_kind: str | None = None) -> list[dict]:
+    """The confirm comparisons of a review, oldest first: [{evidence, refine, outcome, hold, held, meets_target, ...}].
+
+    The antenna's by default; `sim_kind` (power, thermal, signal) asks for the comparisons of that board simulation instead."""
     out = []
     for row in rows or []:
         values = row.get('values') or {}
+        if values.get('sim_kind') != sim_kind:
+            continue
         confirmation = values.get('confirmation')
         if not isinstance(confirmation, dict) or not confirmation.get('outcome') or (values.get('trust') or {}).get('status') != 'ok':
             continue

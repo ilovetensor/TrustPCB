@@ -73,7 +73,7 @@ async def test_request_id_is_required(manager, seeded):
         await manager.start('missing-chat', 'r', lambda ctx: None)
 
 
-async def test_one_run_per_project_across_chats(store, manager, seeded):
+async def test_one_run_per_chat_and_other_chats_run_side_by_side(store, manager, seeded):
     _, _, review = seeded
     thread = store.create_thread(review['id'])
     release = asyncio.Event()
@@ -83,11 +83,14 @@ async def test_one_run_per_project_across_chats(store, manager, seeded):
 
     await manager.start(review['chat_id'], 'a', work)
     with pytest.raises(SessionConflict):
-        await manager.start(thread['chat_id'], 'b', work)
+        await manager.start(review['chat_id'], 'a2', work)          # the same chat is busy
+    await manager.start(thread['chat_id'], 'b', work)               # another chat of the same project is not blocked by it
+    assert manager.active_for_chat(review['chat_id']) and manager.active_for_chat(thread['chat_id']) and manager.active_for_project(review['project_id'])
     release.set()
     await finished(store, review['chat_id'])
-    await manager.start(thread['chat_id'], 'b', work)  # the lock was released before the terminal event
     await finished(store, thread['chat_id'])
+    await manager.start(review['chat_id'], 'c', work)  # the lock was released before the terminal event
+    await finished(store, review['chat_id'])
 
 
 async def test_failure_is_reported_and_releases_the_project(store, manager, seeded):

@@ -7,6 +7,7 @@ import { tabProps, tablistKeys } from "../../lib/hooks";
 import { SevGlyph } from "../ui";
 import { Meter } from "../ui";
 import type { StoryRound, StoryTest } from "../../lib/story.mjs";
+import { AgentMark } from "../ui/AgentMark";
 import { InvestigationBoard } from "./InvestigationBoard";
 
 type Filter = "all" | "board" | "thoughts" | "tests" | "results";
@@ -15,7 +16,7 @@ const STATUS: Record<string, string> = { open: "Open", pending: "Queued", testin
 const FILTERS: [Filter, string][] = [["board", "Summary"], ["all", "Everything"], ["thoughts", "Notes"], ["tests", "Tests"], ["results", "Results"]];
 const toolName = (t?: string) => (t ?? "").replace(/_/g, " ");
 
-export function Trail({ state, onSelectFinding, story = [], tests = [] }: { state: ReviewState; onSelectFinding: (id: string) => void; story?: StoryRound[]; tests?: StoryTest[] }) {
+export function Trail({ state, runner, onSelectFinding, story = [], tests = [] }: { state: ReviewState; /** the runner that wrote this review */ runner?: string | null; onSelectFinding: (id: string) => void; story?: StoryRound[]; tests?: StoryTest[] }) {
   const [filter, setFilter] = useState<Filter>("all");
   // a finished review opens on the board: it is the story, the log is the detail
   const opened = useRef(false);
@@ -43,12 +44,12 @@ export function Trail({ state, onSelectFinding, story = [], tests = [] }: { stat
         </div>
       </div>
       <div className="trail-scroll" ref={scroller}>
-        {filter === "board" && <InvestigationBoard state={state} story={story} tests={tests} />}
+        {filter === "board" && <InvestigationBoard state={state} runner={runner} story={story} tests={tests} />}
         {filter !== "board" && items.length === 0 && (
           <p className="empty">The investigation trail fills in as the agent works. Each thought, test and result lands here in order.</p>
         )}
         <ol className="trail-list">
-          {items.map((e) => (<TrailRow key={e.id} e={e} state={state} onSelectFinding={onSelectFinding} />))}
+          {items.map((e) => (<TrailRow key={e.id} e={e} state={state} runner={runner} onSelectFinding={onSelectFinding} />))}
         </ol>
       </div>
     </div>
@@ -66,7 +67,7 @@ function inlineMd(text: string) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => (/^\*\*[^*]+\*\*$/.test(part) ? <b key={i}>{part.slice(2, -2)}</b> : part));
 }
 
-function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewState; onSelectFinding: (id: string) => void }) {
+function TrailRow({ e, state, runner, onSelectFinding }: { e: TrailEntry; state: ReviewState; runner?: string | null; onSelectFinding: (id: string) => void }) {
   if (e.kind === "phase")
     return (
       <li className="tr tr-phase">
@@ -75,7 +76,7 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
       </li>
     );
   if (e.kind === "thought")
-    return (<li className="tr tr-thought"><p style={{ whiteSpace: "pre-wrap" }}>{inlineMd(e.text)}</p></li>);
+    return (<li className="tr tr-thought"><AgentMark runner={runner} kind="wrote" /><p style={{ whiteSpace: "pre-wrap" }}>{inlineMd(e.text)}</p></li>);
   if (e.kind === "tool" && e.state === "error")
     return (
       <li className="tr tr-tool">
@@ -135,7 +136,7 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
     );
   }
   if (e.kind === "suspect")
-    return (<li className="tr tr-thought dim2"><p><span className="stamp">{STATUS[e.status ?? ""] ?? (e.status ?? "").replace(/_/g, " ")}</span> {e.text}{e.detail ? `. ${e.detail}` : ""}</p></li>);
+    return (<li className="tr tr-thought dim2"><AgentMark runner={runner} kind="wrote" /><p><span className="stamp">{STATUS[e.status ?? ""] ?? (e.status ?? "").replace(/_/g, " ")}</span> {e.text}{e.detail ? `. ${e.detail}` : ""}</p></li>);
   return (
     <li className="tr tr-res2"><span className="idx">Result</span><b>{e.text}</b>{e.detail && <p>{e.detail}</p>}</li>
   );

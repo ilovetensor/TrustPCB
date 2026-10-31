@@ -8,6 +8,7 @@ import type { Severity } from "../../lib/types";
 import { Icon, Panel, SevBar, TopBar } from "../ui";
 import { useAppEnv } from "../../lib/demo";
 import { PowerBar } from "../rf/PowerPair";
+import { RunsList } from "../workspace/RunsList";
 
 const total = (c: Record<Severity, number>) => c.critical + c.high + c.medium + c.low + c.info;
 const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Agent stopped", queued: "Queued", failed: "Failed", canceled: "Stopped", interrupted: "Interrupted", no_review: "No review yet" };
@@ -54,6 +55,8 @@ export function Project({ id }: { id: string }) {
           {pair && <Link className="btn" href={`/compare?from=${pair[0].id}&to=${pair[1].id}`}><Icon name="compare" size={14} /> Compare versions</Link>}
           {!demo && <Link className="btn primary" href={`/upload?project=${project.id}`}><Icon name="upload" size={14} /> Upload a new version</Link>}
         </div>
+
+        <div className="pg-runs"><RunsList project={id} heading="Running in this project" /></div>
 
         <section>
           <h2 className="pg-h2">Timeline</h2>

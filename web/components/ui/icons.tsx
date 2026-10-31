@@ -37,6 +37,12 @@ const P: Record<string, string> = {
   gauge: "M2.5 11.5a5.5 5.5 0 1111 0M8 11.5 10.5 7",
   folder: "M2 4a1 1 0 011-1h3l1.5 2H13a1 1 0 011 1v6a1 1 0 01-1 1H3a1 1 0 01-1-1z",
   info: "M8 2a6 6 0 100 12A6 6 0 008 2zM8 7.5V11M8 5v.5",
+  key: "M10.5 2.5a3 3 0 100 6 3 3 0 000-6zM8.4 6.6 2.5 12.5v1.5h2v-1.2h1.3V11.5h1.2",
+  sliders: "M2 4.5h6M11 4.5h3M8 3v3M2 11.5h3M8 11.5h6M5 10v3",
+  trash: "M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8.5h6.6l.7-8.5M6.7 7v4M9.3 7v4",
+  lock: "M4 7.5h8v6H4zM5.5 7.5V5.5a2.5 2.5 0 015 0v2",
+  flame: "M8 1.5c.4 2.4 3.6 3.6 3.6 7.2A3.6 3.6 0 018 14.5a3.6 3.6 0 01-3.6-3.6c0-1.6.9-2.6 1.7-3.4.1 1 .5 1.7 1.2 2.1C7 7.3 7.4 4 8 1.5z",
+  pulse: "M1.5 8h3l1.7-4.5 3 9L11 8h3.5",
 };
 
 export function Icon({ name, size = 16, ...rest }: { name: keyof typeof P | string; size?: number } & Omit<SVGProps<SVGSVGElement>, "name">) {

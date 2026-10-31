@@ -30,7 +30,7 @@ TERMINAL_TURN_STATES = ('completed', 'failed', 'canceled', 'interrupted')
 JSON_COLUMNS = {
     'versions': ('stackup', 'detection'),
     'artifacts': ('meta',),
-    'reviews': ('profile', 'goal', 'budget', 'summary'),
+    'reviews': ('profile', 'goal', 'budget', 'summary', 'extent'),
     'findings': ('evidence_ids', 'marks', 'assumptions', 'not_tested'),
     'evidence': ('values', 'artifact_ids', 'assumption_ids'),
     'candidates': ('data',),
@@ -50,7 +50,7 @@ JSON_COLUMNS = {
 UPDATABLE = {
     'versions': {'label', 'upload_hash', 'stackup', 'detection', 'status', 'error'},
     'chats': {'title', 'session_id', 'status'},
-    'reviews': {'profile', 'goal', 'depth', 'phase', 'budget', 'end_state', 'summary', 'status'},
+    'reviews': {'profile', 'goal', 'depth', 'phase', 'budget', 'end_state', 'summary', 'status', 'extent'},
     'findings': {'title', 'severity', 'class', 'status', 'what', 'why_it_matters', 'recommendation',
                  'evidence_ids', 'marks', 'assumptions', 'not_tested', 'superseded_by',
                  'dismissed_reason', 'needs_recheck', 'source', 'thread_id'},
@@ -71,8 +71,19 @@ class Store:
         self.database = self.data_dir / 'trustpcb.sqlite3'
         with self._db() as db:
             db.executescript(SCHEMA)
+        self._add_missing_columns()
 
     # ---- plumbing ---------------------------------------------------------------------
+
+    def _add_missing_columns(self) -> None:
+        """Databases made before a column existed get it. A database that cannot be written (a read-only demo folder) is left alone: the column reads as missing, which means "not recorded"."""
+        try:
+            with self._db() as db:
+                have = {row['name'] for row in db.execute('PRAGMA table_info(reviews)')}
+                if 'extent' not in have:
+                    db.execute('ALTER TABLE reviews ADD COLUMN extent TEXT')
+        except sqlite3.OperationalError:
+            pass
 
     @contextmanager
     def _db(self):
@@ -281,16 +292,29 @@ class Store:
             db.execute('UPDATE turns SET status=? WHERE id=?', (status, id))
 
     def recover_interrupted(self):
-        """After a restart, no turn can still be running: mark them and say so in the stream."""
+        """After a restart, no turn can still be running: mark them and say so in the stream.
+
+        Call it only from the process that owns the data folder (`datalock.holds`): a second app doing this would mark the first
+        app's live runs as interrupted. Also settles review and thread rows that say queued or running but have no unfinished turn
+        (a crash between creating the review and starting its turn), so no review is left running with nothing behind it."""
         turns = self._all('turns', "SELECT * FROM turns WHERE status IN ('running','waiting','waiting_permission','waiting_question','waiting_test')")
         for turn in turns:
             self.finish_turn(turn['id'], 'interrupted')
             self.update_chat(turn['chat_id'], status='interrupted')
-            with self._db() as db:
-                db.execute("UPDATE reviews SET status='interrupted',updated_at=? WHERE chat_id=? AND status IN ('queued','running')", (_now(), turn['chat_id']))
-                db.execute("UPDATE threads SET status='interrupted',updated_at=? WHERE chat_id=? AND status IN ('queued','running')", (_now(), turn['chat_id']))
+            self.close_unfinished_rows(turn['chat_id'], 'interrupted')
             self.append_event(turn['chat_id'], turn['id'], 'failed', {'message': 'Backend restarted; this run was interrupted.', 'interrupted': True})
+        with self._db() as db:
+            db.execute("UPDATE reviews SET status='interrupted',updated_at=? WHERE status IN ('queued','running')", (_now(),))
+            db.execute("UPDATE threads SET status='interrupted',updated_at=? WHERE status IN ('queued','running')", (_now(),))
+            db.execute("UPDATE chats SET status='interrupted' WHERE status IN ('queued','running','waiting_permission','waiting_question','waiting_test')")
         return turns
+
+    def close_unfinished_rows(self, chat_id, turn_status):
+        """A run has ended: no review or thread of its chat may still say queued or running, whatever way it ended."""
+        status = {'completed': 'failed', 'failed': 'failed', 'canceled': 'canceled', 'interrupted': 'interrupted'}.get(turn_status, 'failed')
+        with self._db() as db:
+            db.execute("UPDATE reviews SET status=?,updated_at=? WHERE chat_id=? AND status IN ('queued','running')", (status, _now(), chat_id))
+            db.execute("UPDATE threads SET status=?,updated_at=? WHERE chat_id=? AND status IN ('queued','running')", (status, _now(), chat_id))
 
     def append_event(self, chat_id, turn_id, type, payload):
         chat = self.get_chat(chat_id)
@@ -313,7 +337,7 @@ class Store:
 
     # ---- reviews ----------------------------------------------------------------------
 
-    def create_review(self, version_id, goal=None, depth='standard', profile=None):
+    def create_review(self, version_id, goal=None, depth='standard', profile=None, extent=None):
         """Creates the review and its event chat together."""
         version = self.get_version(version_id)
         if not version:
@@ -323,7 +347,7 @@ class Store:
         with self._db() as db:
             self._insert(db, 'reviews', {
                 'id': id, 'project_id': version['project_id'], 'version_id': version_id, 'chat_id': chat['id'],
-                'profile': profile, 'depth': depth, 'goal': goal or {}, 'phase': None, 'budget': {}, 'end_state': None,
+                'profile': profile, 'depth': depth, 'goal': goal or {}, 'extent': extent, 'phase': None, 'budget': {}, 'end_state': None,
                 'summary': None, 'status': 'queued', 'created_at': _now(), 'updated_at': _now(),
             })
         if profile:
@@ -640,7 +664,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS events_chat ON events(chat_id, sequence);
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), version_id TEXT NOT NULL REFERENCES versions(id),
-  chat_id TEXT NOT NULL REFERENCES chats(id), profile TEXT, depth TEXT, goal TEXT, phase TEXT, budget TEXT, end_state TEXT,
+  chat_id TEXT NOT NULL REFERENCES chats(id), profile TEXT, depth TEXT, goal TEXT, extent TEXT, phase TEXT, budget TEXT, end_state TEXT,
   summary TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS findings (
   id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES reviews(id), version_id TEXT, code TEXT NOT NULL, fingerprint TEXT NOT NULL,

@@ -4,6 +4,7 @@
 // no fixture module is ever loaded and no invented number can appear.
 
 import { netId } from "./geometry.mjs";
+import { runnerOfProfile } from "./agents.mjs";
 import { loadFixtures } from "./fixture-loader";
 import { apiGet, apiSend, ApiError, uploadFiles } from "./live";
 import type { ChangeState, VersionChange } from "./story.mjs";
@@ -50,6 +51,8 @@ export interface ThreadInfo { id: string; review_id: string; chat_id: string; le
 export interface ReviewMeta {
   id: string; project_id: string; project_name: string; version_label: string; version_id: string; version_number: number;
   profile: string; depth: string; goal: Goal; goal_text: string; started_at: string;
+  /** The runner that wrote this review and its follow-ups (the review's stored profile). Missing on old rows and in fixtures: the mark is then neutral. */
+  runner?: string | null;
   status: string; end_state: string | null; chat_status: string | null; threads: ThreadInfo[]; report_revision: number | null;
   counts: Record<Severity, number>; rf: { status: string; reason: string | null } | null; fixture?: boolean;
 }
@@ -142,9 +145,21 @@ export async function uploadVersion(projectId: string, files: File[], label?: st
 export async function getVersion(id: string): Promise<VersionInfo> {
   return apiGet(`versions/${id}`);
 }
-export async function startReview(versionId: string, goal: Goal, depth: Depth): Promise<{ id: string }> {
+/** `extent` is the list of checks chosen on the start form (layout is always in it). Left out, the server uses its own default. */
+export async function startReview(versionId: string, goal: Goal, depth: Depth, extent?: string[]): Promise<{ id: string }> {
   if (FIXTURE_MODE) throw new ApiError(0, "Reviews are off in fixture mode.");
-  return apiSend("POST", `versions/${versionId}/reviews`, { goal, depth });
+  return apiSend("POST", `versions/${versionId}/reviews`, extent ? { goal, depth, extent } : { goal, depth });
+}
+/** Which API keys are set: {NAME: {set, source}}. Values are never sent. Null when the settings route is not there or could not be read.
+ *  The server answers {read_only, keys: [{name, service, label, get_url, set, source}], parts_available}. */
+export async function getKeyStatus(): Promise<Record<string, { set: boolean; source?: string }> | null> {
+  if (FIXTURE_MODE) return null;
+  try {
+    const r = await apiGet<Record<string, any>>("settings/keys");
+    const list = Array.isArray(r?.keys) ? r.keys as { name: string; set: boolean; source?: string | null }[] : null;
+    if (!list) return null;
+    return Object.fromEntries(list.map((k) => [k.name, { set: !!k.set, source: k.source ?? undefined }]));
+  } catch { return null; }
 }
 
 /* ------------------------------ board ------------------------------ */
@@ -207,7 +222,7 @@ export async function getReview(id: string): Promise<ReviewMeta> {
   const [project, version] = await Promise.all([apiGet<any>(`projects/${r.project_id}`), getVersion(r.version_id)]);
   return {
     id: r.id, project_id: r.project_id, project_name: project.name, version_id: r.version_id, version_number: version.number,
-    version_label: version.label || `v${version.number}`, profile: r.profile?.name ?? "agent", depth: r.depth, goal: r.goal ?? {}, goal_text: goalText(r.goal),
+    version_label: version.label || `v${version.number}`, profile: r.profile?.name ?? "agent", runner: runnerOfProfile(r.profile), depth: r.depth, goal: r.goal ?? {}, goal_text: goalText(r.goal),
     started_at: r.created_at, status: r.status, end_state: r.end_state, chat_status: r.chat_status, threads: r.threads ?? [],
     report_revision: r.report_revision, counts: r.counts, rf: r.summary?.rf ? { status: r.summary.rf.simulatable ? "available" : "not_tested", reason: r.summary.rf.reason ?? null } : null,
   };
@@ -303,4 +318,31 @@ export interface CompareResult {
 }
 export async function getCompare(from: string, to: string): Promise<CompareResult> {
   return apiGet(`compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+}
+
+/* ------------------------------ settings: optional service keys ------------------------------ */
+
+export interface KeyRow { name: string; service: string; label: string; get_url: string; set: boolean; source: "env" | "app" | null }
+export interface KeySettings { read_only: boolean; keys: KeyRow[]; parts_available: boolean }
+let fixtureKeys: KeyRow[] = [
+  { name: "DIGIKEY_CLIENT_ID", service: "DigiKey", label: "DigiKey client ID", get_url: "https://developer.digikey.com/", set: false, source: null },
+  { name: "DIGIKEY_CLIENT_SECRET", service: "DigiKey", label: "DigiKey client secret", get_url: "https://developer.digikey.com/", set: false, source: null },
+  { name: "MOUSER_API_KEY", service: "Mouser", label: "Mouser search API key", get_url: "https://www.mouser.com/api-hub/", set: false, source: null },
+];
+const fixtureSettings = (): KeySettings => ({ read_only: false, keys: fixtureKeys, parts_available: fixtureKeys.some((k) => k.set) });
+/** What is set, never the value: the backend returns only set and source. */
+export async function getKeySettings(): Promise<KeySettings> {
+  if (FIXTURE_MODE) return fixtureSettings();
+  return apiGet("settings/keys");
+}
+/** The value goes out once and is never returned. */
+export async function saveKey(name: string, value: string): Promise<KeySettings> {
+  if (FIXTURE_MODE) { fixtureKeys = fixtureKeys.map((k) => (k.name === name ? { ...k, set: true, source: "app" } : k)); return fixtureSettings(); }
+  const r = await apiSend<{ keys: KeyRow[] }>("PUT", `settings/keys/${name}`, { value });
+  return getKeySettings().catch(() => ({ read_only: false, keys: r.keys, parts_available: r.keys.some((k) => k.set) }));
+}
+export async function removeKey(name: string): Promise<KeySettings> {
+  if (FIXTURE_MODE) { fixtureKeys = fixtureKeys.map((k) => (k.name === name ? { ...k, set: false, source: null } : k)); return fixtureSettings(); }
+  await apiSend("DELETE", `settings/keys/${name}`);
+  return getKeySettings();
 }

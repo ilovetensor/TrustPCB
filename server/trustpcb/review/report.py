@@ -19,6 +19,8 @@ from typing import Any
 from . import change
 from . import evidence as ev
 from . import partial, restate
+from . import extent as ext
+from . import simchange, simreport
 from .compare import classify_findings, previous_context
 from .report_css import CSS
 from .report_pdf import html_to_pdf, pdf_slot
@@ -115,6 +117,8 @@ def _not_tested(summary: dict, review: dict, rf_section: dict, candidates_new: i
     for phase in summary.get('phases') or []:
         for skipped in phase.get('skipped') or []:
             items.append(f'Phase {skipped["phase"]} ({skipped["name"]}) was skipped: {skipped["reason"]}')
+    for kind, reason in ((summary.get('extent') or {}).get('could_not_run') or {}).items():
+        items.append(f'{ext.LABELS.get(kind, kind)} was chosen at the start but did not run: {reason}')
     if candidates_new:
         items.append(f'{candidates_new} analyzer or KiCad result(s) were not reviewed by the agent and are listed as Unreviewed.')
     groups = summary.get('unreviewed_groups') or []
@@ -146,8 +150,15 @@ def _method(store, review: dict, evidence_rows: list[dict]) -> dict:
             scenarios.append({'ref': v.get('ref'), 'hash': v['scenario_hash'], 'quality': v.get('quality'), 'ops': v.get('whatif_ops'), 'material': v.get('material'),
                               'solve_s': v.get('solve_s'), 'trust': (v.get('trust') or {}).get('status')})
     profile = review.get('profile') or {}
+    sim_runs = [{'ref': (r['values'] or {}).get('ref'), 'sim_kind': (r['values'] or {}).get('sim_kind'), 'run': (r['values'] or {}).get('run_hash'), 'quality': (r['values'] or {}).get('quality'),
+                 'ops': (r['values'] or {}).get('whatif_ops'), 'defaults': (r['values'] or {}).get('defaults_used') or [], 'solve_s': (r['values'] or {}).get('solve_s'),
+                 'cached': (r['values'] or {}).get('cached'), 'trust': ((r['values'] or {}).get('trust') or {}).get('status')}
+                for r in evidence_rows if r['type'] == ev.BOARD_SIM and (r['values'] or {}).get('sim_kind') and not (r['values'] or {}).get('comparison')]
+    summary = review.get('summary') or {}
+    extent = review.get('extent')
     return {'kicad_version': baseline.get('kicad_version'), 'default_rules': baseline.get('default_rules'), 'runner': {k: profile.get(k) for k in ('name', 'runner', 'model')},
-            'depth': review.get('depth'), 'scenarios': scenarios,
+            'depth': review.get('depth'), 'extent': extent, 'extent_line': ext.method_line(extent, stored=extent is not None, skipped=(summary.get('extent') or {}).get('could_not_run')),
+            'sim_runs': sim_runs, 'scenarios': scenarios,
             'note': 'Screen runs compare a change with the base at the same mesh. Confirm runs use a finer mesh and longer time.' if scenarios else ''}
 
 
@@ -173,7 +184,7 @@ def build_snapshot(store, review_id: str, *, cause: str, incomplete: bool = Fals
         'summary': summary.get('summary'),
         'overview': {'board': summary.get('board'), 'counts': counts, 'brief': summary.get('brief'),
                      'top_risks': [{'code': f['code'], 'severity': f['severity'], 'title': f['title']} for f in sorted(live, key=lambda f: SEVERITY_ORDER.index(f['severity']))[:5]]},
-        'rf': rf,
+        'rf': rf, 'sims': simreport.section_data(rows, summary, review),
         'investigations': _investigations(store, review_id),
         'findings': findings, 'evidence': [_evidence_public(r) for r in rows],
         'candidates': {'total': len(candidate_rows), 'unreviewed': unreviewed,
@@ -189,6 +200,8 @@ def build_snapshot(store, review_id: str, *, cause: str, incomplete: bool = Fals
     snapshot['version_change'] = recheck_change(store, review_id)
     snapshot['headline'] = ({**snapshot['version_change'], 'kind': 'version_change', 'partial_win': win} if snapshot['version_change']
                             else ({**win, 'kind': 'partial_win'} if win else None))
+    previous_review = previous_context(store, review['version_id'])
+    snapshot['sim_changes'] = simchange.compare(store, review_id, previous_review['review']['id']) if previous_review else []
     snapshot['not_tested'] = _not_tested(summary, review, rf, unreviewed)
     snapshot['changes_since_last'] = diff_snapshots(previous, snapshot) if previous else None
     return snapshot
@@ -333,7 +346,10 @@ def experiment_line(e: dict) -> str:
     if e.get('kind') == 'matching' and e.get('quality') == 'screen':
         text += ' - no solver time'
     delta = (e.get('delta') or {}).get('s11_db')
-    if e.get('kind') in ('whatif', 'matching') and e.get('quality') == 'screen' and delta is not None:
+    gain = (e.get('delta') or {}).get('gain_pct')
+    if e.get('kind') == 'whatif' and e.get('quality') == 'screen' and gain is not None:
+        text += f': primary metric {abs(gain):.1f} % {"better" if gain > 0 else "worse"} than the base (screen, for comparing only)'
+    elif e.get('kind') in ('whatif', 'matching') and e.get('quality') == 'screen' and delta is not None:
         text += f': worst in-band S11 {abs(delta):.1f} dB {"better" if delta < 0 else "worse"} than the base (screen, for comparing only)'
     return esc(text)
 
@@ -406,6 +422,10 @@ def render_version_change(vc: dict) -> str:
 
 def render_confirmation(c: dict, title: str = 'Screen against confirm') -> str:
     """Screen against confirm: the honest comparison, with the matching re-tuned at confirm quality."""
+    if c.get('sim_kind'):          # a board simulation: one headline from its stored comparison, not the antenna's table
+        tone = {'held': 'cls-measured', 'held_smaller': 'sev-medium', 'not_held': 'sev-high', 'unconfirmed': 'cls-not_tested'}.get(c.get('outcome'), '')
+        return (f'<h3>{esc(title if title != "Screen against confirm" else "Screen against confirm (finer mesh)")}</h3><p>{pill(tone, str(c.get("outcome", "")).replace("_", " "))} {esc(c.get("statement"))} '
+                f'{esc(c.get("headline_text"))}</p>')
     rows = c.get('rows') or {}
     tone = {'held': 'cls-measured', 'held_smaller': 'sev-medium', 'held_after_retune': 'sev-medium', 'not_held': 'sev-high', 'unconfirmed': 'cls-not_tested',
             'improved_short_of_target': 'cls-simulated'}.get(c.get('outcome'), '')
@@ -486,8 +506,10 @@ def render_html(snap: dict, images: dict | None = None) -> str:
     if images.get('overview'):
         out.append(f'<div class="card">{images["overview"]}<p class="muted small">Board with numbered issue pins (top layer).</p></div>')
     # 4 rf
-    out.append('<h2>RF result</h2>')
-    out.append(render_rf(rf, images))
+    if (snap.get('method') or {}).get('extent') is None or 'antenna' in ((snap.get('method') or {}).get('extent') or []) or snap['rf'].get('status') == 'tested':
+        out.append('<h2>RF result</h2>')
+        out.append(render_rf(rf, images))
+    out.append(simreport.render(snap.get('sims'), images, pill, metric_name))
     # 5 investigation story
     out.append('<h2>Investigation story</h2>')
     if snap['investigations']:
@@ -530,9 +552,12 @@ def render_html(snap: dict, images: dict | None = None) -> str:
         out.append(render_finding(f, snap, images.get(f['code'])))
     out.append(render_review_work(snap.get('review_work') or {}))
     # 7 version changes
-    if snap.get('version_changes'):
+    if snap.get('version_changes') or snap.get('sim_changes'):
         out.append('<h2>Changes since the previous version</h2>')
-        out.append(render_version_changes(snap['version_changes']))
+        if snap.get('version_changes'):
+            out.append(render_version_changes(snap['version_changes']))
+        if snap.get('sim_changes'):
+            out.append('<h3>Board simulations compared with the previous version</h3><ul>' + ''.join(f'<li>{esc(c["text"])}</li>' for c in snap['sim_changes']) + '</ul>')
     # 8 not tested, assumptions, limits
     out.append('<h2>Not tested, assumptions and limits</h2>')
     out.append('<h3>Not tested</h3>' + ('<ul>' + ''.join(f'<li>{esc(t)}</li>' for t in snap['not_tested']) + '</ul>' if snap['not_tested'] else '<p class="muted">Nothing is listed as not tested.</p>'))
@@ -548,6 +573,13 @@ def render_html(snap: dict, images: dict | None = None) -> str:
     out.append('<h2>Method</h2>')
     out.append(f'<p class="small">KiCad {esc(method.get("kicad_version") or "not recorded")}{"; default design rules were used" if method.get("default_rules") else ""}. '
                f'{esc(method.get("note"))}</p>'.replace(' </p>', '</p>'))
+    if method.get('extent_line'):
+        out.append(f'<p class="small"><strong>Extent.</strong> {esc(method["extent_line"])}</p>')
+    if method.get('sim_runs'):
+        out.append('<table><tr><th>Run</th><th>Simulation</th><th>Quality</th><th>Stored run</th><th>Changes</th><th>Default inputs</th><th>Solve s</th><th>Trust</th></tr>' + ''.join(
+            f'<tr><td>{esc(s.get("ref"))}</td><td>{esc(s.get("sim_kind"))}</td><td>{esc(s.get("quality"))}</td><td class="mono small">{esc(s.get("run"))}{" (cached)" if s.get("cached") else ""}</td>'
+            f'<td class="small">{esc(json.dumps(s.get("ops") or "none"))}</td><td class="small">{esc(", ".join(s.get("defaults") or []) or "none")}</td><td class="n">{esc(s.get("solve_s"))}</td><td>{esc(s.get("trust"))}</td></tr>'
+            for s in method['sim_runs']) + '</table>')
     if method['scenarios']:
         out.append('<table><tr><th>Run</th><th>Quality</th><th>Scenario hash</th><th>Changes</th><th>Solve s</th><th>Trust</th></tr>' + ''.join(
             f'<tr><td>{esc(s.get("ref"))}</td><td>{esc(s.get("quality"))}</td><td class="mono small">{esc(s["hash"])}</td><td class="small">{esc(json.dumps(s.get("ops") or "none"))}</td>'
@@ -863,4 +895,5 @@ async def render_revision(*, store, review: dict, revision: dict, fmt: str) -> b
 async def _document(store, review: dict, snapshot: dict) -> str:
     images = await board_images(store, review, snapshot)
     images.update(await rf_stills(store, review, snapshot))
+    images.update(await simreport.stills(store, review, snapshot))
     return render_html(snapshot, images)

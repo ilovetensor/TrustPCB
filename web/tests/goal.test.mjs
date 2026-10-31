@@ -31,6 +31,8 @@ test("depth notes say nothing is simulated when there is no radio, and keep the 
   assert.equal(depthNote(std, "standard", undefined), std);
   const quick = "About 6 min. KiCad checks and an open review. No simulation.";
   assert.equal(depthNote(quick, "quick", false), quick);
+  assert.equal(depthNote(std, "standard", false, true), "Up to 60 min. No radio found: the power, heat and signal checks you chose are simulated.");
+  assert.equal(depthNote(std, "standard", true, true), std);
 });
 
 test("the upload page hides the RF fields from the detection result and builds its goal in one place", () => {

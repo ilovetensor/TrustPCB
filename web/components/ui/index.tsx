@@ -124,6 +124,7 @@ export function TopBar({ children, right, current }: { children?: ReactNode; rig
         <Link className="navitem" href="/projects" aria-current={current === "projects" ? "page" : undefined}><Icon name="folder" size={17} /> Projects</Link>
         {!demo && <Link className="navitem" href="/upload" aria-current={current === "upload" ? "page" : undefined}><Icon name="upload" size={17} /> Upload a board</Link>}
         <Link className="navitem" href="/compare" aria-current={current === "compare" ? "page" : undefined}><Icon name="compare" size={17} /> Compare</Link>
+        {!demo && <Link className="navitem" href="/settings" aria-current={current === "settings" ? "page" : undefined}><Icon name="sliders" size={17} /> Settings</Link>}
       </nav>
       {children}
       <div className="topbar-foot">

@@ -8,8 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from trustpcb.datalock import DataLock
 from trustpcb.rf import scenario as S
-from trustpcb.rf.queue import SimQueue, container_user, docker_run_command, owner_label, progress_fraction
+from trustpcb.rf.queue import SimQueue, container_user, default_cpus, docker_run_command, owner_label, progress_fraction
 from trustpcb.storage import Store
 
 HERE = Path(__file__).parent
@@ -17,7 +18,7 @@ FAKE = HERE / "fake_docker.py"
 
 
 @pytest.fixture()
-def env(tmp_path, monkeypatch, nrf_board, nrf_setup):
+def env(tmp_path, monkeypatch, nrf_board, nrf_setup, request):
     state = tmp_path / "state"
     state.mkdir()
     monkeypatch.setenv("FAKE_DOCKER_STATE", str(state))
@@ -25,6 +26,7 @@ def env(tmp_path, monkeypatch, nrf_board, nrf_setup):
     wrapper.write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE} \"$@\"\n")
     wrapper.chmod(0o755)
     store = Store(tmp_path / "data")
+    request.addfinalizer(DataLock(store.data_dir).acquire().release)       # recovery and the container sweep are for the owner of the data folder only
     q = SimQueue(store, docker=str(wrapper), poll_s=0.1, timeout_s=20)
     sc = S.scenario_for(nrf_board, nrf_setup, "screen")
     job = store.scenario_dir(sc.hash())
@@ -40,7 +42,7 @@ async def test_run_progress_and_cache(env):
     out = await h.wait()
     assert out["status"] == "done" and not out["cached"] and out["trust"]["status"] in ("ok", "fail")
     cmd = json.loads((state / "last_cmd.json").read_text())
-    assert ["--cpus", "6"] == cmd[cmd.index("--cpus"):cmd.index("--cpus") + 2] and "--memory" in cmd and "--rm" in cmd
+    assert ["--cpus", str(default_cpus())] == cmd[cmd.index("--cpus"):cmd.index("--cpus") + 2] and "--memory" in cmd and "--rm" in cmd
     mounts = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"]
     assert any(m.endswith(":/app:ro") and m.split(":")[0].endswith("/worker") for m in mounts)   # the repo worker, no rebuild
     fr = [p["fraction"] for p in seen]
@@ -96,11 +98,13 @@ async def test_one_at_a_time(env):
 
 def test_recover_interrupted(tmp_path):
     store = Store(tmp_path / "d")
+    lock = DataLock(store.data_dir).acquire()
     a = store.create_sim_job("h1", status="running")
     b = store.create_sim_job("h2", status="queued")
     c = store.create_sim_job("h3", status="done")
     assert SimQueue(store).recover_interrupted() == 2
     assert [store.get_sim_job(x["id"])["status"] for x in (a, b, c)] == ["interrupted", "interrupted", "done"]
+    lock.release()
 
 
 def test_progress_fraction_is_monotone_and_bounded():

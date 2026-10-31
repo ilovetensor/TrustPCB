@@ -8,7 +8,7 @@
 #
 #   TRUSTPCB_DEMO_READONLY=1 TRUSTPCB_DATA_DIR=<target-dir> npm run dev
 #
-# The source is never changed. The database is copied with SQLite's online backup, so a source that is open elsewhere still copies
+# The stored service keys (secrets.json) are never copied. The source is never changed. The database is copied with SQLite's online backup, so a source that is open elsewhere still copies
 # consistently. A source with a review or simulation still running is refused: the demo would show it as interrupted.
 # A source with a review that did not run on Muse is refused too, because a public demo stands for work done with Meta models.
 # --allow-any-runner accepts it for a private demo; each report still names the runner and model that wrote it.
@@ -56,8 +56,8 @@ if other and sys.argv[2] != "1":
 print(f"{finished} review(s) found.")
 PY
 
-# everything except the live database files, then a consistent copy of the database
-rsync -a --exclude 'trustpcb.sqlite3' --exclude 'trustpcb.sqlite3-wal' --exclude 'trustpcb.sqlite3-shm' "$source_dir"/ "$target_dir"/
+# everything except the live database files and the stored service keys (secrets.json, and its temporary files), then a consistent copy of the database
+rsync -a --exclude 'trustpcb.sqlite3' --exclude 'trustpcb.sqlite3-wal' --exclude 'trustpcb.sqlite3-shm' --exclude 'secrets.json' --exclude '.secrets-*.tmp' "$source_dir"/ "$target_dir"/
 python3 - "$database" "$target_dir/trustpcb.sqlite3" <<'PY'
 import sqlite3, sys
 src = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)

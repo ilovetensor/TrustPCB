@@ -15,6 +15,7 @@ from .budgets import IMPROVEMENT_DB, PARTIAL_WIN_DB, REFINE_MATCHING, REFINE_SCR
 from . import restate
 from . import verdict as confirm_verdict
 from .findings import SCREEN_ONLY, FindingRejected, untested_line, check_claims, check_fixed_dip_claims, check_numbers, check_wording
+from .boardsim import BoardSimMixin
 from .handlers import OpError, validate_ops
 from .lab import BadMatchingRequest, LabUnavailable, scenario_hash, scenario_key
 from .tools import ToolResult, fail, ok
@@ -27,14 +28,20 @@ def _short(metrics: dict) -> dict:
     return {k: v for k, v in metrics.items() if k not in ('trust_reasons',)}
 
 
-class InvestigationMixin:
+class InvestigationMixin(BoardSimMixin):
     """Mixed into Handlers; `self.s` is the session and `self.store` its store."""
 
     # ---- opening ------------------------------------------------------------------------
     async def open_investigation(self, args: dict) -> ToolResult:
         s = self.s
-        if not s.rf.get('simulatable'):
-            return fail('rf_not_simulatable', s.rf.get('reason') or 'Nothing on this board can be simulated.')
+        sim_kind = args.get('kind') if args.get('kind') not in (None, 'antenna') else None
+        if sim_kind is not None:
+            if (problem := self._kind_problem(sim_kind)) is not None:
+                return problem
+        elif not s.antenna_on:
+            if s.sim_kinds:
+                return fail('antenna_not_in_extent', f'The antenna simulation is not part of this review. Open an investigation of {", ".join(s.sim_kinds)} (kind).', chosen=s.sim_kinds)
+            return fail('rf_not_simulatable', s.skip_reasons()[0] or s.rf.get('reason') or 'Nothing on this board can be simulated.')
         if s.budgets.investigations >= s.config.investigations:
             return fail('budget_exhausted', f'This {"review" if s.mode == "review" else "test"} allows {s.config.investigations} investigation(s) and they are used.' + (' Call advance_phase.' if s.mode == 'review' else ' Answer with what you have.'), budget='investigations')
         if any(i.status == 'open' for i in s.ledger.investigations.values()):
@@ -43,7 +50,7 @@ class InvestigationMixin:
         if len(suspects) > s.config.suspects_per_investigation:
             return fail('too_many_suspects', f'At most {s.config.suspects_per_investigation} suspects per investigation.')
         titles = [x['title'] for x in suspects]
-        base_hash = scenario_hash(s.make_scenario([], None, 'screen'))
+        base_hash = s.sim_base_hash(sim_kind) if sim_kind else scenario_hash(s.make_scenario([], None, 'screen'))
         reopened = [t for t in titles if s.ledger.reopen_check(t, base_hash)]
         if reopened:
             return fail('suspect_closed', f'"{reopened[0]}" was ruled out earlier and stays closed because the base geometry has not changed.', rule='no_reopening')
@@ -53,6 +60,9 @@ class InvestigationMixin:
         s.budgets.investigations += 1
         code = s.next_code('I')
         inv = s.ledger.open_investigation(investigation['id'], code)
+        inv.sim_kind = sim_kind
+        if sim_kind:
+            self.store.update_investigation(investigation['id'], outcome={'sim_kind': sim_kind})
         out = []
         for rank, item in enumerate(suspects, start=1):
             row = self.store.add_suspect(investigation['id'], item['title'], rank=rank, data={'why': item.get('why'), 'test': item.get('test')})
@@ -61,8 +71,9 @@ class InvestigationMixin:
             await self.publish_suspect(st)
             out.append({'suspect': st.code, 'title': st.title, 'rank': rank})
         await self.publish_investigation(inv, args['question'])
-        return ok({'investigation': code, 'suspects': out, 'next': 'Run the unmodified base scenario first with run_simulation (no whatif_ops), then test one suspect at a time.',
-                   'experiments_allowed': s.config.experiments_per_investigation})
+        nxt = (f'Check the inputs with get_sim_inputs, then run the unmodified base with run_board_sim (kind {sim_kind}, no whatif), then test one suspect at a time with a what-if.' if sim_kind
+               else 'Run the unmodified base scenario first with run_simulation (no whatif_ops), then test one suspect at a time.')
+        return ok({'investigation': code, 'kind': sim_kind or 'antenna', 'suspects': out, 'next': nxt, 'experiments_allowed': s.config.experiments_per_investigation})
 
     # ---- running ------------------------------------------------------------------------
     async def run_simulation(self, args: dict) -> ToolResult:
@@ -129,9 +140,7 @@ class InvestigationMixin:
         ref = s.next_ref()
         await s.emit('sim_queued', {'ref': ref, 'hash': sc_hash, 'label': label, 'suspect': suspect.code, 'quality': scenario['quality'], 'kind': kind})
 
-        async def progress(update: dict) -> None:
-            await s.emit('sim_progress', {'ref': ref, 'hash': sc_hash, **update})
-
+        progress, progress_done = s.solver_progress(ref, sc_hash)
         max_seconds = min(s.budgets.solver_left() or s.budgets.wall_left(), s.budgets.wall_left())
         async with s.solving():
             try:
@@ -143,6 +152,8 @@ class InvestigationMixin:
                 raise
             except Exception as exc:
                 run = {'status': 'failed', 'error': f'{type(exc).__name__}: {str(exc)[:200]}'}
+            finally:
+                await progress_done()
         return await self.finish_run(suspect, inv, scenario, run, ref, sc_hash, key, kind, label, repair=decision.repair)
 
     async def finish_run(self, suspect, inv, scenario, run, ref, sc_hash, key, kind, label, *, repair: bool) -> ToolResult:
@@ -454,13 +465,16 @@ class InvestigationMixin:
         verdict = args['verdict']
         if verdict in ('confirmed', 'ruled_out') and not trusted_tests:
             return fail('not_supported', f'A suspect can be {verdict.replace("_", " ")} only after at least one trusted experiment (a what-if or a matching experiment). Run one, or conclude it as inconclusive.')
-        if verdict == 'confirmed' and not any(ev.is_improvement(e.delta) or ev.meets_target(e.metrics, s.goal, s.rf) for e in trusted_tests):
-            return fail('not_supported', 'No trusted experiment shows a clear effect (at least 1 dB better worst in-band S11 than the base), so the suspect cannot be confirmed.')
+        sim_kind = s.ledger.investigations[suspect.investigation_id].sim_kind
+        effect = 'at least 10 % better primary metric than the base' if sim_kind else 'at least 1 dB better worst in-band S11 than the base'
+        gained = lambda e: f'{e.delta["gain_pct"]:.1f} %' if sim_kind else f'{ev.gain_db(e.delta):.1f} dB'
+        if verdict == 'confirmed' and not any(ev.is_improvement(e.delta) or (not sim_kind and ev.meets_target(e.metrics, s.goal, s.rf)) for e in trusted_tests):
+            return fail('not_supported', f'No trusted experiment shows a clear effect ({effect}), so the suspect cannot be confirmed.')
         if verdict == 'ruled_out':
             points = list({e.hash: e for e in trusted_tests}.values())
             helped = [e for e in points if ev.is_improvement(e.delta)]
             if helped:
-                return fail('not_supported', f'{helped[0].ref} improved the worst in-band S11 by {ev.gain_db(helped[0].delta):.1f} dB, so {suspect.code} cannot be ruled out. Conclude it as confirmed, or as inconclusive with the reason.')
+                return fail('not_supported', f'{helped[0].ref} improved the {"primary metric" if sim_kind else "worst in-band S11"} by {gained(helped[0])}, so {suspect.code} cannot be ruled out. Conclude it as confirmed, or as inconclusive with the reason.')
             if len(points) < 2:
                 return fail('ruled_out_needs_two_points', f'{suspect.code} has {len(points)} trusted test point ({", ".join(e.ref for e in points)}). One point does not show a trend: one cut can move the dips '
                             f'and the first series resonance and still say nothing about the next cut. Run a second point (a different amount, or the other direction), or conclude it as inconclusive and say only one point was tested.',
@@ -475,7 +489,7 @@ class InvestigationMixin:
             check_claims(texts, scope_rows=rows, universe=s.engine.evidence_rows(), allowed=allowed, board=s.board, target_db=s.engine.target_db, require_attached=False)
         except FindingRejected as exc:
             return fail(exc.code, exc.message, **exc.data)
-        base = s.base_hash()
+        base = s.sim_base_hash(sim_kind) if sim_kind else s.base_hash()
         s.ledger.close_suspect(suspect, verdict, args['reasoning'], base)
         suspect.reason = args['reasoning']
         await self.publish_suspect(suspect)
@@ -500,13 +514,15 @@ class InvestigationMixin:
         winner = s.ledger.winner(inv)
         if outcome == 'improved':
             if winner is None:
-                return fail('not_supported', 'No trusted what-if or matching experiment improved the worst in-band S11 by at least 1 dB, so the outcome cannot be "improved".')
+                return fail('not_supported', 'No trusted what-if improved the primary metric by at least 10 %, so the outcome cannot be "improved".' if inv.sim_kind else
+                            'No trusted what-if or matching experiment improved the worst in-band S11 by at least 1 dB, so the outcome cannot be "improved".')
             finding = self.store.get_finding_by_code(s.review_id, args.get('finding_code') or '')
             if finding is None:
                 return fail('finding_required', 'Record the finding first with record_finding and pass its code as finding_code.')
         else:
             if winner is not None:
-                return fail('improvement_found', f'{winner.ref} ({winner.label}) improves the worst in-band S11 by {ev.gain_db(winner.delta):.1f} dB against the base, so this investigation cannot close as {outcome.replace("_", " ")}. '
+                better = f'{winner.delta["gain_pct"]:.1f} % better primary metric' if inv.sim_kind else f'{ev.gain_db(winner.delta):.1f} dB better worst in-band S11'
+                return fail('improvement_found', f'{winner.ref} ({winner.label}) gives a {better} than the base, so this investigation cannot close as {outcome.replace("_", " ")}. '
                             'Record a finding for it and close as improved: phase 5 then checks it at confirm quality.', winner=winner.ref)
             gaps = s.ledger.closing_gaps(inv) if self.closing_budget_allows_more(inv) else []
             if gaps:
@@ -530,7 +546,7 @@ class InvestigationMixin:
         if outcome == 'improved':
             s.machine.improved = True
         self.store.update_investigation(inv.id, status='closed', outcome={'outcome': outcome, 'summary': args['summary'], 'finding': finding and finding['code'],
-                                                                           'winner': winner and winner.ref, 'base': inv.base and inv.base.ref,
+                                                                           'winner': winner and winner.ref, 'base': inv.base and inv.base.ref, **({'sim_kind': inv.sim_kind} if inv.sim_kind else {}),
                                                                            'winner_change': winner and {'ops': winner.ops, 'parts': winner.parts or [], 'experiment': winner.kind}})
         await self.publish_investigation(inv)
         return ok({'investigation': inv.code, 'outcome': outcome, 'winner': winner and winner.ref, 'next': 'Call advance_phase.'})
@@ -551,9 +567,7 @@ class InvestigationMixin:
         s.budgets.confirm_runs += 1
         await s.emit('sim_queued', {'ref': ref, 'hash': sc_hash, 'label': f'confirm {which}', 'suspect': suspect.code, 'quality': 'confirm', 'kind': 'confirm'})
 
-        async def progress(update: dict) -> None:
-            await s.emit('sim_progress', {'ref': ref, 'hash': sc_hash, **update})
-
+        progress, progress_done = s.solver_progress(ref, sc_hash)
         async with s.solving():
             try:
                 run = await s.lab.run_scenario(review_id=s.review_id, version_id=s.version_id, scenario=scenario, scenario_hash=sc_hash, investigation_id=inv.id,
@@ -564,6 +578,8 @@ class InvestigationMixin:
                 raise
             except Exception as exc:
                 run = {'status': 'failed', 'error': f'{type(exc).__name__}: {str(exc)[:200]}'}
+            finally:
+                await progress_done()
         # A confirm run is compared with the confirm run of the base, not the screen base.
         previous_base = inv.base
         if delta_base is not None:
@@ -623,6 +639,8 @@ class InvestigationMixin:
         inv = self.find_investigation(args['investigation_id'])
         if inv is None:
             return fail('unknown_investigation', f'No investigation {args["investigation_id"]}.')
+        if inv.sim_kind:
+            return await self.confirm_board_sim(inv, args)
         which = args['which']
         refine = which == 'refine'
         if refine:
@@ -843,7 +861,7 @@ class InvestigationMixin:
             return
         entry = restate.entry_from_rows(self.store, row, 0)
         confirmations = [c for c in [inv.confirmation, *inv.refine_confirmations.values()] if c]
-        new = restate.restate_entry(entry, ev.target_db(s.goal, s.rf), confirmations)
+        new = restate.restate_entry(entry, None if inv.sim_kind else ev.target_db(s.goal, s.rf), confirmations)
         if new is entry:
             return
         existing = row.get('outcome') or {}

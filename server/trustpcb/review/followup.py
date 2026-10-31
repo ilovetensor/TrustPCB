@@ -56,6 +56,8 @@ def start_thread(*, store, manager, review_id: str, body: dict) -> dict:
     review = store.get_review(review_id)
     if review is None:
         raise ValueError('Review not found')
+    if review['status'] == 'interrupted':
+        raise ValueError('This review was interrupted before it finished, so it has no report to ask about. Restart the review first.')
     if review['status'] in ('queued', 'running') or not review.get('end_state'):
         raise ValueError('The review is still running; ask follow-up questions when it ends.')
     level = (body or {}).get('level') or 'answer'
@@ -185,7 +187,7 @@ class FollowupSession(ReviewSession):
             if minimum == 'test' and not self.test_approved:
                 continue
             out.append(name)
-        return out
+        return self.extent_filter(out)
 
     def phase_label(self) -> str:
         return f'follow-up level {self.level}' + ('' if self.test_approved else '; simulation tools appear after propose_test is approved')
@@ -381,8 +383,8 @@ class FollowupHandlers(AllHandlers):
     # ---- tests -----------------------------------------------------------------------------
     async def propose_test(self, args: dict) -> ToolResult:
         s = self.s
-        if not s.rf.get('simulatable'):
-            return fail('rf_not_simulatable', s.rf.get('reason') or 'Nothing on this board can be simulated.')
+        if not s.antenna_on and not s.sim_kinds:
+            return fail('rf_not_simulatable', s.skip_reasons()[0] or s.rf.get('reason') or 'Nothing on this board can be simulated.')
         if s.test_approved:
             return ok({'approved': True, 'note': 'A test is already approved in this message.'})
         if s.test_proposals >= MAX_TEST_PROPOSALS:
@@ -573,12 +575,12 @@ def build_followup_tools(h: FollowupHandlers) -> list[ToolDef]:
                'position is [x, y]. Never changes the board; the RF effect is Not tested.',
                obj({'ref': text(1, 20), 'near': text(1, 80), 'position': arr(NUM, 2, 2), 'rotation': {'type': 'number', 'minimum': -360, 'maximum': 360}}, ['ref']), h.try_placement,
                levels=CHECK_UP, trail=lambda a: f'Trying {a.get("ref")} near {a.get("near") or a.get("position")} as a what-if'),
-        _with_levels(pick('tune_matching'), CHECK_UP),
+        _with_levels(pick('tune_matching'), CHECK_UP), _with_levels(pick('get_sim_inputs'), CHECK_UP), _with_levels(pick('set_sim_input'), CHECK_UP), _with_levels(pick('lookup_part'), CHECK_UP),
         define('propose_test', 'Ask the user to approve a simulation test. Nothing simulates without their click. Gives what will run, why and the estimated time.',
                obj({'title': text(5, 160), 'why': text(10, 600), 'estimated_seconds': {'type': 'integer', 'minimum': 10, 'maximum': 3600}, 'plan': text(5, 600)},
                    ['title', 'why', 'estimated_seconds']), h.propose_test, levels=CHECK_UP, trail=lambda a: f'Proposing a test: {a.get("title", "")[:100]}'),
         _with_levels(pick('open_investigation'), TEST), _with_levels(pick('run_simulation'), TEST), _with_levels(pick('view_result'), TEST),
-        _with_levels(pick('compare_results'), TEST), _with_levels(pick('conclude_suspect'), TEST), _with_levels(pick('close_investigation'), TEST),
+        _with_levels(pick('compare_results'), TEST), _with_levels(pick('run_board_sim'), TEST), _with_levels(pick('compare_sims'), TEST), _with_levels(pick('conclude_suspect'), TEST), _with_levels(pick('close_investigation'), TEST),
         _with_levels(pick('confirm_result'), TEST),
         define('record_assumption', 'Record a fact the user stated. It is stored as User provided and marks dependent findings as needing a recheck.',
                obj({'name': text(2, 60), 'value': {'type': 'string', 'minLength': 1, 'maxLength': 200}, 'note': text(1, 300)}, ['name', 'value']), h.record_assumption,
@@ -616,11 +618,16 @@ class FollowupRun:
         except Exception:
             logger.warning('Follow-up: the current RF status could not be read, so the stored one is used', exc_info=True)
         from .compare import previous_context
+        from . import extent as ext
+        extent = review.get('extent')
+        sims = ext.split_chosen(extent, await ext.sim_status(self.lab, review['version_id'], review.get('goal'))) if extent else None
         session = FollowupSession(thread=thread, user_text=self.text, store=store, lab=self.lab, ctx=ctx, review=review, board=board, clock=self.clock,
-                                  goal=review['goal'] or {}, rf=rf, previous=previous_context(store, review['version_id']), poll_s=self.poll_s)
+                                  goal=review['goal'] or {}, rf=rf, previous=previous_context(store, review['version_id']), poll_s=self.poll_s, extent=extent, sims=sims)
         self.session = session
         brief = (review.get('summary') or {}).get('brief')
         session.brief = brief
+        from .boardsim import restore_inputs
+        restore_inputs(session)
         handlers = FollowupHandlers(session)
         definitions = build_followup_tools(handlers)
         session.tools = {d.name: d for d in definitions}

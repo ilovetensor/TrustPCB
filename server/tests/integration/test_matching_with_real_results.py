@@ -5,6 +5,7 @@ curves, impedances and matching network from disk. This is the first live Standa
 """
 from __future__ import annotations
 
+from trustpcb.review.findings import untested_line
 import json
 import shutil
 
@@ -105,7 +106,7 @@ async def test_matching_experiment_on_the_real_base_then_an_honest_confirm(store
     assert confirm['solver_s'] == 0 and queue.stats['ran'] == 0
 
     finding = store.get_finding_by_code(review['id'], 'F-001')
-    assert c['statement'] in finding['not_tested'] and len(finding['evidence_ids']) >= 5
+    assert untested_line(c['statement']) in finding['not_tested'] and c['statement'] not in finding['not_tested'] and len(finding['evidence_ids']) >= 5       # what is untested, not the result sentence
     assert investigation['outcome'] and store.list_investigations(review['id'])[0]['outcome']['confirmation']['outcome'] == 'improved_short_of_target'
     sims = list_sims(store, review['id'])
     assert [s['kind'] for s in sims] == ['base', 'confirm']              # matching calculations are not solver jobs

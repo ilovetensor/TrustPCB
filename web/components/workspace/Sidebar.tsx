@@ -2,7 +2,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { tabProps, tablistKeys } from "../../lib/hooks";
+import { useAppEnv } from "../../lib/demo";
 import { DemoNotice, FixtureBadge, Icon, Logo } from "../ui";
+import { RunsList } from "./RunsList";
 
 export type ViewId = "findings" | "result" | "investigation" | "sims" | "chat";
 
@@ -20,6 +22,7 @@ export function Sidebar({ projectId, projectName, summary, status, nav, view, on
   projectId?: string; projectName: string; summary: string; status: string; nav: NavEntry[]; view: ViewId; onView: (v: ViewId) => void;
   reviewId: string; revision: number; progress?: ReactNode;
 }) {
+  const { demo } = useAppEnv();
   return (
     <aside className="ws-side" aria-label="Review">
       <Link href="/" aria-label="TrustPCB home" className="ws-logo"><Logo size={20} /></Link>
@@ -41,8 +44,11 @@ export function Sidebar({ projectId, projectName, summary, status, nav, view, on
       <nav className="ws-nav" aria-label="Elsewhere">
         <span className="navlabel">Open</span>
         <Link className="navitem" href={`/reviews/${reviewId}/rf`}><Icon name="wave" size={17} />RF lab</Link>
+        <Link className="navitem" href={`/reviews/${reviewId}/sim`}><Icon name="flame" size={17} />Simulation lab</Link>
         {revision > 0 && <Link className="navitem" href={`/reviews/${reviewId}/report`}><Icon name="file" size={17} />Report<small>r{revision}</small></Link>}
+        {!demo && <Link className="navitem" href="/settings"><Icon name="sliders" size={17} />Settings</Link>}
       </nav>
+      <RunsList exclude={reviewId} />
       <div className="ws-foot">
         {progress}
         <FixtureBadge label="Fixture replay" />

@@ -1,0 +1,3 @@
+## Board simulations: confirm
+
+`confirm_result` for an investigation of power, thermal or signal runs the base and then the winner at the finer mesh and reports the comparison honestly (`outcome`: held, held_smaller or not_held; `within_limit` when the simulator gave a limit). The server rewrites the screen-phase conclusions to follow it and keeps your screen text as history. Rewrite the finding from the `verdict`: confirm numbers only, each with its evidence code and the word simulated, and the default inputs stated as assumptions. A confirm run uses one of {sim_confirm_runs} confirm runs for board simulations. There is no refine round for these.

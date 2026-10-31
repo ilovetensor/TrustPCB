@@ -7,6 +7,8 @@ server/requirements.local.txt
 .env
 .env.*
 !.env.example
+secrets.json
+.secrets-*.tmp
 
 # Python
 .venv/

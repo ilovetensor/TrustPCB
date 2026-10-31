@@ -16,6 +16,8 @@ from .. import prompts
 from ..runners import resolve_profile
 from ..runners.base import RunRequest
 from . import evidence as ev
+from . import extent as ext
+from . import simchange
 from . import partial, report
 from .budgets import DEPTHS, Clock, config_for
 from . import change
@@ -56,7 +58,7 @@ def get_lab(store) -> Lab:
 
 # ---- the hook --------------------------------------------------------------------------------------
 
-async def start_review(*, store, manager, version_id: str, goal: dict, depth: str) -> dict:
+async def start_review(*, store, manager, version_id: str, goal: dict, depth: str, extent: list | None = None) -> dict:
     depth = (depth or 'standard').lower()
     if depth not in DEPTHS:
         raise ValueError(f'Review depth must be one of {", ".join(DEPTHS)}')
@@ -65,24 +67,43 @@ async def start_review(*, store, manager, version_id: str, goal: dict, depth: st
         raise ValueError('Version not found')
     if version.get('status') == 'failed':
         raise ValueError('This upload failed and cannot be reviewed')
-    if manager.active_for_project(version['project_id']):
-        from ..sessions import SessionConflict
-        raise SessionConflict('Another review of this board is still running. Wait for it to finish, or stop it, then start this one.')
+    # Reviews of different versions, in this project or another, run side by side (up to TRUSTPCB_MAX_REVIEWS; the rest wait in a queue).
+    # A second review of the very same version while one is live would only repeat the first, so it is refused and the first is named.
+    for other in store.list_reviews(version_id=version_id):
+        if other['status'] in ('queued', 'running') and manager.active_for_chat(other['chat_id']):
+            from ..sessions import SessionConflict
+            raise SessionConflict(f'A review of this version is already {"waiting" if other["status"] == "queued" else "running"} (review {other["id"][:6]}). Open it, or stop it first, then start this one.')
     try:
         profile = resolve_profile()
     except RuntimeError as exc:
         raise ValueError(str(exc)) from exc
-    review = store.create_review(version_id, goal=goal or {}, depth=depth, profile=profile)
-    store.update_review(review['id'], status='running')
+    # The extent: the checks chosen at the start, separate from the depth. Unknown names and checks this board cannot do are refused with the reason.
+    # When none is given the default applies (the rules and layout review, the antenna when it can be simulated, and power delivery when it can run).
+    extent = ext.normalize(extent, await ext.options_for(get_lab(store), version_id, goal))
+    review = store.create_review(version_id, goal=goal or {}, depth=depth, profile=profile, extent=extent)       # status 'queued' until the run gets a review slot
     run = ReviewRun(manager.store, review['id'], get_lab(store), CONFIG.clock or Clock(), CONFIG.poll_s)
 
     try:
         started = await manager.start(review['chat_id'], f'review-{review["id"]}', run.work, text=_goal_text(goal),
-                                      user_event={'kind': 'review', 'goal': goal or {}, 'depth': depth, 'review_id': review['id']})
-    except Exception:
+                                      user_event={'kind': 'review', 'goal': goal or {}, 'depth': depth, 'extent': extent, 'review_id': review['id']})
+    except BaseException:        # also a cancelled request: a review row must never be left waiting for a run that does not exist
         store.update_review(review['id'], status='failed', end_state='pipeline_failed')
         raise
     return {**store.get_review(review['id']), 'turn_id': started['turn_id']}
+
+
+async def restart_review(*, store, manager, review_id: str) -> dict:
+    """Start the same review again after the app stopped in the middle of it.
+
+    The interrupted review keeps what it stored. The new one is a fresh review of the same version with the same goal and depth. It does not
+    resume the agent's conversation, but every simulation that finished before the stop is in the scenario cache, so asking for it again costs no solver time.
+    """
+    review = store.get_review(review_id)
+    if review is None:
+        raise ValueError('Review not found')
+    if review['status'] != 'interrupted':
+        raise ValueError('Only a review that was interrupted can be restarted this way.')
+    return await start_review(store=store, manager=manager, version_id=review['version_id'], goal=review.get('goal') or {}, depth=review['depth'], extent=review.get('extent'))
 
 
 def _goal_text(goal: dict | None) -> str:
@@ -200,8 +221,11 @@ def deterministic_summary(store, review_id: str, end_state: str, end_reason: str
         lines.append('Not reviewed: ' + ', '.join(f'{g["rule"]} ({g["count"]})' for g in extra['unreviewed'][:6]) + '.')
     if end_state != 'complete':
         lines.append(f'The review ended early ({end_reason.replace("_", " ")}), so the checks that were not reached are listed as not tested.')
-    if rf_status == 'not_tested' and extra.get('rf_kind') != 'none':        # a board with no radio has no antenna tuning to be unsure about
+    antenna_chosen = extra.get('extent') is None or 'antenna' in (extra.get('extent') or [])
+    if rf_status == 'not_tested' and extra.get('rf_kind') != 'none' and antenna_chosen:        # a board with no radio has no antenna tuning to be unsure about
         lines.append('RF behaviour was not tested: no simulation ran, so statements about antenna tuning are engineering opinion.')
+    if extra.get('sim_runs'):
+        lines.append('Simulated: ' + ', '.join(f'{kind} ({n} run{"" if n == 1 else "s"})' for kind, n in extra['sim_runs'].items()) + '. These are simulations on assumed or given inputs, not measurements.')
     actions, seen = [], set()
     if win:
         actions.append((f'{win["finding"]}: ' if win.get('finding') else '') + 'Try ' + win['parts_text'] + ' in your own tool and measure again; in simulation this improves the match but the target is not met.')
@@ -234,8 +258,12 @@ class ReviewRun:
         self.ctx = ctx
         canceled = False
         try:
+            await ctx.wait_for_slot()           # at most TRUSTPCB_MAX_REVIEWS work at once; the rest wait in a visible queue
+            self.store.update_review(self.review_id, status='running')
             await self.pipeline()
         except asyncio.CancelledError:
+            if ctx.interrupted:                 # the app is stopping: leave everything as it is, write no report, and let the run end as interrupted
+                raise
             canceled = True
             self.end = ('canceled', 'user_cancel', 'The review was stopped by the user.')
         except PipelineFailed as exc:
@@ -301,7 +329,7 @@ class ReviewRun:
             self.rf = {'simulatable': False, 'reason': f'The RF check failed: {str(exc)[:200]}', 'kind': 'none'}
         if not self.rf.get('band_hz') and band_from_goal(goal):
             self.rf = {**self.rf, 'band_hz': band_from_goal(goal)}
-        self.record_assumptions(review, version, goal, baseline or {}, no_radio=self.rf.get('code') == 'not_wireless')
+        self.record_assumptions(review, version, goal, baseline or {}, no_radio=self.rf.get('code') == 'not_wireless' or (review.get('extent') is not None and 'antenna' not in review['extent']))
         summary = {'board': self.board_summary, 'rf': {k: self.rf.get(k) for k in ('simulatable', 'reason', 'kind', 'band_hz', 'target_s11_db', 'antenna_id')},
                    'previous_review_id': previous['review']['id'] if previous else None, 'previous_version_number': previous['version_number'] if previous else None,
                    'phases': [], 'limits': [], 'baseline': {k: (baseline or {}).get(k) for k in ('warnings', 'default_rules', 'kicad_version')}}
@@ -331,10 +359,24 @@ class ReviewRun:
     async def agent(self, review: dict, version: dict, previous: dict | None) -> None:
         ctx, store = self.ctx, self.store
         depth = review['depth']
-        config = config_for(depth, bool(self.rf.get('simulatable')))
         goal = review['goal'] or {}
+        extent = review.get('extent')                  # None: a review made before extents existed
+        sims = ext.split_chosen(extent, await ext.sim_status(self.lab, version['id'], goal)) if extent else {'available': {}, 'unavailable': {}}
+        skipped: dict[str, str] = dict(sims['unavailable'])
+        if depth == 'quick':            # Quick stops after phase 3: a simulation chosen at the start is recorded as not run, with the reason
+            quick = 'Quick reviews stop after phase 3, so no simulation runs.'
+            skipped = {k: quick for k in (extent or []) if k in ('antenna', 'power', 'thermal', 'signal')}
+            sims = {'available': {}, 'unavailable': {k: quick for k in ext.sim_kinds_of(extent)}}
+        elif extent and 'antenna' in extent and not self.rf.get('simulatable'):
+            skipped['antenna'] = self.rf.get('reason') or 'The antenna cannot be simulated.'
+        antenna_on = bool(self.rf.get('simulatable')) and (extent is None or 'antenna' in extent) and depth != 'quick'
+        config = config_for(depth, antenna_on, tuple(sims['available']))
         session = ReviewSession(store=store, lab=self.lab, ctx=ctx, review=review, board=self.board, clock=self.clock, config=config, goal=goal,
-                                rf=self.rf, previous=previous, poll_s=self.poll_s)
+                                rf=self.rf, previous=previous, poll_s=self.poll_s, extent=extent, sims=sims)
+        summary = dict((store.get_review(self.review_id) or {}).get('summary') or {})
+        summary['extent'] = {'chosen': extent, 'recorded': extent is not None, 'active_simulations': list(sims['available']), 'could_not_run': skipped,
+                             'antenna': antenna_on, 'method': ext.method_line(extent, stored=extent is not None, skipped=skipped)}
+        store.update_review(self.review_id, summary=summary)
         self.session = session
         handlers = AllHandlers(session)
         definitions = build_review_tools(handlers)
@@ -376,12 +418,15 @@ class ReviewRun:
             if goal.get(key) not in (None, '', []):
                 lines.append(f'- {key.replace("_", " ")}: {goal[key]}')
         lines.append(f'- review depth: {review["depth"]}')
+        if review.get('extent') is not None:
+            lines.append(f'- extent chosen by the engineer: {ext.label_list(review["extent"])}')
         if previous:
             listing = [f'- {f["code"]} [{f["severity"]}] {f["title"]} ({f["fingerprint"]})' for f in previous['findings'] if f['status'] in ('open', 'needs_recheck')] or ['- (none were open)']
             number = (self.store.get_version(review['version_id']) or {}).get('number', previous['version_number'] + 1)
             lines += ['', prompts.recheck_brief(version_number=number, previous_version_number=previous['version_number'], previous_review_id=previous['review']['id'], findings='\n'.join(listing),
-                                                previous_result=previous_result_text(self.store, previous), changes=change_summary(previous.get('board_changes')))]
-        lines += ['', prompts.phase_brief(2, **handlers.phase_vars())]
+                                                previous_result=previous_result_text(self.store, previous) if handlers.s.antenna_on else '', changes=change_summary(previous.get('board_changes')),
+                                                antenna=handlers.s.antenna_on, sim_changes=simchange.previous_text(self.store, previous, review.get('extent')))]
+        lines += ['', handlers.phase_text(2)]
         return '\n'.join(lines)
 
     def classify(self, s: ReviewSession, error: BaseException | None) -> tuple[str, str, str]:
@@ -438,7 +483,7 @@ class ReviewRun:
                     for suspect in store.list_suspects(inv['id']):
                         if suspect['status'] == 'open':
                             store.update_suspect(suspect['id'], status='not_tested', conclusion={'status': 'not_tested', 'reason': 'The review ended before this suspect was tested.'})
-                    store.update_investigation(inv['id'], status='incomplete', outcome={'outcome': 'incomplete', 'summary': 'The review ended before this investigation was closed.'})
+                    store.update_investigation(inv['id'], status='incomplete', outcome={**{k: v for k, v in (inv.get('outcome') or {}).items() if k == 'sim_kind'}, 'outcome': 'incomplete', 'summary': 'The review ended before this investigation was closed.'})
             for row in store.list_candidates(self.review_id):
                 if row['review_state'] == 'new':
                     store.set_candidate_state(self.review_id, row['candidate_id'], 'unreviewed')
@@ -457,7 +502,7 @@ class ReviewRun:
         summary['unreviewed_groups'] = unreviewed
         summary['summary'] = agent_summary or deterministic_summary(store, self.review_id, end_state, reason, rf_status,
                                                                     extra={'brief': summary.get('brief'), 'dismissals': summary.get('dismissals'), 'unreviewed': unreviewed, 'rf_kind': (summary.get('rf') or {}).get('kind'),
-                                                                    'target_db': ev.target_db(review.get('goal') or {}, summary.get('rf') or {}),
+                                                                    'target_db': ev.target_db(review.get('goal') or {}, summary.get('rf') or {}), 'extent': review.get('extent'), 'sim_runs': _sim_runs(store, self.review_id),
                                                                     'version_changes': _safe_changes(store, self.review_id),
                                                                     'version_change': _safe_change(store, self.review_id)})
         summary['end'] = {'state': end_state, 'reason': reason, 'detail': detail}
@@ -478,6 +523,16 @@ class ReviewRun:
                 await session.emit_budget()
             await ctx.emit('report_ready', {'review_id': self.review_id, 'revision': revision['number'], 'end_state': end_state, 'reason': reason,
                                             'counts': store.severity_counts(self.review_id)})
+
+
+def _sim_runs(store, review_id: str) -> dict[str, int]:
+    """How many board-simulation runs each kind has in the review's evidence (power, thermal, signal)."""
+    counts: dict[str, int] = {}
+    for row in store.list_evidence(review_id):
+        values = row['values'] or {}
+        if row['type'] == ev.BOARD_SIM and values.get('sim_kind') and not values.get('comparison'):
+            counts[values['sim_kind']] = counts.get(values['sim_kind'], 0) + 1
+    return counts
 
 
 def _safe_change(store, review_id: str) -> dict | None:

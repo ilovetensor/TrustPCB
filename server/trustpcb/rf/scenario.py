@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,7 +34,29 @@ RUN = {
     "screen": {"end_criteria": -40.0, "max_timesteps": 150_000, "n_freq": 801},
     "confirm": {"end_criteria": -45.0, "max_timesteps": 300_000, "n_freq": 801},
 }
-MAX_THREADS = 6
+#: Solver threads. Measured with the openEMS multithreaded engine on an Apple M4 Pro (Docker Desktop, 14 CPUs): speed peaks at 4
+#: threads and then falls (screen mesh: 4 threads 340 MC/s, 6 threads 245, 8 threads 160, 14 threads 100), because the engine waits for
+#: all threads after every timestep and the mesh is small. The thread count changes only how fast the solver runs, not the field it
+#: computes (bit-identical dumps at 1, 4, 6 and 14 threads), so it is not part of the cache key.
+DEFAULT_THREADS = 4
+MAX_THREADS = 16  # ceiling for an explicit request (TRUSTPCB_EMS_THREADS or the ``threads`` argument)
+
+
+def default_threads(cpu_count: int | None = None) -> int:
+    """How many solver threads a job asks for.
+
+    ``TRUSTPCB_EMS_THREADS`` sets it. Without it: 4, or half the machine's CPUs on a small machine. Either way at least one CPU is left
+    for everything else, so the solver never takes every core.
+    """
+    cpus = max(1, int(cpu_count or os.cpu_count() or 1))
+    room = max(1, cpus - 1)
+    raw = os.environ.get("TRUSTPCB_EMS_THREADS", "").strip()
+    if raw:
+        try:
+            return max(1, min(int(raw), MAX_THREADS, room))
+        except ValueError:
+            pass
+    return max(1, min(DEFAULT_THREADS, cpus // 2, room))
 #: The lumped port always excites across the substrate (ground layer to feed layer). The worker takes this from
 #: ``port.axis``; it no longer guesses from the longest side of the port box.
 PORT_EXCITATION_AXIS = "z"
@@ -114,6 +137,18 @@ def geometry_key(board: Board, setup: RfSetup) -> str:
         "setup": {"antenna_id": setup.antenna_id, "antenna_net": setup.antenna_net, "port_xy": setup.port_xy, "port_layer": setup.port_layer, "ground_layer": setup.ground_layer,
                   "port_width_mm": setup.port_width_mm, "port_axis": setup.port_axis, "region": setup.region, "fine_zone": setup.fine_zone, "f0_hz": setup.f0_hz, "fc_hz": setup.fc_hz},
     }
+    # Copper that older boards never had in the model is added only when present, so the key of a board without it is unchanged.
+    from . import geometry as _geo
+
+    gfx = sorted([layer, _r(g.area, 3), [_r(v, 3) for v in g.bounds]] for _, layer, owner, g in _geo.copper_graphics(board))
+    if gfx:
+        data["drawn_copper"] = gfx
+    custom = sorted([p.net or "", [[[[_r(x), _r(y)] for x, y in ring] for ring in poly] for poly in p.polys]] for p in board.pads if p.shape == "custom" and getattr(p, "polys", None))
+    if custom:
+        data["custom_pads"] = custom
+    extra = {k: v for k, v in (("antenna_footprint", setup.antenna_footprint), ("port_mode", setup.port_mode if setup.port_mode != "pad" else None)) if v}
+    if extra:
+        data["setup"] = {**data["setup"], **extra}
     blob = json.dumps(data, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
@@ -131,7 +166,7 @@ def _metal_name(layer: str) -> str:
     return layer.replace(".", "_")
 
 
-def build_job(board: Board, setup: RfSetup, scenario: Scenario, job_dir: str | Path | None = None, *, threads: int = MAX_THREADS,
+def build_job(board: Board, setup: RfSetup, scenario: Scenario, job_dir: str | Path | None = None, *, threads: int | None = None,
               debug_png: bool = True) -> Path:
     """Write scenario.json and meta.json into ``job_dir`` (a new temp directory when omitted)."""
     import tempfile
@@ -231,7 +266,7 @@ def build_job(board: Board, setup: RfSetup, scenario: Scenario, job_dir: str | P
             "max_px": 256,
         },
         "pattern_center_mm": [cx, cy, ztop],
-        "threads": max(1, min(int(threads), MAX_THREADS)),
+        "threads": max(1, min(int(threads if threads is not None else default_threads()), MAX_THREADS)),
         "end_criteria": run["end_criteria"],
         "max_timesteps": run["max_timesteps"],
         "n_freq": run["n_freq"],
