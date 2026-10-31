@@ -5,8 +5,8 @@ import "./globals.css";
 const ui = Inter({ subsets: ["latin"], variable: "--f-ui", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "TrustPCB. Others read your datasheets. TrustPCB tests your board.",
-  description: "An open-source inspection layer for circuit boards: marked-up boards, real simulations, tested recommendations.",
+  title: "TrustPCB. Catch board problems before you pay to build them.",
+  description: "Upload a KiCad board. Every issue is marked on the design, measured and explained, and antennas are tested in simulation. Your design is never changed.",
 };
 export const viewport: Viewport = { themeColor: "#000000", width: "device-width", initialScale: 1 };
 
