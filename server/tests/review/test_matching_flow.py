@@ -2,7 +2,6 @@
 import json
 from pathlib import Path
 
-from gate_steps import clear
 
 SCRIPTS = Path(__file__).parent / 'scripts'
 

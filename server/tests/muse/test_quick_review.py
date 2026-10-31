@@ -1,6 +1,6 @@
 """A whole Quick review through the real review service, with Muse's replies scripted at the HTTP level.
 
-The review lane's fakes (lab, clock) are loaded from its conftest by path; nothing of its fixtures leaks in.
+The review tests' fakes (lab, clock) are loaded from its conftest by path; nothing of its fixtures leaks in.
 """
 import importlib.util
 import json

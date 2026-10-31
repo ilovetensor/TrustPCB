@@ -1,6 +1,6 @@
 """The catalogue of review tools: names, descriptions, strict schemas and where each one works.
 
-Phase numbers follow spec section 7; the levels are the follow-up levels of section 17.
+Phase numbers are the review phases; the levels are the follow-up levels.
 Descriptions are short on purpose: the phase brief carries the guidance.
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 from .handlers import MARK_SCHEMA, OP_SCHEMA, Handlers
 from .investigate import InvestigationMixin
 from .refine import RefineMixin
-from .tools import BOOL, INT, NUM, STR, ToolDef, arr, obj, text
+from .tools import BOOL, NUM, ToolDef, arr, obj, text
 
 
 class AllHandlers(RefineMixin, InvestigationMixin, Handlers):

@@ -1,9 +1,9 @@
-"""Reports: assembled by code from stored data, numbered revisions, frozen snapshots (spec sections 16 and 17).
+"""Reports: assembled by code from stored data, numbered revisions, frozen snapshots.
 
 `create_revision` freezes everything a report shows into one JSON snapshot. Earlier snapshots are
 never edited, so exported files and older revisions stay exactly as they were. The HTML is
 self-contained (inline styles, inline SVG), the JSON is the snapshot itself, and the PDF is the HTML
-printed by a headless browser when one is installed.
+printed by a headless browser when one is installed (see report_pdf.py for how that browser is locked down).
 """
 from __future__ import annotations
 
@@ -11,22 +11,19 @@ import asyncio
 import base64
 import html
 import json
-import os
+import logging
 import re
-import shutil
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
-
-from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import async_playwright
 
 from . import change
 from . import evidence as ev
 from . import partial, restate
 from .compare import classify_findings, previous_context
-from .machine import PHASE_NAMES
+from .report_css import CSS
+from .report_pdf import html_to_pdf, pdf_slot
+
+logger = logging.getLogger('trustpcb')
 
 SEVERITY_ORDER = ('critical', 'high', 'medium', 'low', 'info')
 CLASS_LABEL = {'measured': 'Measured', 'simulated': 'Simulated', 'opinion': 'Engineering opinion', 'not_tested': 'Not tested'}
@@ -252,27 +249,6 @@ def version_changes(store, review_id: str, new_coverage: set[str] | None = None)
 
 # ---- HTML ------------------------------------------------------------------------------------------
 
-CSS = '''
-:root{color-scheme:light}*{box-sizing:border-box}html{print-color-adjust:exact;-webkit-print-color-adjust:exact}body{font:15px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif;color:#1c2024;background:#fff;margin:0;font-variant-numeric:tabular-nums}
-main{max-width:920px;margin:0 auto;padding:32px 24px 64px}h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:36px 0 10px}
-h3{font-size:16px;margin:18px 0 4px}p{margin:6px 0}.meta,.muted{color:#5b6570}.mono,td.n,code{font-family:inherit;font-variant-numeric:tabular-nums}
-table{border-collapse:collapse;width:100%;margin:8px 0}th,td{text-align:left;padding:5px 8px;vertical-align:top}table:not(.metrics) tr:nth-child(even) td{background:rgba(28,32,36,.045)}th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5b6570;background:rgba(28,32,36,.07)}
-.pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;background:#eceff2;color:#2c3238}
-.sev-critical{background:#ffd9e0;color:#8a0f2b}.sev-high{background:#ffe0e0;color:#8a1c1c}.sev-medium{background:#ffeccf;color:#7a4a00}
-.sev-low{background:#fff4c2;color:#665500}.sev-info{background:#dcecfb;color:#0c4a8a}
-.cls-measured{background:#dcf1e6;color:#145a3b}.cls-simulated{background:#dcedf7;color:#0e5a78}.cls-opinion{background:#ebe5f7;color:#46308a}.cls-not_tested{background:#e8eaed;color:#444}
-.card{background:#f5f6f8;border-radius:12px;padding:14px 16px;margin:14px 0;break-inside:avoid}.card h3{margin-top:0}.notice{background:#fff3df;border-radius:8px;padding:8px 12px;margin:12px 0}
-.changes{background:#e6f3fa;border-radius:8px;padding:8px 12px;margin:12px 0}svg.board,img.still{width:100%;height:auto;border-radius:8px;background:#fff}img.still{display:block;max-width:100%}
-.counts span{margin-right:8px}td.n,table.vc th{white-space:nowrap}ul{padding-left:20px;margin:4px 0}code{font-size:13px;font-weight:600}.small{font-size:13px}
-.power{margin:12px 0}.power>div{display:grid;grid-template-columns:minmax(0,190px) 1fr 58px;gap:10px;align-items:center;margin:6px 0;font-size:13px}
-.power i{position:relative;display:block;height:14px;background:#eef0f2;box-shadow:inset 0 0 0 1px #c8ced5;print-color-adjust:exact;-webkit-print-color-adjust:exact}
-.power i::after{content:"";position:absolute;top:-2px;bottom:-2px;left:0;right:0;pointer-events:none;print-color-adjust:exact;-webkit-print-color-adjust:exact;background:linear-gradient(#7d8590,#7d8590) 25% 0/1px 100% no-repeat,linear-gradient(#7d8590,#7d8590) 50% 0/1px 100% no-repeat,linear-gradient(#7d8590,#7d8590) 75% 0/1px 100% no-repeat}
-.power b{position:relative;display:block;height:100%;background:#1c2024;print-color-adjust:exact;-webkit-print-color-adjust:exact}
-.power b.before{background:repeating-linear-gradient(135deg,#3b424a 0 1.5px,transparent 1.5px 4.5px)}
-.power b.now::after{content:"";position:absolute;right:-1px;top:-3px;bottom:-3px;width:2px;background:#ff4a1c;print-color-adjust:exact;-webkit-print-color-adjust:exact}
-.power strong{text-align:right}
-@media print{body{font-size:14px;line-height:1.45}main{padding:0}th,td{padding:4px 8px}h2{margin-top:28px}h2,h3,.card h3+p,.card p:has(+ul){break-after:avoid}h2,h3{break-inside:avoid}.card{break-inside:auto}.card.keep,svg.board,img,tr,li,.power,.notice,.changes{break-inside:avoid}svg.board{max-height:120mm}svg.board[width]{display:block;width:auto;max-width:100%;margin:0 auto}table.vc td:first-child{width:36%}table.metrics,table.metrics tbody{display:block}table.metrics tbody{display:grid;grid-template-columns:1fr auto 1fr auto}table.metrics tr{display:contents}table.metrics tr:nth-child(even) td:first-child{padding-left:28px}table.metrics td.n{text-align:right}}
-'''
 
 
 def esc(value: Any) -> str:
@@ -666,7 +642,7 @@ def render_finding(f: dict, snap: dict, image: str | None) -> str:
     if f['status'] == 'dismissed':
         out.append(f'<p class="notice">Dismissed: {esc(f.get("dismissed_reason") or "no reason recorded")}</p>')
     if f.get('superseded_by'):
-        out.append(f'<p class="notice">Superseded by a newer finding.</p>')
+        out.append('<p class="notice">Superseded by a newer finding.</p>')
     if image:
         out.append(image)
     out.append(f'<p><strong>What.</strong> {esc(f["what"])}</p><p><strong>Why it matters.</strong> {esc(f["why_it_matters"])}</p>'
@@ -742,6 +718,7 @@ async def board_images(store, review: dict, snap: dict) -> dict:
     try:
         board = await service.get_lab(store).load_board(version_id=review['version_id'])
     except Exception:
+        logger.warning('Report for review %s has no board images: the board could not be loaded', review.get('id'), exc_info=True)
         return {}
 
     def draw() -> dict:
@@ -766,49 +743,11 @@ async def board_images(store, review: dict, snap: dict) -> dict:
     try:
         return await asyncio.to_thread(draw)
     except Exception:
+        logger.warning('Report for review %s has no board images: drawing the board failed', review.get('id'), exc_info=True)
         return {}
 
 
 # ---- the hook the API calls ------------------------------------------------------------------------
-
-def find_browser() -> str | None:
-    configured = os.environ.get('TRUSTPCB_BROWSER')
-    if configured and Path(configured).exists():
-        return configured
-    for name in ('chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable', 'chrome', 'microsoft-edge', 'brave-browser'):
-        found = shutil.which(name)
-        if found:
-            return found
-    for app in ('Google Chrome', 'Chromium', 'Microsoft Edge', 'Brave Browser'):
-        mac = f'/Applications/{app}.app/Contents/MacOS/{app}'
-        if Path(mac).exists():
-            return mac
-    return None
-
-
-async def print_pdf(source: Path, browser: str | None) -> bytes:
-    async with async_playwright() as driver:
-        instance = await driver.chromium.launch(executable_path=browser)   # None is the browser Playwright installed
-        try:
-            page = await instance.new_page()
-            await page.goto(source.as_uri(), wait_until='load')
-            return await page.pdf(format='A4', print_background=True, margin={'top': '12mm', 'bottom': '12mm', 'left': '12mm', 'right': '12mm'})
-        finally:
-            await instance.close()
-
-
-async def html_to_pdf(document: str, browser: str | None = None) -> bytes:
-    """Prints through Playwright, because `--print-to-pdf` on a full browser never returned here."""
-    with tempfile.TemporaryDirectory(prefix='trustpcb-pdf-') as tmp:
-        source = Path(tmp) / 'report.html'
-        source.write_text(document, encoding='utf-8')
-        try:
-            return await asyncio.wait_for(print_pdf(source, browser or find_browser()), timeout=90)
-        except asyncio.TimeoutError:
-            raise ValueError('PDF export timed out.') from None
-        except PlaywrightError:
-            raise ValueError('PDF export needs Chrome or Chromium. Run npm run setup, or open the HTML report and print it to PDF instead.') from None
-
 
 def _still_sources(rows: list[dict]) -> list[tuple[dict, dict | None]]:
     """Confirm results whose solver output may hold the stills, best first, as (row whose job is drawn, the winner row it stands in for).
@@ -902,9 +841,13 @@ async def render_revision(*, store, review: dict, revision: dict, fmt: str) -> b
     if fmt not in ('html', 'pdf'):
         raise ValueError('Format must be html or pdf')
     snapshot = revision['snapshot']
+    if fmt == 'pdf':
+        async with pdf_slot():           # drawing the images and printing are both heavy: one export at a time
+            return await html_to_pdf(await _document(store, review, snapshot))
+    return (await _document(store, review, snapshot)).encode('utf-8')
+
+
+async def _document(store, review: dict, snapshot: dict) -> str:
     images = await board_images(store, review, snapshot)
     images.update(await rf_stills(store, review, snapshot))
-    document = render_html(snapshot, images)
-    if fmt == 'html':
-        return document.encode('utf-8')
-    return await html_to_pdf(document)
+    return render_html(snapshot, images)

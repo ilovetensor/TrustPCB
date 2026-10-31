@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write a scenario.json for the 50 x 60 mm probe-fed patch (spec section 10).
+"""Write a scenario.json for the 50 x 60 mm probe-fed patch.
 
     python3 worker/make_patch_scenario.py JOB_DIR [--mesh-mm 1.9] [--threads 4]
 

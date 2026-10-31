@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import math
-from collections import defaultdict
 from pathlib import Path
 
 import pytest
@@ -167,7 +166,6 @@ def test_decoupling_dec_class_min_max_and_sorted_list(nrf_run, nrf_board):
     assert summary["min_mm"] == 5.72 and summary["max_mm"] == 16.29  # not "10 to 16 mm"
     assert {x["capacitor"] for x in summary["capacitors"]} == {"C5", "C6", "C7", "C8", "C9", "C10", "C11"}
     # independent: pad centre to pad centre from the board
-    pads = {p.id: p for p in nrf_board.pads}
     for x in summary["capacitors"]:
         cap = next(p for p in nrf_board.pads_of(x["capacitor"]) if p.net == x["net"])
         pin = next(p for p in nrf_board.pads_of(x["ic"]) if p.number == x["ic_pin"])

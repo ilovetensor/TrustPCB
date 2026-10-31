@@ -1,6 +1,6 @@
 """Durable local metadata (SQLite) and the app-owned data folder.
 
-Every table from spec sections 13 and 17 has simple typed methods here. Rows come back as
+Every table has simple typed methods here. Rows come back as
 plain dicts with JSON columns already decoded. Ids are opaque hex strings unless noted.
 Findings and evidence also carry a per-review display `code` ("F-007", "E-112").
 """
@@ -357,7 +357,7 @@ class Store:
         self._insert(db, 'finding_history', {'finding_id': finding_id, 'source': source, 'reason': reason, 'before': before, 'after': after, 'created_at': _now()})
 
     def create_finding(self, review_id, fingerprint, title, severity, class_='opinion', source='review', reason='created', thread_id=None, **fields):
-        """Insert a finding with the next F-nnn code. The honesty checks live in the Review lane."""
+        """Insert a finding with the next F-nnn code. The honesty checks live in `trustpcb.review.findings`."""
         review = self.get_review(review_id)
         if not review:
             raise ValueError('Review not found')

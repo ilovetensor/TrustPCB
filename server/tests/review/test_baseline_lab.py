@@ -1,4 +1,4 @@
-"""The PCB-lane lab on the real sample board: candidates from the analyzers and a board image."""
+"""The baseline lab on the real sample board: candidates from the analyzers and a board image."""
 import shutil
 
 import pytest

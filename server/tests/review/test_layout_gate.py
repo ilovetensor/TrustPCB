@@ -1,7 +1,7 @@
-"""The layout judgement gate: placement and routing must be judged and drawn on the board before phase 3 ends (spec sections 6 and 7)."""
+"""The layout judgement gate: placement and routing must be judged and drawn on the board before phase 3 ends."""
 import json
 
-from gate_steps import REASON, dismiss, views
+from gate_steps import dismiss, views
 from trustpcb.review import budgets
 
 BRIEF = {'tool': 'submit_board_brief', 'args': {'purpose': 'Battery powered Bluetooth sensor node with a printed antenna', 'part_roles': {'U3': 'radio'}, 'risks': [], 'priorities': ['antenna']}}

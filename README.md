@@ -41,6 +41,16 @@ Plain code does the measuring first, with no AI involved. Then the agent investi
 
 *The RF lab for version 1 of the sample board: the solver runs, the electric field over the board at 2.442 GHz (time slowed so it is visible), and the confirmed as-built result. Everything on this page is a simulation of a model of the board, not a lab measurement.*
 
+## What each kind of board gets
+
+| Board | What TrustPCB does |
+|---|---|
+| Printed antenna (a trace or patch drawn in copper) | Everything below, and the antenna is **simulated** in openEMS: S11, match, pattern, field, and what-if changes and matching parts |
+| Chip antenna or radio module | A **keep-clear review** only: the antenna keep-out analyzer checks for copper, parts and tracks inside its clearance zone, and the other layout analyzers still run. The antenna is not simulated, and RF is reported as **Not tested** with that reason |
+| No radio | **Rule and layout review**: KiCad DRC and ERC, the layout analyzers, and the agent's judgement of what they found. No simulation |
+
+**How long it takes.** A Standard review of a new board takes about 26 to 40 minutes. When the simulations can be reused (a later version with the same antenna copper, or a board already simulated) it takes under 10 minutes. Quick reviews do no simulation and are shorter; Deep reviews can run up to three investigations and take longer.
+
 ## How the agent investigates, with physics as the judge
 
 The agent is Muse (`muse-spark-1.3`) running a tool loop over Meta's Messages API. It can only use the TrustPCB tools. It cannot read files, run commands or browse.
@@ -100,7 +110,7 @@ The web app runs on port 3118 and the backend on port 8118, both bound to `127.0
 
 - Node.js 22 or newer
 - [uv](https://docs.astral.sh/uv/) and Python 3.12 (uv installs the Python it needs)
-- [KiCad](https://www.kicad.org/) 9 or newer, for `kicad-cli`. It is found automatically in the standard install locations, or set `KICAD_CLI_PATH`.
+- [KiCad](https://www.kicad.org/) 10, for `kicad-cli`. The sample boards and the tests are saved and run with KiCad 10 (file format `generator_version 10.0`). The version check also accepts KiCad 9, but that is not tested here, and KiCad 9 cannot open the newer sample files. `kicad-cli` is found automatically in the standard install locations, or set `KICAD_CLI_PATH`.
 - Docker, only for RF simulation. Without it every other feature works and RF shows as **Not tested**.
 - A Muse API key, optional and only for real agent reviews (see below). Without one the scripted runner works, so you can run the app and every test with no key.
 - PDF export of reports prints through Playwright. It uses Chrome, Chromium, Edge or Brave if you have one (set `TRUSTPCB_BROWSER` to choose), otherwise the small Chromium that `npm run setup` installs. The HTML report needs nothing extra.
@@ -126,7 +136,7 @@ npm run dev
 
 Open http://127.0.0.1:3118 (the launcher opens it for you; set `TRUSTPCB_NO_OPEN=1` to stop that). `npm run dev` generates a fresh random token on every launch and shares it with both services; it refuses to start if port 8118 or 3118 is taken, and Ctrl+C stops both services.
 
-On a fresh clone there is no model runner, so the app uses the **scripted** runner (see "Connecting Muse"). The scripted runner calls no model: the interface, upload, KiCad checks and layout analyzers all work, but the review itself is a fixed script and finds nothing on your board. Set `TRUSTPCB_RUNNER=muse_api` and a key for real reviews. The launcher also reads an optional git-ignored `server/requirements.local.txt` (extra packages for a development runner); with no such file it changes nothing.
+On a fresh clone there is no model runner, so the app uses the **scripted** runner (see "Connecting Muse"). The scripted runner calls no model: the interface, upload, KiCad checks and layout analyzers all work, but the review itself is a fixed script and finds nothing on your board. Set `TRUSTPCB_RUNNER=muse_api` and a key for real reviews. To add your own runner module, set `TRUSTPCB_RUNNER_MODULE` (and, if it needs extra Python packages, `TRUSTPCB_EXTRA_REQUIREMENTS` pointing at a requirements file). See `.env.example`.
 
 To check a production build of the web app: `npm run build`, then `npm --prefix web run start`.
 
@@ -173,6 +183,7 @@ With `TRUSTPCB_DEMO_READONLY=1` the backend refuses every `POST`, `PATCH`, `PUT`
 | Folder | What it is |
 |---|---|
 | `samples/nrf52840-node/` | An nRF52840 Bluetooth node (KiCad project with schematic) with an antenna keep-out; the integration tests run it through the RF lab |
+| `samples/nrf52840-node-v2/` | The same board after hand edits to three matching parts (L1, C19, C20), with copper unchanged. Upload it as version 2 of the first board to try a recheck |
 | `samples/patch-2g5/` | A 2.5 GHz patch antenna on FR-4 (`geometry.json` holds the design values it was generated from) |
 
 Zip a sample folder (or drag the folder in) on the upload screen.
@@ -193,13 +204,14 @@ No test calls a live model. The slow tests use Docker and the solver image.
 
 ## Limits
 
-- **Printed antennas only.** Chip antennas, modules, and antennas on metal or inside a case are not simulated. They are reported as **Not tested** with the reason.
+- **Printed antennas only.** Chip antennas, modules, and antennas on metal or inside a case are not simulated. They get a keep-clear review, and RF is reported as **Not tested** with the reason.
 - **Simulated, not measured.** Simulation results are predictions from a model of your board. They are not lab measurements. Treat an antenna as unverified until it is measured on a real board. Run-to-run S11 depth varies by about 0.5 dB because threading changes where the solver stops.
 - **Default stackup assumptions.** If the board file has no stackup, TrustPCB assumes FR-4 (permittivity 4.5, loss tangent 0.02, 35 um copper) and lists that as an assumption. Confirm the real stackup on the goal form for results you intend to rely on.
 - **KiCad boards only.** Other formats are not imported.
 - **Local use only. Do not expose it to the internet.** The backend binds to loopback, requires a per-launch token and checks the `Host` and `Origin` headers, but it has no accounts and no hosted-use hardening. Run it on your own machine, with your own boards.
 - **Your board data goes to Meta.** In a Muse review, rendered board images, part and net data and text from your files are sent to the Muse API. Do not upload a board you are not allowed to share.
-- **Network use at build time.** The web app loads its fonts through `next/font/google`, which downloads them when the web app builds or starts.
+- **Network use at build time.** The web app loads its one font, Inter, through `next/font/google`, which downloads it when the web app builds or starts.
+- **Upload size.** A zip is refused above 100 MB, a project above 500 MB unpacked or 5000 files, and a whole upload above `TRUSTPCB_MAX_UPLOAD_MB` (default 512).
 
 ## When something is missing
 
@@ -228,6 +240,14 @@ All settings are optional environment variables; see `.env.example` for the full
 | `TRUSTPCB_REPO_URL` | Repository link shown in the read-only demo notice |
 | `TRUSTPCB_MAX_PCB_MB` | Largest board file read, in MB (default 150) |
 | `TRUSTPCB_PARSE_TIMEOUT_S` | Longest time spent reading a board file (default 240) |
+| `TRUSTPCB_MAX_UPLOAD_MB` | Largest whole upload in MiB (default 512). A zip is capped at 100 MB whatever this is set to |
+| `TRUSTPCB_LAB` | `baseline` gives new reviews no RF lab, as if Docker were missing (for trying the interface) |
+| `TRUSTPCB_SCRIPT` | Path to a JSON script file for the scripted runner (tests and demos) |
+| `TRUSTPCB_BACKEND_PORT` | Port the backend allows in its `Host` check (default 8118). The launcher always starts the backend on 8118, so change this only when you start the backend yourself and point the web app at it with `TRUSTPCB_BACKEND_URL` |
+| `TRUSTPCB_RUNNER_MODULE`, `TRUSTPCB_EXTRA_REQUIREMENTS` | Add your own runner (a dotted Python module) and the requirements file it needs. See `.env.example` |
+| `TRUSTPCB_EMS_USER` | User id for the solver container (default: your own, so the job folder stays yours; empty leaves the image's user) |
+| `TRUSTPCB_DOCKER_PASS_ENV` | Extra environment variable names the Docker client may see (the client otherwise gets a minimal environment) |
+| `TRUSTPCB_BROWSER`, `TRUSTPCB_PDF_CONCURRENCY` | Browser used to print PDFs; how many PDF exports run at once (default 1) |
 
 ## Repository layout
 
@@ -238,11 +258,11 @@ docker/ems/        pinned openEMS image build
 web/               Next.js app (2D board, 3D scene, RF lab, report)
 samples/           demo boards
 scripts/           launcher, setup, KiCad check, Muse smoke test, demo seeding, test runners, release script
-docs/              specs, contributing and release guides, README images (docs/images/) and the hackathon disclosure
+docs/              architecture, release guide, README images (docs/images/) and the hackathon disclosure
 .github/           CI and release workflows, issue and pull request templates, Dependabot
 ```
 
-The product spec is in `docs/specs/`. The hackathon disclosure is in `docs/HACKATHON.md`.
+How the pieces fit together, where to add an analyzer and the limits are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The hackathon disclosure is in `docs/HACKATHON.md`.
 
 ## Contributing
 
@@ -260,4 +280,4 @@ TrustPCB is released under the [MIT License](LICENSE).
 
 KiCad (`kicad-cli`, GPL-3.0-or-later) and openEMS (GPL-3.0) are run only as separate programs. TrustPCB does not import, link to or redistribute them, and their licences do not apply to TrustPCB's own code. If you build or distribute the openEMS Docker image, you are responsible for meeting the GPL terms for that image.
 
-All other licences, including MPL-2.0 for the resvg renderer, are listed in [NOTICE](NOTICE). The backend and web shell started from the author's earlier MIT project, earlier project.
+The sample boards embed KiCad library footprints, symbols and 3D models under CC BY-SA 4.0 with the KiCad libraries exception (see [samples/README.md](samples/README.md)). All other licences are listed in [NOTICE](NOTICE). The backend and web shell started from the author's earlier MIT project, earlier project.

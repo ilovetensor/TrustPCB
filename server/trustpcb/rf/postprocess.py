@@ -39,7 +39,7 @@ def network_from_dict(d: dict[str, Any] | None) -> MatchNetwork | None:
 
 
 def trust_checks(res: dict[str, Any], meta: dict[str, Any], scenario_json: dict[str, Any] | None) -> dict[str, Any]:
-    """The checks of spec section 7, computed from the worker result and the model metadata."""
+    """The trust checks, computed from the worker result and the model metadata."""
     wt = res.get("trust", {})
     mesh = meta.get("mesh", {})
     target = (scenario_json or {}).get("end_criteria", -40.0)

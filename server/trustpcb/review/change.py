@@ -1,4 +1,4 @@
-"""What changed since the previous version, from stored data only (spec sections 6, 13 and 16).
+"""What changed since the previous version, from stored data only.
 
 Two things live here.
 

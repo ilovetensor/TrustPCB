@@ -1,4 +1,4 @@
-"""Safe intake of an uploaded KiCad project (spec section 5).
+"""Safe intake of an uploaded KiCad project.
 
 ``ingest(source, version_dir)`` takes a zip file or a folder and lays out one version::
 
@@ -47,7 +47,7 @@ ALLOWED_SUFFIXES = frozenset(
     {
         # KiCad
         ".kicad_pcb", ".kicad_pro", ".kicad_sch", ".kicad_sym", ".kicad_mod", ".kicad_dru",
-        ".kicad_prl", ".kicad_wks", ".kicad_jobset", ".net", ".sch", ".lib", ".dcm", ".pretty",
+        ".kicad_prl", ".kicad_wks", ".net", ".sch", ".lib", ".dcm", ".pretty",
         # fabrication and 3D (read as data only)
         ".gbr", ".gtl", ".gbl", ".gts", ".gbs", ".gto", ".gbo", ".gko", ".gm1", ".gtp", ".gbp", ".drl", ".gbrjob",
         ".step", ".stp", ".wrl", ".glb", ".gltf", ".stl",
@@ -267,7 +267,6 @@ def _ingest_zip(source: Path, version_dir: Path, project_dir: Path, original_dir
         total = 0
         for info in archive.infolist():
             if info.is_dir():
-                parts = _normalize(info.filename.rstrip("/") or ".") if info.filename.strip("/") else ()
                 continue
             parts = _normalize(info.filename)
             mode = info.external_attr >> 16
@@ -360,10 +359,9 @@ def _ingest_dir(source: Path, version_dir: Path, project_dir: Path, original_dir
     hashes: list[tuple[str, str]] = []
     written = 0
     for parts, p in keep:
-        for base in (tree,):
-            d = base.joinpath(*parts)
-            d.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(p, d)
+        d = tree.joinpath(*parts)
+        d.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(p, d)
         digest = _sha256_file(p)
         hashes.append(("/".join(parts), digest))
     wrapped = _strip_wrapper([(parts, p) for parts, p in keep])

@@ -1,4 +1,4 @@
-"""Version tracking: fingerprints, classification, dismissal carry-forward and board differences (spec section 13)."""
+"""Version tracking: fingerprints, classification, dismissal carry-forward and board differences."""
 import copy
 from pathlib import Path
 

@@ -1,4 +1,4 @@
-"""Tool objects and the registry that serves them to a runner (contracts.md).
+"""Tool objects and the registry that serves them to a runner.
 
 `ToolSpec` and `ToolResult` are what a runner sees. They are plain Python and know nothing about
 any provider. `ToolDef` is the richer record the review keeps (phases, levels, flags);

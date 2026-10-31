@@ -41,7 +41,7 @@ async def test_scripted_review_runs_the_stand_in_solver_and_shows_the_agent_the_
 async def test_cached_solver_run_through_a_scripted_review_and_the_api(tmp_path, store, version, fake_docker):
     source = SIM_CACHE / NRF_BASE_HASH
     if not (source / 'summary.json').is_file():
-        pytest.skip(f'no cached solver output at {source}; copy a finished nRF base run there (see docs/specs/contracts.md) or set TRUSTPCB_SIM_CACHE')
+        pytest.skip(f'no cached solver output at {source}; copy a finished nRF base run there or set TRUSTPCB_SIM_CACHE')
     shutil.copytree(source, store.scenario_dir(NRF_BASE_HASH), dirs_exist_ok=True)
     wrapper, state = fake_docker                       # any attempt to start the solver would be seen here
     queue = SimQueue(store, docker=str(wrapper), poll_s=0.1, timeout_s=30)

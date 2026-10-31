@@ -14,7 +14,9 @@ These matter more than style. A change that breaks one will not be merged.
 
 ## Set up
 
-You need Node.js 22 or newer and [uv](https://docs.astral.sh/uv/) (it installs Python 3.12). KiCad 9 or newer (`kicad-cli`) is optional for most work: without it the tests that need it skip themselves. Docker is only needed for RF simulation work. A Muse API key is optional: the default **scripted** runner needs no key and calls no model, so you can run the app and all the tests without one.
+You need Node.js 22 or newer and [uv](https://docs.astral.sh/uv/) (it installs Python 3.12). KiCad 10 (`kicad-cli`) is optional for most work: without it the tests that need it skip themselves. Docker is only needed for RF simulation work. A Muse API key is optional: the default **scripted** runner needs no key and calls no model, so you can run the app and all the tests without one.
+
+To see how the pieces fit together before you change anything, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```sh
 git clone <your fork of this repository> trustpcb
@@ -68,7 +70,7 @@ If both labels are present, `major` wins. The pull request title becomes the cha
 
 ## What makes a good analyzer or finding
 
-An analyzer is one module in `server/trustpcb/analyzers/` with `analyze(board, ctx) -> list[Candidate]` (see `track_angle.py` for a small one and `docs/specs/contracts.md` for the Candidate shape), its name added to `ANALYZER_NAMES` in `analyzers/base.py`, and tests in `server/tests/analyzers/`. A good one:
+An analyzer is one module in `server/trustpcb/analyzers/` with `analyze(board, ctx) -> list[Candidate]` (see `track_angle.py` for a small one), its name added to `ANALYZER_NAMES` in `analyzers/base.py`, and tests in `server/tests/analyzers/`. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has the step-by-step list and the Candidate shape. A good one:
 
 - **Measures one thing and says what.** Values come with units (mm, deg, ohm) and the limit it compared against.
 - **Points at the board.** Every candidate lists target ids that resolve with `Board.resolve`, and marks that let the app draw the place.

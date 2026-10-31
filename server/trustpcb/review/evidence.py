@@ -1,6 +1,6 @@
 """Evidence: what the findings stand on, and the class that follows from it.
 
-The server, never the model, decides a finding's class (spec section 13):
+The server, never the model, decides a finding's class:
 KiCad or analyzer measurements are `measured`, a trusted simulation is `simulated`, nothing is `opinion`.
 Values are stored as `{"measurements": {name: {value, unit}}, "kind": ..., ...}` so the number check
 and the report read every kind of evidence the same way.
@@ -290,7 +290,7 @@ def simulation_values(*, ref: str, label: str, quality: str, sc_hash: str, scena
 
 
 def screen_confirm_agree(screen: dict, confirm: dict) -> tuple[bool, dict]:
-    """Do a screen result and its confirm run agree within the limits (spec section 7)? Judged in band, with the first series resonance as a second check."""
+    """Do a screen result and its confirm run agree within the limits? Judged in band, with the first series resonance as a second check."""
     d = delta(confirm, screen)
     agree = abs(d.get('s11_db', 0.0)) <= SCREEN_CONFIRM_DB
     a, b = screen.get('first_series_resonance_hz'), confirm.get('first_series_resonance_hz')

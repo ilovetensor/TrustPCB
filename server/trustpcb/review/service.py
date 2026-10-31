@@ -1,4 +1,4 @@
-"""Review orchestration: phases 0 to 6 (spec section 6) and the end states of section 8.
+"""Review orchestration: phases 0 to 6 and the end states.
 
 `start_review` is the hook the API calls. The run itself is `ReviewRun`: baseline, then one agent
 run through phases 2 to 5, then a report that always happens, written by code. If the agent ends,
@@ -7,6 +7,7 @@ fails, loops, goes silent or runs out of budget, the report still runs and says 
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -26,6 +27,8 @@ from .machine import PHASE_NAMES
 from .session import ReviewSession
 from .toolset import AllHandlers, build_review_tools
 from .tools import ToolRegistry
+
+logger = logging.getLogger('trustpcb')
 
 LIMIT_RULES = ('budget_wall', 'hard_deadline', 'model_turns', 'repair_limit')
 
@@ -168,6 +171,7 @@ def deterministic_summary(store, review_id: str, end_state: str, end_reason: str
     try:
         win = partial.headline(report._investigations(store, review_id), store.list_findings(review_id), (extra.get('target_db')))
     except Exception:
+        logger.warning('Review %s: the partial-win headline could not be built, so it is left out', review_id, exc_info=True)
         win = None
     if win:                  # a partial win leads: improved at confirm quality, target not met, the best parts, accepted power before and after
         lines.append('Result: ' + win['text'])
@@ -274,6 +278,7 @@ class ReviewRun:
             try:
                 previous['board_changes'] = board_difference(await self.lab.load_board(version_id=previous['version']['id']), self.board)
             except Exception:
+                logger.warning('Review %s: the previous version board could not be loaded, so board changes are not reported', self.review_id, exc_info=True)
                 previous['board_changes'] = None
         index = TargetIndex(self.board)
         carried = 0
@@ -379,7 +384,7 @@ class ReviewRun:
         return '\n'.join(lines)
 
     def classify(self, s: ReviewSession, error: BaseException | None) -> tuple[str, str, str]:
-        """The end state and why (spec section 8)."""
+        """The end state and why."""
         if error is not None:
             return 'agent_stopped', 'agent_error', f'The agent failed: {str(error)[:300] or type(error).__name__}'
         reason = s.stop_reason
@@ -478,6 +483,7 @@ def _safe_change(store, review_id: str) -> dict | None:
     try:
         return report.recheck_change(store, review_id)
     except Exception:
+        logger.warning('Review %s: the comparison with the previous version could not be built, so it is left out', review_id, exc_info=True)
         return None
 
 
@@ -485,6 +491,7 @@ def _safe_changes(store, review_id: str) -> dict | None:
     try:
         return report.version_changes(store, review_id)
     except Exception:
+        logger.warning('Review %s: the finding-by-finding comparison with the previous version could not be built, so it is left out', review_id, exc_info=True)
         return None
 
 

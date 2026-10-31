@@ -1,4 +1,4 @@
-"""The one board renderer (spec section 12).
+"""The one board renderer.
 
 Every picture of a board comes from here: the browser's 2D viewer (layer SVGs with marks in a
 separate SVG on top), the images shown to the agent, and the marked-up report images. They

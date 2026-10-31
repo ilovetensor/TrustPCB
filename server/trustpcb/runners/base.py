@@ -1,4 +1,4 @@
-"""Runner interface (contracts.md). Tools are plain Python; a runner adapts them to its model."""
+"""Runner interface. Tools are plain Python; a runner adapts them to its model."""
 from __future__ import annotations
 
 import inspect

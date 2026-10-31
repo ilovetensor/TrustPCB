@@ -1,13 +1,12 @@
 """The ten stop rules, the budget table and the phase machine."""
 import pytest
 
-from trustpcb.review import budgets, evidence as ev
 from trustpcb.review.budgets import BudgetTracker, Experiment, Ledger, config_for
 from trustpcb.review.machine import PhaseError, PhaseMachine
 from trustpcb.review.tools import MAX_RESULT_CHARS, ToolResult, bound, ok, page, validate
 
 
-# ---- the table in spec section 8 -----------------------------------------------------------------
+# ---- the budget and stop-rule table -----------------------------------------------------------------
 
 @pytest.mark.parametrize('depth,expected', [
     ('quick', (360, 0, 90, 0, 0, 0, 8, 3_000_000, 30_000)),

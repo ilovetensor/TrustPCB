@@ -11,7 +11,7 @@
 
 Steps run in parallel with bounded concurrency and fail independently: a failed step is recorded
 in ``baseline.json`` and the rest still produce their results. DRC and ERC violations become
-candidate dicts in the shape of ``contracts.md`` with marks whose targets resolve on the board
+candidate dicts in the shape described in ``docs/ARCHITECTURE.md`` with marks whose targets resolve on the board
 (a KiCad item uuid maps to a track, via, pad, part or zone id; otherwise a ``point:x,y`` target).
 """
 
@@ -30,7 +30,7 @@ from typing import Any
 from ..intake import detect as detect_mod
 from ..intake import stackup as stackup_mod
 from . import kicad_cli, render_svg
-from .model import Board, UnknownTarget, parse_board
+from .model import Board, parse_board, resolve_all
 
 logger = logging.getLogger("trustpcb")
 
@@ -381,7 +381,7 @@ async def run_baseline(version_dir: str | Path, options: BaselineOptions | None 
     for cand in candidates:
         board.register_candidate(cand["id"], cand["targets"])
         for mark in cand["marks"]:
-            mark["resolved"] = _resolve_all(board, mark["targets"])
+            mark["resolved"] = resolve_all(board, mark["targets"])
     detection = detect_mod.detect(board, paths["sch"]).to_dict()
     stack = stackup_mod.confirmation(board)
 
@@ -412,16 +412,6 @@ async def run_baseline(version_dir: str | Path, options: BaselineOptions | None 
     (art / "baseline.json").write_text(json.dumps(baseline, indent=1))
     baseline["artifacts"] = sorted(str(p.relative_to(art)) for p in art.rglob("*") if p.is_file())
     return baseline
-
-
-def _resolve_all(board: Board, targets: list[str]) -> list[dict[str, Any]]:
-    out = []
-    for t in targets:
-        try:
-            out.append(board.resolve(t).to_dict())
-        except UnknownTarget:
-            continue
-    return out
 
 
 def _count_by(items: list[dict[str, Any]], key: str) -> dict[str, int]:

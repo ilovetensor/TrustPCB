@@ -1,4 +1,4 @@
-"""Budgets and loop prevention (spec section 8), enforced by the server.
+"""Budgets and loop prevention, enforced by the server.
 
 `BudgetTracker` counts wall clock, solver time, turns, tool calls per phase, images and tokens.
 `Ledger` keeps the per-investigation state behind the loop rules: cached duplicate scenarios,
@@ -31,7 +31,7 @@ REFINE_SCREENS = 3               # screen what-ifs in one refine round
 REFINE_MATCHING = 3              # matching experiments (zero solver time) in one refine round
 REFINE_EXTRA_CALLS = 14          # phase 5 tool calls a refine round adds
 REFINE_EXPERIMENT_ALLOWANCE = REFINE_SCREENS + REFINE_MATCHING
-DEFAULT_SCREEN_S = 240.0         # solver estimates before any run was timed (spec section 8)
+DEFAULT_SCREEN_S = 240.0         # solver estimates before any run was timed
 DEFAULT_CONFIRM_S = 420.0
 REFUSAL_STREAK_LIMIT = 6         # extra safety: this many refused calls in a row end the agent
 IMPROVEMENT_DB = 1.0             # a what-if or matching change counts as an improvement when the worst in-band S11 gains at least this much
@@ -129,7 +129,7 @@ FOLLOWUP_INPUT_TOKENS = 1_500_000
 
 
 def followup_config(level: str = 'test', *, input_tokens: int = FOLLOWUP_INPUT_TOKENS) -> BudgetConfig:
-    """Limits of a follow-up message at its highest level (spec section 17)."""
+    """Limits of a follow-up message at its highest level."""
     if level not in FOLLOWUP_LEVELS:
         raise ValueError('Level must be answer, check or test')
     test = level == 'test'

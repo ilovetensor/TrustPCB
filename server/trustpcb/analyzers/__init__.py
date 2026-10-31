@@ -1,4 +1,4 @@
-"""Layout analyzers (spec section 9). They measure; they do not judge.
+"""Layout analyzers. They measure; they do not judge.
 
 ``run_all(board, ctx)`` runs every analyzer on a board. ``run_for_version(version_dir, ctx)``
 loads the version's board, runs them and writes ``artifacts/analyzers.json``::

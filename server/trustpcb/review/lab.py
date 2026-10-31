@@ -1,9 +1,9 @@
-"""The Lab: everything the review needs from the PCB, Analyzers and RF lanes, behind one interface.
+"""The Lab: everything the review needs from the PCB model, the analyzers and the RF model, behind one interface.
 
-The review code never imports those lanes. It receives a `Lab` and calls the async methods below;
-tests inject a fake. `BaselineLab` implements what the PCB lane alone can do (board, baseline
+The review code never imports those packages. It receives a `Lab` and calls the async methods below;
+tests inject a fake. `BaselineLab` implements what the PCB model alone can do (board, baseline
 candidates, board images) and says plainly that the rest is unavailable, so a review on a machine
-without the RF lane still runs phases 0 to 3 and reports RF as `Not tested`.
+without the RF model still runs phases 0 to 3 and reports RF as `Not tested`.
 
 Shapes (all JSON-friendly dicts, lengths in mm, frequencies in Hz):
 
@@ -26,7 +26,7 @@ Shapes (all JSON-friendly dicts, lengths in mm, frequencies in Hz):
   compare_results -> {measurements?: {name: {value, unit}}, note}
   try_placement -> {ref, target, new_position, distances: [...], overlaps: [...], conflicts: [...], ghost: {...}, rough_length_change_mm}
   read_datasheet -> {names: [...]} without a name, otherwise {name, page, pages, text}
-  candidates are the Candidate dicts of contracts.md.
+  candidates are the Candidate dicts described in docs/ARCHITECTURE.md.
 """
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def canonical_json(value: Any) -> str:
 
 
 def scenario_hash(scenario: dict) -> str:
-    """Content hash of a scenario: the cache key (spec section 10)."""
+    """Content hash of a scenario: the cache key."""
     return hashlib.sha256(canonical_json(scenario).encode()).hexdigest()[:16]
 
 
@@ -92,7 +92,7 @@ def scenario_key(scenario: dict) -> str:
 # ---- the PCB-only lab -----------------------------------------------------------------------
 
 class BaselineLab:
-    """Board, baseline candidates and board images from the PCB lane. Everything else is unavailable."""
+    """Board, baseline candidates and board images from the PCB model. Everything else is unavailable."""
 
     def __init__(self, store):
         self.store = store
@@ -116,7 +116,7 @@ class BaselineLab:
         return self._boards[version_id]
 
     async def list_candidates(self, *, version_id, part_roles=None) -> list[dict]:
-        """KiCad results from the baseline plus the analyzers (when that lane is installed)."""
+        """KiCad results from the baseline plus the analyzers (when the analyzers are installed)."""
         path = self._dir(version_id) / 'artifacts' / 'candidates.json'
         found = json.loads(path.read_text()) if path.is_file() else []
         try:

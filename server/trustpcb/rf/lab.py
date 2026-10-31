@@ -1,4 +1,4 @@
-"""The calls the Review lane uses.
+"""The calls the review uses.
 
     setup = plan_setup(board, detection)                    # RfSetup or NotSimulatable
     scenario = scenario_for(board, setup, "screen", ops)    # content hash is the cache key
