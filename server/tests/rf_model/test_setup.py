@@ -75,3 +75,20 @@ def test_feed_ambiguous_is_refused(nrf_board, monkeypatch):
     r = plan_setup(nrf_board, det)
     # two candidate pads would be a guess; one series part is unique, so this still resolves
     assert r.simulatable or r.code in ("feed_ambiguous", "no_feed")
+
+
+@pytest.mark.parametrize("ref_kind,text,kind", [("L", "0.47pF", "C"), ("L", "2.2nH", "L"), ("C", "DNP 0.5pF", "C"), ("C", "0.3 pF", "C"), ("R", "100k", "R"), ("L", "4n7", "L"), ("C", "10uF/16V", "C"), ("FB", "BLM15", "FB")])
+def test_the_kind_follows_the_unit_in_the_value_and_not_only_the_reference_letter(ref_kind, text, kind):
+    from trustpcb.rf.setup import infer_kind
+
+    assert infer_kind(ref_kind, text) == kind
+
+
+def test_a_series_capacitor_at_ref_l1_is_read_as_a_capacitor_from_its_value(nrf_v2_setup, nrf_setup):
+    old = {e.ref: e for e in nrf_setup.network.elements}
+    new = {e.ref: e for e in nrf_v2_setup.network.elements}
+    assert (old["L1"].kind, old["L1"].populated, old["C20"].populated) == ("L", True, False)
+    assert (new["L1"].kind, new["L1"].topology, new["L1"].populated, new["L1"].value_text) == ("C", "series", True, "0.47pF")
+    assert new["L1"].value == pytest.approx(0.47e-12)
+    assert (new["C20"].kind, new["C20"].topology, new["C20"].populated, new["C20"].value) == ("C", "shunt", True, pytest.approx(0.3e-12))
+    assert not new["C19"].populated and nrf_v2_setup.network.understood

@@ -49,6 +49,8 @@ def metrics_from_result(run: dict, goal: dict | None = None) -> dict:
     mean = result.get('band_mean_s11_db', stats.get('band_mean_db'))
     centre = run.get('zin_at_band_centre') or result.get('zin_at_band_centre') or {}
     out: dict[str, Any] = {
+        'band_worst_accepted_power_pct': result.get('band_worst_accepted_power_pct', stats.get('band_worst_accepted_power_pct')),
+        'band_mean_accepted_power_pct': result.get('band_mean_accepted_power_pct', stats.get('band_mean_accepted_power_pct')),
         'f_res_hz': result.get('f_res'), 's11_min_db': result.get('s11_min_db'), 'bandwidth_hz': bandwidth.get('width_hz'),
         'dmax_dbi': result.get('dmax_dbi'), 'efficiency': result.get('efficiency_est'),
         'zin_re': zin.get('re'), 'zin_im': zin.get('im'), 'band_worst_s11_db': worst, 'band_mean_s11_db': mean,
@@ -63,6 +65,8 @@ def metrics_from_result(run: dict, goal: dict | None = None) -> dict:
     out.update(first_series_resonance_hz=result.get('first_series_resonance_hz'),
                antenna_only_band_worst_db=alone.get('band_worst_db'), antenna_only_band_best_db=alone.get('band_best_db'), antenna_only_band_mean_db=alone.get('band_mean_db'),
                as_built_band_worst_db=built.get('band_worst_db'), as_built_band_best_db=built.get('band_best_db'), as_built_band_mean_db=built.get('band_mean_db'),
+               antenna_only_band_worst_accepted_power_pct=alone.get('band_worst_accepted_power_pct'), antenna_only_band_mean_accepted_power_pct=alone.get('band_mean_accepted_power_pct'),
+               as_built_band_worst_accepted_power_pct=built.get('band_worst_accepted_power_pct'), as_built_band_mean_accepted_power_pct=built.get('band_mean_accepted_power_pct'),
                basis='as_built' if built else ('antenna_only' if alone else None), summary_text=run.get('summary_text'),
                plausibility=list(run.get('plausibility') or []) or None)
     return {k: v for k, v in out.items() if v is not None or k.startswith('trust')}
@@ -127,6 +131,10 @@ def delta(metrics: dict, base: dict) -> dict:
         out['s11_db'] = round(a - b, 3)
     if metrics.get('band_mean_s11_db') is not None and base.get('band_mean_s11_db') is not None:
         out['band_mean_db'] = round(metrics['band_mean_s11_db'] - base['band_mean_s11_db'], 3)
+    if metrics.get('band_worst_accepted_power_pct') is not None and base.get('band_worst_accepted_power_pct') is not None:
+        out['accepted_worst_pct'] = round(metrics['band_worst_accepted_power_pct'] - base['band_worst_accepted_power_pct'], 1)
+    if metrics.get('band_mean_accepted_power_pct') is not None and base.get('band_mean_accepted_power_pct') is not None:
+        out['accepted_mean_pct'] = round(metrics['band_mean_accepted_power_pct'] - base['band_mean_accepted_power_pct'], 1)
     if metrics.get('first_series_resonance_hz') is not None and base.get('first_series_resonance_hz') is not None:
         out['series_res_hz'] = round(metrics['first_series_resonance_hz'] - base['first_series_resonance_hz'], 1)
     if metrics.get('f_res_hz') is not None and base.get('f_res_hz') is not None:
@@ -149,6 +157,24 @@ def fixed_dips(dips_a: list[dict], dips_b: list[dict], tol_hz: float = FIXED_DIP
     return out
 
 
+ACCEPTED_POWER_NOTE = ('Accepted power is 100 x (1 - |S11|^2) at each frequency: the share of the source power that gets past the mismatch. '
+                       'It is a mismatch figure only. It is not radiated power and not efficiency; loss in the board and the parts is not in it.')
+FIXED_DIP_NOTE = ('A fixed dip stays at the same frequency when the antenna geometry changes, so it is not the antenna\'s own resonance. '
+                  'Call it a dip of unknown origin. Rely on the in-band numbers and the impedance at the band centre, and use the first series resonance as the length-related indicator.')
+
+
+def fixed_dip_measurements(fixed: list[dict]) -> dict:
+    """The `fixed_dip_N` measurements of a comparison between two runs of different geometry."""
+    return {f'fixed_dip_{index}': {'value': round(d['f_hz'] / 1e6, 1), 'unit': 'MHz'} for index, d in enumerate(fixed or [], start=1)}
+
+
+def fixed_dips_between(metrics: dict, other: dict, ops_a: list | None, ops_b: list | None) -> list[dict]:
+    """Dips that stayed where they were between two runs of the same quality and different geometry; empty when the geometry is the same."""
+    if (ops_a or []) == (ops_b or []):
+        return []
+    return fixed_dips(metrics.get('dips') or [], other.get('dips') or [])
+
+
 def measurements_of(metrics: dict) -> dict:
     """Metrics as evidence measurements with units people read."""
     out = {}
@@ -160,6 +186,11 @@ def measurements_of(metrics: dict) -> dict:
         out['s11_band_worst'] = {'value': round(metrics['band_worst_s11_db'], 2), 'unit': 'dB'}
     if metrics.get('band_mean_s11_db') is not None:
         out['s11_band_mean'] = {'value': round(metrics['band_mean_s11_db'], 2), 'unit': 'dB'}
+    for key in ('band_worst_accepted_power_pct', 'band_mean_accepted_power_pct',
+                'antenna_only_band_worst_accepted_power_pct', 'antenna_only_band_mean_accepted_power_pct',
+                'as_built_band_worst_accepted_power_pct', 'as_built_band_mean_accepted_power_pct'):
+        if metrics.get(key) is not None:
+            out[key] = {'value': round(metrics[key], 1), 'unit': '%'}
     if metrics.get('centre_re') is not None and metrics.get('centre_im') is not None:
         out['band_centre_resistance'] = {'value': round(metrics['centre_re'], 1), 'unit': 'ohm'}
         out['band_centre_reactance'] = {'value': round(metrics['centre_im'], 1), 'unit': 'ohm'}
@@ -197,6 +228,10 @@ def delta_measurements(d: dict) -> dict:
         out['delta_s11'] = {'value': d['s11_db'], 'unit': 'dB'}
     if 'band_mean_db' in d:
         out['delta_band_mean'] = {'value': d['band_mean_db'], 'unit': 'dB'}
+    if 'accepted_worst_pct' in d:
+        out['delta_band_worst_accepted_power'] = {'value': d['accepted_worst_pct'], 'unit': '%'}
+    if 'accepted_mean_pct' in d:
+        out['delta_band_mean_accepted_power'] = {'value': d['accepted_mean_pct'], 'unit': '%'}
     if 'series_res_hz' in d:
         out['delta_first_series_resonance'] = {'value': round(d['series_res_hz'] / 1e6, 3), 'unit': 'MHz'}
     if 'f_hz' in d:

@@ -22,6 +22,7 @@ import math
 import re
 import shutil
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -162,7 +163,11 @@ class RealLab(BaselineLab):
         if problem:
             raise LabUnavailable(problem)
         board, setup, sc, job_hash, overrides, notes = await self._prepare(version_id, scenario)
+        siblings = await self._sibling_legacy_names(sc, version_id, scenario)
+        job_hash, reused = await asyncio.to_thread(self._reuse_geometry_run, sc, setup, job_hash, overrides, version_id, siblings)
         job_dir = self.store.scenario_dir(job_hash)
+        if reused:
+            notes.append(reused)
         if self.queue.cached_summary(job_hash) is None:
             try:
                 await asyncio.to_thread(validate_ops, list(sc.whatif_ops), board, setup)
@@ -196,6 +201,89 @@ class RealLab(BaselineLab):
             raise
         return await asyncio.to_thread(self._assemble, out, job_dir, sc.quality, notes)
 
+    # ---- reusing a run of the same geometry ---------------------------------------------------------------
+
+    @staticmethod
+    def network_signature(network) -> str:
+        """What a matching network is, for comparing two versions: each part's position, kind, value text read as a number, and whether it is fitted."""
+        if network is None:
+            return 'none'
+        rows = [[e.position, e.ref, e.topology, e.kind, None if e.value is None else float(f'{e.value:.4g}'), bool(e.populated)] for e in sorted(network.elements, key=lambda e: e.position)]
+        return hashlib.sha256(json.dumps([rows, bool(network.understood)]).encode()).hexdigest()[:8]
+
+    async def _sibling_legacy_names(self, sc, version_id: str, scenario: dict) -> list[str]:
+        """Hashes under which other versions of the project stored this same geometry before cache keys followed the geometry: the old key held
+        the version id. A sibling counts only when its own copper and antenna setup give the same geometry key."""
+        from ..rf.scenario import geometry_key
+        out: list[str] = []
+        try:
+            version = self.store.get_version(version_id)
+            siblings = [v['id'] for v in self.store.list_versions(version['project_id']) if v['id'] != version_id] if version else []
+        except Exception:
+            return out
+        extras = dict(scenario.get('setup') or {})
+        margin = extras.get('region_margin_mm')
+        for other in siblings:
+            try:
+                setup = await self._setup(other, scenario.get('band'), float(margin) if margin is not None else None)
+                if not getattr(setup, 'simulatable', False):
+                    continue
+                board = await self.load_board(version_id=other)
+                if geometry_key(board, setup) != sc.geometry_key:
+                    continue
+                out.append(replace(sc, version_id=other, geometry_key=None).hash())
+            except Exception:
+                continue
+        return out
+
+    def _reuse_geometry_run(self, sc, setup, job_hash: str, overrides: dict, version_id: str, siblings: list[str] | None = None) -> tuple[str, str | None]:
+        """The job folder to use for this scenario: (hash, note).
+
+        The cache key follows the geometry, not the version, so a later version with the same copper finds the earlier solver run. That run
+        was post-processed with the matching parts of the version that ran it. When this version's parts differ, a sibling folder is made
+        from the stored solver output (files linked, nothing simulated) and post-processed again with this version's parts, so the as-built
+        result is its own while the solver output is shared. Runs stored before cache keys followed the geometry are found too.
+        """
+        from ..rf import postprocess
+        suffix = ('-' + hashlib.sha256(json.dumps(overrides, sort_keys=True).encode()).hexdigest()[:8]) if overrides else ''
+        wanted = self.network_signature(setup.network)
+        candidates = [job_hash, sc.legacy_hash() + suffix, *[name + suffix for name in siblings or []]]
+        for name in candidates:
+            if self.queue.cached_summary(name) is None:
+                continue
+            source = self.store.scenario_dir(name)
+            meta = self._read(source, 'meta.json') or {}
+            if self.network_signature(postprocess.network_from_dict((meta.get('setup') or {}).get('network'))) == wanted:
+                return name, None if name == job_hash else 'A run stored under the old cache key was reused.'
+            derived = f'{job_hash}-{wanted}'
+            if self.queue.cached_summary(derived) is not None:
+                return derived, 'The solver output of an earlier version with the same geometry was reused; only the matching parts differ, so no solver time was spent.'
+            self._derive_job(source, self.store.scenario_dir(derived), setup, version_id, meta)
+            return derived, 'The solver output of an earlier version with the same geometry was reused; only the matching parts differ, so no solver time was spent.'
+        return job_hash, None
+
+    @staticmethod
+    def _derive_job(source: Path, destination: Path, setup, version_id: str, meta: dict) -> None:
+        import os
+        from ..rf import postprocess
+        destination.mkdir(parents=True, exist_ok=True)
+        for item in source.iterdir():
+            if not item.is_file() or item.name in ('summary.json', 's11_as_built.json', 'meta.json'):
+                continue
+            target = destination / item.name
+            if target.exists():
+                continue
+            try:
+                os.link(item, target)
+            except OSError:
+                shutil.copy2(item, target)
+        derived = json.loads(json.dumps(meta))
+        derived['setup'] = setup.to_dict()
+        derived['scenario'] = {**(derived.get('scenario') or {}), 'version_id': version_id}
+        derived['derived_from'] = source.name
+        (destination / 'meta.json').write_text(json.dumps(derived, indent=1, default=float))
+        postprocess.finalize(destination)
+
     @staticmethod
     def _apply_overrides(job_dir: Path, overrides: dict) -> None:
         path = Path(job_dir) / 'scenario.json'
@@ -220,12 +308,35 @@ class RealLab(BaselineLab):
         if cached:
             res['original_solve_s'] = sim.get('solve_s')
         if status == 'done':
+            RealLab._add_accepted_power(res, job_dir)
             res['curve'] = RealLab._curve(job_dir)
             res['summary_text'] = RealLab.describe(res)
             res['note'] = SCREEN_NOTE if quality == 'screen' else 'Confirm-quality result. ' + (run.get('note') or '')
         if notes:
             res['setup_notes'] = notes
         return res
+
+    @staticmethod
+    def _add_accepted_power(res: dict, job_dir: Path) -> None:
+        """Accepted power for results stored before the figure existed, computed from the stored curves (nothing is simulated)."""
+        s11 = res.get('s11') or {}
+        if not s11 or all(isinstance(s11.get(k), dict) and 'band_worst_accepted_power_pct' in s11[k] for k in ('antenna_only', 'as_built') if s11.get(k)):
+            return
+        import numpy as np
+        meta = RealLab._read(job_dir, 'meta.json') or {}
+        band = (meta.get('setup') or {}).get('band_ghz')
+        for key, name in (('antenna_only', 's11.json'), ('as_built', 's11_as_built.json')):
+            stats, curve = s11.get(key), RealLab._read(job_dir, name)
+            if not isinstance(stats, dict) or not curve or not band or 'band_worst_accepted_power_pct' in stats:
+                continue
+            f = np.array(curve['freq_hz'])
+            gamma = np.array(curve['s11_re']) + 1j * np.array(curve['s11_im'])
+            m = (f >= band[0] * 1e9) & (f <= band[1] * 1e9)
+            if not m.any():
+                continue
+            accepted = 100.0 * (1.0 - np.minimum(np.abs(gamma[m]) ** 2, 1.0))
+            stats['band_worst_accepted_power_pct'] = round(float(accepted.min()), 1)
+            stats['band_mean_accepted_power_pct'] = round(float(accepted.mean()), 1)
 
     @staticmethod
     def _curve(job_dir: Path) -> dict | None:
@@ -256,7 +367,11 @@ class RealLab(BaselineLab):
         parts = []
 
         def band_text(stats: dict) -> str:
-            return f'worst {stats.get("band_worst_db")} dB, mean {stats.get("band_mean_db")} dB, best {stats.get("band_best_db")} dB'
+            text = f'worst {stats.get("band_worst_db")} dB, mean {stats.get("band_mean_db")} dB, best {stats.get("band_best_db")} dB'
+            if stats.get('band_worst_accepted_power_pct') is not None:
+                text += (f'; accepted power worst {stats["band_worst_accepted_power_pct"]} %, mean {stats.get("band_mean_accepted_power_pct")} % '
+                         '(mismatch only: not radiated power or efficiency)')
+            return text
 
         if built:
             parts.append(f'In the band, as built (the board\'s matching parts): S11 {band_text(built)}. Antenna alone: {band_text(alone)}.' if alone else f'In the band, as built: S11 {band_text(built)}.')
@@ -270,7 +385,7 @@ class RealLab(BaselineLab):
         dips = sim.get('s11_dips') or []
         if dips:
             parts.append('S11 dips below -3 dB (descriptive; they do not decide success): ' + ', '.join(f'{d["f_hz"] / 1e6:.0f} MHz ({d["s11_db"]:.1f} dB)' for d in dips) +
-                         '. Compare dips between runs: one that stays put when the antenna changes is probably a board mode.')
+                         '. Compare dips between runs: one that stays put when the antenna geometry changes is not the antenna\'s own resonance (a dip of unknown origin).')
         else:
             parts.append('No S11 dip below -3 dB in the sweep.')
         first = sim.get('first_series_resonance_hz')
@@ -290,7 +405,7 @@ class RealLab(BaselineLab):
             if row and row.get('job_dir'):
                 candidates.append(Path(row['job_dir']))
         sc_hash = run.get('scenario_hash') or (run.get('result') or {}).get('scenario_hash')
-        if sc_hash and re.fullmatch(r'[0-9a-f]{8,40}(-[0-9a-f]{8})?', str(sc_hash)):
+        if sc_hash and re.fullmatch(r'[0-9a-f]{8,40}(-[0-9a-f]{8}){0,2}', str(sc_hash)):
             candidates.append(self.store.data_dir / 'scenarios' / str(sc_hash))
         root = (self.store.data_dir / 'scenarios').resolve()
         for path in candidates:
@@ -349,8 +464,9 @@ class RealLab(BaselineLab):
         topology = '_'.join(f'{c["position"]}_{c["kind"].lower()}' for c in components) or 'no_parts'
         result = {
             'topology': topology, 'components': components, 'parts': parts, 'changes': [{'ref': p['ref'], 'position': p['position'], 'was': p['was'], 'now': p['now']} for p in parts],
-            'predicted': {'s11_min_db': stats['s11_min_db'], 'f_min_hz': stats.get('f_min_hz'), 'band_worst_db': stats['band_worst_db'], 'band_best_db': stats['band_best_db'], 'band_mean_db': stats.get('band_mean_db')},
-            'as_built_before': {k: base_stats.get(k) for k in ('s11_min_db', 'band_worst_db', 'band_best_db', 'band_mean_db')} if base_stats else None,
+            'predicted': {'s11_min_db': stats['s11_min_db'], 'f_min_hz': stats.get('f_min_hz'), 'band_worst_db': stats['band_worst_db'], 'band_best_db': stats['band_best_db'], 'band_mean_db': stats.get('band_mean_db'),
+                          'band_worst_accepted_power_pct': stats.get('band_worst_accepted_power_pct'), 'band_mean_accepted_power_pct': stats.get('band_mean_accepted_power_pct')},
+            'as_built_before': {k: base_stats.get(k) for k in ('s11_min_db', 'band_worst_db', 'band_best_db', 'band_mean_db', 'band_worst_accepted_power_pct', 'band_mean_accepted_power_pct')} if base_stats else None,
             'meets_target': stats['band_worst_db'] <= target, 'target_db': target,
             'best_single_change': ({'changes': [{'ref': r['ref'], 'was': r['was'], 'now': r['now']} for r in single['parts'] if r.get('changed')], 'band_worst_db': single['result']['band_worst_db']} if single else None),
             'note': note,

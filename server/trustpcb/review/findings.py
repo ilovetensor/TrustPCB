@@ -16,7 +16,7 @@ from typing import Any
 
 from . import evidence as ev
 from .fingerprint import TargetIndex, fingerprint, rule_of
-from .number_check import Quantity, check_text
+from .number_check import Quantity, check_text, extract
 
 MAX_GROUP_PARTS = 80          # a net can hold hundreds of pads: keep the stored geometry, and the events, small
 SEVERITIES = ('critical', 'high', 'medium', 'low', 'info')
@@ -59,6 +59,56 @@ def check_wording(texts: dict[str, str]) -> None:
         if claims:
             raise FindingRejected('edit_claim', f'{name} says the board was changed ("{claims[0]}"). TrustPCB never edits a design; '
                                   'write recommendations as steps for the engineer to apply in their own tool.', field=name)
+
+
+# ---- a dip that stayed put is not the antenna's resonance ------------------------------------------------------------------
+
+_RESONANCE = re.compile(r'resonan|resonat', re.I)
+_NEGATED = re.compile(r"\b(?:not|n't|never|neither|nor|cannot|unknown origin|did\s+not\s+move|does\s+not\s+move|stay(?:s|ed)?\s+(?:put|fixed|where)|stays?\s+at|fixed|board\s+mode|rather\s+than|no\s+evidence)\b", re.I)
+FIXED_DIP_TOLERANCE_MHZ = 12.0        # the same limit as the fixed-dip detection (evidence.FIXED_DIP_HZ)
+SERIES_RESONANCE_TOLERANCE_MHZ = 25.0
+
+
+def _fixed_dip_mhz(rows: list[dict]) -> list[float]:
+    found = []
+    for row in rows:
+        for name, item in ((row.get('values') or {}).get('measurements') or {}).items():
+            if name.startswith('fixed_dip_') and isinstance(item, dict) and isinstance(item.get('value'), (int, float)):
+                found.append(float(item['value']))
+    return found
+
+
+def _series_resonance_mhz(rows: list[dict]) -> list[float]:
+    return [float(item['value']) for row in rows for name, item in ((row.get('values') or {}).get('measurements') or {}).items()
+            if name == 'first_series_resonance' and isinstance(item, dict) and isinstance(item.get('value'), (int, float))]
+
+
+def check_fixed_dip_claims(texts: dict[str, str], all_rows: list[dict], cited_rows: list[dict]) -> None:
+    """A text may not say the antenna "resonates at" a frequency that a `fixed_dip` row shows stayed put when the geometry changed,
+    unless other evidence it cites (a first series resonance near that frequency) supports it. Such a dip is of unknown origin.
+
+    A simple text check: any sentence with the word resonance or resonates and a frequency within 12 MHz of a fixed dip is refused, except a
+    sentence that says the dip is not the resonance (not, fixed, unknown origin, board mode). Rewrite the claim as a dip of unknown origin and use the
+    first series resonance and the in-band numbers instead.
+    """
+    fixed = _fixed_dip_mhz(all_rows)
+    if not fixed:
+        return
+    series = _series_resonance_mhz(cited_rows)
+    for name, value in texts.items():
+        for sentence in re.split(r'(?<=[.!?])\s+|\n+', value or ''):
+            if not _RESONANCE.search(sentence) or _NEGATED.search(sentence):
+                continue
+            for quantity in extract(sentence):
+                if quantity.dimension != 'frequency':
+                    continue
+                mhz = quantity.base / 1e6
+                dip = next((f for f in fixed if abs(f - mhz) <= max(FIXED_DIP_TOLERANCE_MHZ, quantity.tolerance / 1e6)), None)
+                if dip is None or any(abs(r - mhz) <= SERIES_RESONANCE_TOLERANCE_MHZ for r in series):
+                    continue
+                raise FindingRejected('fixed_dip_not_resonance', f'In {name}: the dip at {dip:g} MHz stayed at the same frequency when the antenna geometry changed (a fixed_dip row), '
+                                      f'so it is not the antenna\'s own resonance. Describe it as a dip of unknown origin and rely on the in-band numbers, the impedance at the band centre '
+                                      'and the first series resonance (the length-related indicator) instead.', field=name, dip_mhz=dip, sentence=sentence.strip()[:160])
 
 
 _COMPARE_MARK = re.compile(r'\b(?:screen|compar\w*|versus|vs|base run|than the base|relative to the base|against the base|better than|worse than)\b', re.I)
@@ -257,6 +307,7 @@ class FindingEngine:
             if mark.get('label') and id(mark) in checked:
                 texts[f'marks[{index}].label'] = str(mark['label'])
         check_wording(texts)
+        check_fixed_dip_claims(texts, self.evidence_rows(), rows)
         allowed = [q for row in rows for q in ev.quantities_of(row)] + list(self.context())
         for index, mark in enumerate(marks):
             value = mark.get('value')

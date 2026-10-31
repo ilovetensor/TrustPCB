@@ -60,6 +60,21 @@ def parse_value(kind: str, text: str) -> tuple[float | None, bool]:
     return val, dnp
 
 
+def infer_kind(ref_kind: str, text: str) -> str:
+    """The kind of a passive part. The unit in the value text wins over the reference letter: a series capacitor can sit at ref L1.
+
+    ``0.47pF`` is a capacitor and ``2.2nH`` an inductor wherever they are fitted. A value with no unit letter (``100k``, ``4p7``)
+    keeps the kind the reference letter suggests. A ferrite bead (FB) is kept as FB.
+    """
+    if ref_kind in ("FB",):
+        return ref_kind
+    t = re.sub(r"\b(DNP|DNF|NP|NC)\b", " ", text or "", flags=re.I)
+    m = re.search(r"\d\s*[pnuµμm]?\s*([FfHhΩ])(?![A-Za-z])", t)
+    if m:
+        return {"f": "C", "h": "L", "ω": "R"}[m.group(1).lower()]
+    return ref_kind
+
+
 def _stackup(board: Board) -> tuple[dict[str, Any] | None, NotSimulatable | None, list[str]]:
     st = board.stackup or {}
     layers = st.get("layers") or []
@@ -205,7 +220,7 @@ def discover_network(board: Board, antenna_net: str, ground: set[str]) -> MatchN
 def _element(board: Board, p, other, topology: str, chain_net: str, position: int) -> MatchElement:
     fp = board.footprint(p.ref)
     text = fp.value if fp else ""
-    kind = PASSIVE_PREFIXES.get(ref_prefix(p.ref), "?")
+    kind = infer_kind(PASSIVE_PREFIXES.get(ref_prefix(p.ref), "?"), text)
     value, dnp_text = parse_value("L" if kind == "FB" else kind, text)
     dnp = bool(fp.dnp) if fp else False
     if dnp_text:

@@ -96,12 +96,17 @@ async def test_matching_experiment_on_the_real_base_then_an_honest_confirm(store
     assert free['band_worst_s11_db'] == pytest.approx(-6.12, abs=0.02) and free['meets_target'] is False         # the README's honest best at confirm quality
     assert locked['band_worst_s11_db'] > free['band_worst_s11_db'] and locked['parts'] == c['winner']['parts']       # the screen's own parts fare worse than a re-tune
     assert rows['winner']['screen']['band_worst_s11_db'] < -14 and rows['winner']['confirm']['band_worst_s11_db'] == pytest.approx(locked['band_worst_s11_db'])
-    assert c['outcome'] == 'held_smaller' and c['agree_with_screen'] is False and c['meets_target'] is False and 'screen overstated' in c['statement']
+    # the screen's own parts held smaller, and the free re-tune gains more than 3 dB in band yet misses the target: a partial win, with the finer verdict in `hold`
+    assert c['hold'] == 'held_smaller' and c['agree_with_screen'] is False and c['meets_target'] is False
+    assert c['outcome'] == 'improved_short_of_target' and 'screen overstated' in c['statement'] and 'target is not met' in c['statement']
+    assert c['best']['mode'] == 'free_retune' and c['best']['band_worst_s11_db'] == pytest.approx(-6.12, abs=0.02) and c['best_gain_db'] == pytest.approx(5.6, abs=0.05)
+    assert c['best']['accepted_power_worst_pct'] > c['base']['accepted_power_worst_pct'] + 50 and c['best']['meets_target'] is False
+    assert {p['ref'] for p in c['best']['parts']} >= {'L1'}
     assert confirm['solver_s'] == 0 and queue.stats['ran'] == 0
 
     finding = store.get_finding_by_code(review['id'], 'F-001')
     assert c['statement'] in finding['not_tested'] and len(finding['evidence_ids']) >= 5
-    assert investigation['outcome'] and store.list_investigations(review['id'])[0]['outcome']['confirmation']['outcome'] == 'held_smaller'
+    assert investigation['outcome'] and store.list_investigations(review['id'])[0]['outcome']['confirmation']['outcome'] == 'improved_short_of_target'
     sims = list_sims(store, review['id'])
     assert [s['kind'] for s in sims] == ['base', 'confirm']              # matching calculations are not solver jobs
 

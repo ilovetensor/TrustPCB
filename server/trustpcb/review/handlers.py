@@ -189,6 +189,9 @@ class Handlers:
         }
         if s.limits:
             data['limits_hit'] = [l['rule'] for l in s.limits]
+        recheck = self.recheck_status()
+        if recheck:
+            data['recheck'] = recheck
         if s.config.refine_rounds:
             data['refine'] = {'rounds_allowed': s.config.refine_rounds, 'rounds_started': s.refine.round, 'open': s.refine.active,
                               **({'screens_used': s.refine.screens, 'screens_allowed': REFINE_SCREENS, 'matching_used': s.refine.matching, 'matching_allowed': REFINE_MATCHING} if s.refine.active else {})}
@@ -218,6 +221,9 @@ class Handlers:
                 return refusal
         if s.phase == 5:
             held = await self.refine_gate(args)
+            if held is not None:
+                return held
+            held = await self.partial_win_gate()
             if held is not None:
                 return held
         change = s.machine.advance()
@@ -376,10 +382,39 @@ class Handlers:
             'rf': {k: s.rf.get(k) for k in ('simulatable', 'reason', 'kind', 'antenna_id', 'antenna_bbox', 'band_hz', 'target_s11_db')},
         }
         if s.previous:
-            data['previous_version'] = {'number': s.previous['version_number'], 'open_findings': [
+            data['previous_version'] = {'number': s.previous['version_number'], 'previous_review_id': s.previous['review']['id'], 'open_findings': [
                 {'code': f['code'], 'severity': f['severity'], 'title': f['title'], 'fingerprint': f['fingerprint']}
-                for f in s.previous['findings'] if f['status'] in ('open', 'needs_recheck')][:25]}
+                for f in s.previous['findings'] if f['status'] in ('open', 'needs_recheck')][:25],
+                'board_changes': self.board_changes_view(), 'how_to_use': 'Recheck: report each previous finding as fixed, still present or changed, find what is new, and investigate only what changed.'}
         return ok(data)
+
+    def board_changes_view(self) -> dict | None:
+        """The compact board difference between the previous version and this one."""
+        changes = (self.s.previous or {}).get('board_changes')
+        if not changes:
+            return None
+        parts = changes.get('parts') or {}
+        return {'parts': {k: (parts.get(k) or [])[:20] for k in ('added', 'removed', 'moved', 'value_changed')},
+                'tracks': {k: (changes.get('tracks') or {}).get(k) for k in ('added', 'removed')}, 'vias': {k: (changes.get('vias') or {}).get(k) for k in ('added', 'removed')},
+                'zones': changes.get('zones'), 'nets': changes.get('nets')}
+
+    def recheck_status(self) -> dict | None:
+        """Where a recheck stands: each previous finding as fixed, still present, changed or not yet judged, and what is new. Only for versions after the first."""
+        s = self.s
+        if not s.previous:
+            return None
+        from .compare import classify_findings
+        now = [f for f in self.store.list_findings(s.review_id)]
+        covered = {row['rule'] for row in self.store.list_candidates(s.review_id) if row['rule']} if s.phase >= 6 else None
+        out = classify_findings(self.store, s.previous['findings'], now, new_coverage=covered)
+        brief = lambda items: [{'code': i.get('code'), 'title': i.get('title'), 'fingerprint': i.get('fingerprint')} for i in items]
+        recorded_again = {f['fingerprint'] for f in now if f['status'] != 'superseded'}
+        waiting = [f for f in s.previous['findings'] if f['status'] in ('open', 'needs_recheck') and f['fingerprint'] not in recorded_again]
+        return {'previous_review_id': s.previous['review']['id'], 'against_version': s.previous['version_number'],
+                'still_present': brief(out['still_present']), 'changed': brief(out['changed']), 'new': brief(out['new']),
+                'not_recorded_again': brief(waiting),
+                'note': ('A previous finding that you do not record again is reported as fixed. Say so in the summary: how many are fixed, still present and new.' if s.phase >= 5
+                         else 'Record a finding again where its issue remains. One you do not record again is reported as fixed when the review ends.')}
 
     async def read_schematic(self, args: dict) -> ToolResult:
         board, kind, query = self.s.board, args['kind'], (args.get('query') or '').lower()

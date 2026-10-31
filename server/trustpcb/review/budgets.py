@@ -35,6 +35,7 @@ DEFAULT_SCREEN_S = 240.0         # solver estimates before any run was timed (sp
 DEFAULT_CONFIRM_S = 420.0
 REFUSAL_STREAK_LIMIT = 6         # extra safety: this many refused calls in a row end the agent
 IMPROVEMENT_DB = 1.0             # a what-if or matching change counts as an improvement when the worst in-band S11 gains at least this much
+PARTIAL_WIN_DB = 3.0             # a confirm-quality gain of at least this much in the band that still misses the target is a partial win (improved_short_of_target)
 SCREEN_CONFIRM_DB = 3.0          # screen and confirm must agree within these limits (in-band worst S11, then the first series resonance)
 SCREEN_CONFIRM_RES_REL = 0.06
 

@@ -14,9 +14,10 @@ from typing import Any
 from .. import prompts
 from ..runners import resolve_profile
 from ..runners.base import RunRequest
-from . import report
+from . import evidence as ev
+from . import partial, report
 from .budgets import DEPTHS, Clock, config_for
-from .compare import previous_context
+from .compare import board_difference, previous_context
 from .fingerprint import TargetIndex, fingerprint
 from .lab import BaselineLab, Lab
 from .machine import PHASE_NAMES
@@ -98,6 +99,32 @@ def band_from_goal(goal: dict) -> list[float] | None:
     return None
 
 
+def change_summary(changes: dict | None) -> str:
+    """What differs between the previous board and this one, in a few plain lines for the briefing; the agent investigates only that."""
+    if not changes:
+        return 'The board differences could not be read, so check which parts and copper changed before you test anything.'
+    parts = changes.get('parts') or {}
+    bits = []
+    for key, label in (('value_changed', 'value changed'), ('added', 'added'), ('removed', 'removed'), ('moved', 'moved')):
+        items = parts.get(key) or []
+        if items:
+            shown = ', '.join((f'{p["ref"]} {p["from"]} to {p["to"]}' if key == 'value_changed' else p['ref']) for p in items[:8])
+            bits.append(f'parts {label}: {shown}{" and more" if len(items) > 8 else ""}')
+    tracks, vias = changes.get('tracks') or {}, changes.get('vias') or {}
+    copper = tracks.get('added', 0) + tracks.get('removed', 0) + vias.get('added', 0) + vias.get('removed', 0)
+    if copper:
+        bits.append(f'copper changed: {tracks.get("added", 0)} tracks added, {tracks.get("removed", 0)} removed, {vias.get("added", 0)} vias added, {vias.get("removed", 0)} removed')
+    zones = changes.get('zones') or {}
+    if zones.get('old') != zones.get('new'):
+        bits.append('zones changed')
+    if not bits:
+        return 'Nothing changed on the board itself that the checks can see.'
+    text = 'What changed on the board: ' + '; '.join(bits) + '.'
+    if not copper and not (zones.get('old') != zones.get('new')) and not (parts.get('added') or parts.get('removed') or parts.get('moved')):
+        text += ' The copper is the same, so the antenna model is unchanged: an earlier simulation of the same geometry is reused at no solver cost, and only the matching parts differ.'
+    return text
+
+
 def _first_sentence(text: str, limit: int = 220) -> str:
     text = ' '.join((text or '').split())
     cut = re.split(r'(?<=[.!?])\s', text, maxsplit=1)[0]
@@ -118,6 +145,12 @@ def deterministic_summary(store, review_id: str, end_state: str, end_reason: str
     parts = [f'{counts[s]} {s}' for s in order if counts.get(s)]
     purpose = ((extra.get('brief') or {}).get('purpose') or '').strip()
     lines: list[str] = []
+    try:
+        win = partial.headline(report._investigations(store, review_id), store.list_findings(review_id), (extra.get('target_db')))
+    except Exception:
+        win = None
+    if win:                  # a partial win leads: improved at confirm quality, target not met, the best parts, accepted power before and after
+        lines.append('Result: ' + win['text'])
     if purpose:
         lines.append(f'Board: {purpose.rstrip(".")}.')
     if findings:
@@ -134,6 +167,10 @@ def deterministic_summary(store, review_id: str, end_state: str, end_reason: str
     if dismissed:
         total = sum(d.get('count', 0) for d in dismissed)
         lines.append(f'{total} analyzer result(s) were cleared as harmless on this board, each with a reason in the report.')
+    if extra.get('version_changes'):
+        c = extra['version_changes']
+        lines.append(f'Compared with version {c["against"]["version_number"]}: {len(c.get("fixed") or [])} finding(s) fixed, {len(c.get("still_present") or []) + len(c.get("changed") or [])} still present, '
+                     f'{len(c.get("new") or [])} new.')
     if extra.get('unreviewed'):
         lines.append('Not reviewed: ' + ', '.join(f'{g["rule"]} ({g["count"]})' for g in extra['unreviewed'][:6]) + '.')
     if end_state != 'complete':
@@ -141,6 +178,8 @@ def deterministic_summary(store, review_id: str, end_state: str, end_reason: str
     if rf_status == 'not_tested':
         lines.append('RF behaviour was not tested: no simulation ran, so statements about antenna tuning are engineering opinion.')
     actions, seen = [], set()
+    if win:
+        actions.append((f'{win["finding"]}: ' if win.get('finding') else '') + 'Try ' + win['parts_text'] + ' in your own tool and measure again; in simulation this improves the match but the target is not met.')
     for f in findings:
         if f['severity'] in ('critical', 'high', 'medium') or not actions:
             if f['code'] not in seen:
@@ -210,6 +249,11 @@ class ReviewRun:
             raise PipelineFailed(f'The baseline checks failed: {str(exc)[:300]}') from exc
         self.board_summary = self.board.summary() if hasattr(self.board, 'summary') else None
         previous = previous_context(store, version['id'])
+        if previous:
+            try:
+                previous['board_changes'] = board_difference(await self.lab.load_board(version_id=previous['version']['id']), self.board)
+            except Exception:
+                previous['board_changes'] = None
         index = TargetIndex(self.board)
         carried = 0
         for candidate in candidates:
@@ -232,6 +276,7 @@ class ReviewRun:
         if not self.rf.get('band_hz') and band_from_goal(goal):
             self.rf = {**self.rf, 'band_hz': band_from_goal(goal)}
         summary = {'board': self.board_summary, 'rf': {k: self.rf.get(k) for k in ('simulatable', 'reason', 'kind', 'band_hz', 'target_s11_db', 'antenna_id')},
+                   'previous_review_id': previous['review']['id'] if previous else None, 'previous_version_number': previous['version_number'] if previous else None,
                    'phases': [], 'limits': [], 'baseline': {k: (baseline or {}).get(k) for k in ('warnings', 'default_rules', 'kicad_version')}}
         store.update_review(self.review_id, summary=summary)
         await self.agent(review, version, previous)
@@ -304,12 +349,9 @@ class ReviewRun:
                 lines.append(f'- {key.replace("_", " ")}: {goal[key]}')
         lines.append(f'- review depth: {review["depth"]}')
         if previous:
-            lines.append('')
-            lines.append(f'This is a recheck of version {previous["version_number"] + 1}. The previous version had these open findings. Report each as fixed, still present or changed by '
-                         'recording findings again where the issue remains; the server compares by fingerprint. Only investigate what changed.')
-            for f in previous['findings']:
-                if f['status'] in ('open', 'needs_recheck'):
-                    lines.append(f'- {f["code"]} [{f["severity"]}] {f["title"]} ({f["fingerprint"]})')
+            listing = [f'- {f["code"]} [{f["severity"]}] {f["title"]} ({f["fingerprint"]})' for f in previous['findings'] if f['status'] in ('open', 'needs_recheck')] or ['- (none were open)']
+            lines += ['', prompts.recheck_brief(version_number=(self.store.get_version(review['version_id']) or {}).get('number', previous['version_number'] + 1), previous_review_id=previous['review']['id'], findings='\n'.join(listing),
+                                                changes=change_summary(previous.get('board_changes')))]
         lines += ['', prompts.phase_brief(2, **handlers.phase_vars())]
         return '\n'.join(lines)
 
@@ -385,7 +427,9 @@ class ReviewRun:
                                  'skipped': list(session.refine.skipped), 'open_when_ended': session.refine.active}
         summary['unreviewed_groups'] = unreviewed
         summary['summary'] = agent_summary or deterministic_summary(store, self.review_id, end_state, reason, rf_status,
-                                                                    extra={'brief': summary.get('brief'), 'dismissals': summary.get('dismissals'), 'unreviewed': unreviewed})
+                                                                    extra={'brief': summary.get('brief'), 'dismissals': summary.get('dismissals'), 'unreviewed': unreviewed,
+                                                                    'target_db': ev.target_db(review.get('goal') or {}, summary.get('rf') or {}),
+                                                                    'version_changes': _safe_changes(store, self.review_id)})
         summary['end'] = {'state': end_state, 'reason': reason, 'detail': detail}
         summary['limits'] = limits
         summary['phases'] = [{'phase': c.phase, 'previous': c.previous, 'name': PHASE_NAMES[c.phase], 'skipped': [{'phase': p, 'name': PHASE_NAMES[p], 'reason': r} for p, r in c.skipped]}
@@ -404,6 +448,13 @@ class ReviewRun:
                 await session.emit_budget()
             await ctx.emit('report_ready', {'review_id': self.review_id, 'revision': revision['number'], 'end_state': end_state, 'reason': reason,
                                             'counts': store.severity_counts(self.review_id)})
+
+
+def _safe_changes(store, review_id: str) -> dict | None:
+    try:
+        return report.version_changes(store, review_id)
+    except Exception:
+        return None
 
 
 def _unreviewed(store, review_id: str) -> list[dict]:

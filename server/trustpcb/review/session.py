@@ -59,6 +59,7 @@ class ReviewSession:
         self.layout_waived: dict | None = None
         self.refine = RefineState()                     # the bounded refine round after a confirm that missed the target
         self.coverage_refusals = 0
+        self.partial_refusals = 0                       # refusals of advance_phase for a partial win the finding does not report yet
         self.coverage_waived: dict | None = None
         self.stop_reason: str | None = None
         self.stop_detail: str = ''
@@ -111,8 +112,15 @@ class ReviewSession:
             view['mean_s11_db'] = round(m['band_mean_s11_db'], 2)
         if basis:
             view['basis'] = basis
+        if m.get('band_worst_accepted_power_pct') is not None:
+            view['worst_accepted_power_pct'] = m['band_worst_accepted_power_pct']
+            if m.get('band_mean_accepted_power_pct') is not None:
+                view['mean_accepted_power_pct'] = m['band_mean_accepted_power_pct']
+            view['accepted_power_note'] = ev.ACCEPTED_POWER_NOTE
         if m.get('antenna_only_band_worst_db') is not None and m.get('basis') == 'as_built':
             view['antenna_alone_worst_s11_db'] = m['antenna_only_band_worst_db']
+            if m.get('antenna_only_band_worst_accepted_power_pct') is not None:
+                view['antenna_alone_worst_accepted_power_pct'] = m['antenna_only_band_worst_accepted_power_pct']
         view['target_s11_db'] = ev.target_db(self.goal, self.rf)
         view['meets_target'] = ev.meets_target(m, self.goal, self.rf)
         view['how_to_read'] = 'Success is the worst S11 across the band, as built. The deepest dip is only a description.'
@@ -143,11 +151,13 @@ class ReviewSession:
         detail = {}
         if m.get('dips'):
             detail['s11_dips'] = [{'frequency_mhz': round(d['f_hz'] / 1e6, 1), 's11_db': d['s11_db']} for d in m['dips']]
-            detail['dips_note'] = 'Dips are descriptive. Compare them between runs: a dip that stays put when the antenna changes is probably a board mode.'
+            detail['dips_note'] = ('Dips are descriptive. Compare them between runs: a dip that stays put when the antenna geometry changes is not the antenna\'s own resonance; '
+                                   'call it a dip of unknown origin. The first series resonance is the length-related indicator.')
         for key, name in (('first_series_resonance_hz', 'first_series_resonance_mhz'),):
             if m.get(key) is not None:
                 detail[name] = round(m[key] / 1e6, 1)
-        for key in ('antenna_only_band_worst_db', 'antenna_only_band_best_db', 'antenna_only_band_mean_db', 'as_built_band_worst_db', 'as_built_band_best_db', 'as_built_band_mean_db', 'basis'):
+        for key in ('antenna_only_band_worst_db', 'antenna_only_band_best_db', 'antenna_only_band_mean_db', 'as_built_band_worst_db', 'as_built_band_best_db', 'as_built_band_mean_db', 'basis',
+                    'antenna_only_band_worst_accepted_power_pct', 'antenna_only_band_mean_accepted_power_pct', 'as_built_band_worst_accepted_power_pct', 'as_built_band_mean_accepted_power_pct'):
             if m.get(key) is not None:
                 detail[key] = m[key]
         if m.get('plausibility'):

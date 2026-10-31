@@ -48,6 +48,9 @@ class Scenario:
     whatif_ops: tuple[Any, ...] = ()
     material: dict[str, float | None] | None = None
     region: tuple[float, float, float, float] | None = None  # override of the automatic region
+    #: fingerprint of the copper and stackup the solver sees (see ``geometry_key``). When set, the cache key uses it instead of the
+    #: version id, so a new version with unchanged geometry reuses the earlier run. Matching parts are not in it: they are added afterwards.
+    geometry_key: str | None = None
 
     def __post_init__(self):
         if self.quality not in ("screen", "confirm"):
@@ -63,26 +66,62 @@ class Scenario:
             "whatif_ops": [whatif.op_to_dict(o) for o in self.whatif_ops],
             "material": self.material,
             "region": list(self.region) if self.region else None,
+            **({"geometry_key": self.geometry_key} if self.geometry_key else {}),
         }
 
     def hash(self) -> str:
-        blob = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
+        """The cache key. With a geometry key the version id is left out, so the same geometry in a later version is the same run."""
+        d = self.to_dict()
+        if self.geometry_key:
+            d.pop("version_id", None)
+        blob = json.dumps(d, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(blob.encode()).hexdigest()[:20]
+
+    def legacy_hash(self) -> str:
+        """The key runs were stored under before cache keys followed the geometry: the version id in place of the geometry key."""
+        d = self.to_dict()
+        d.pop("geometry_key", None)
+        blob = json.dumps(d, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(blob.encode()).hexdigest()[:20]
 
     def with_quality(self, quality: str) -> "Scenario":
-        return Scenario(self.version_id, self.antenna_id, self.band, quality, self.whatif_ops, self.material, self.region)
+        return Scenario(self.version_id, self.antenna_id, self.band, quality, self.whatif_ops, self.material, self.region, self.geometry_key)
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "Scenario":
         ops = tuple(whatif.op_from_dict(o) for o in d.get("whatif_ops") or [])
         return Scenario(d["version_id"], d["antenna_id"], tuple(d["band_ghz"]), d.get("quality", "screen"), ops,
-                        d.get("material") or whatif.material_of(ops), tuple(d["region"]) if d.get("region") else None)
+                        d.get("material") or whatif.material_of(ops), tuple(d["region"]) if d.get("region") else None, d.get("geometry_key"))
+
+
+def _r(v, n: int = 4):
+    return round(float(v), n)
+
+
+def geometry_key(board: Board, setup: RfSetup) -> str:
+    """A fingerprint of everything the solver sees of the board: outline, stackup, copper (tracks, vias, zone fills, pad shapes) and
+    the antenna setup. Part values, DNP marks, references and uuids are left out, so a version that only swaps matching parts has the
+    same key as the version before it. The matching network is not simulated; it is applied to the stored S11 afterwards."""
+    st = setup.stackup or {}
+    data = {
+        "outline": [[[_r(x), _r(y)] for x, y in ring] for ring in board.outline],
+        "stackup": {"layer_z": {k: _r(v, 5) for k, v in (st.get("layer_z") or {}).items()},
+                    "slabs": [[_r(s["zmin"], 5), _r(s["zmax"], 5), s["epsilon_r"], s["loss_tangent"]] for s in st.get("slabs") or []]},
+        "tracks": sorted([t.net or "", t.layer, _r(t.width), [_r(v) for v in t.start], [_r(v) for v in t.end], [_r(v) for v in t.mid] if t.mid else None] for t in board.tracks),
+        "vias": sorted([v.net or "", _r(v.x), _r(v.y), _r(v.diameter), _r(v.drill), sorted(v.layers)] for v in board.vias),
+        "zones": sorted([z.net or "", sorted(z.layers), bool(z.is_keepout), {l: [[[_r(x), _r(y)] for x, y in ring] for ring in rings] for l, rings in sorted(z.filled.items())}] for z in board.zones),
+        "pads": sorted([p.net or "", p.layers and sorted(p.layers), _r(p.x), _r(p.y), _r(p.w), _r(p.h), _r(p.rotation, 2), p.shape, p.drill] for p in board.pads),
+        "setup": {"antenna_id": setup.antenna_id, "antenna_net": setup.antenna_net, "port_xy": setup.port_xy, "port_layer": setup.port_layer, "ground_layer": setup.ground_layer,
+                  "port_width_mm": setup.port_width_mm, "port_axis": setup.port_axis, "region": setup.region, "fine_zone": setup.fine_zone, "f0_hz": setup.f0_hz, "fc_hz": setup.fc_hz},
+    }
+    blob = json.dumps(data, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
 def scenario_for(board: Board, setup: RfSetup, quality: str = "screen", ops=(), band=None, region=None) -> Scenario:
     ops = tuple(ops)
     return Scenario(board.version_id, setup.antenna_id, tuple(band or setup.band_ghz), quality, ops, whatif.material_of(ops),
-                    tuple(region) if region else None)
+                    tuple(region) if region else None, geometry_key(board, setup))
 
 
 # --------------------------------------------------------------------------- build

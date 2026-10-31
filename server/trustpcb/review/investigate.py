@@ -9,8 +9,9 @@ import asyncio
 import re
 
 from . import evidence as ev
-from .budgets import IMPROVEMENT_DB, REFINE_MATCHING, REFINE_SCREENS, Experiment
-from .findings import SCREEN_ONLY, FindingRejected, check_numbers, check_wording
+from . import partial
+from .budgets import IMPROVEMENT_DB, PARTIAL_WIN_DB, REFINE_MATCHING, REFINE_SCREENS, Experiment
+from .findings import SCREEN_ONLY, FindingRejected, check_fixed_dip_claims, check_numbers, check_wording
 from .handlers import OpError, validate_ops
 from .lab import BadMatchingRequest, LabUnavailable, scenario_hash, scenario_key
 from .tools import ToolResult, fail, ok
@@ -152,9 +153,15 @@ class InvestigationMixin:
         if good and kind in ('whatif', 'confirm') and inv.base is not None and inv.base.ok and scenario['quality'] == inv.base.quality:
             delta = ev.delta(metrics, inv.base.metrics)
         values = ev.simulation_values(ref=ref, label=label, quality=scenario['quality'], sc_hash=sc_hash, scenario=scenario, run=run, metrics=metrics, suspect=suspect.code)
+        fixed: list[dict] = []
         if delta:
             values['measurements'] = {**values['measurements'], **ev.delta_measurements(delta)}
             values['compared_with'] = inv.base.ref
+            fixed = ev.fixed_dips_between(metrics, inv.base.metrics, scenario.get('whatif_ops'), s.refs.get(inv.base.ref, {}).get('scenario', {}).get('whatif_ops'))
+            if fixed:       # flagged on the evidence itself, so the number check allows the frequency and the finding rule can see it
+                values['measurements'] = {**values['measurements'], **ev.fixed_dip_measurements(fixed)}
+                values['fixed_dips'] = [{'f_hz': d['f_hz'], 'moved_hz': d['moved_hz']} for d in fixed]
+                values['fixed_dip_note'] = ev.FIXED_DIP_NOTE
         row = self.store.add_evidence(s.review_id, ev.CONFIRM if scenario['quality'] == 'confirm' else ev.SIMULATION, 'run_simulation' if kind != 'confirm' else 'confirm_result', values)
         exp = Experiment(ref, sc_hash, key, suspect.id, kind, label, scenario['quality'], good, metrics, delta, False, row['id'], repair, ops=list(scenario.get('whatif_ops') or []))
         s.refs[ref] = {'exp': exp, 'scenario': scenario, 'run': run, 'evidence': row, 'label': label}
@@ -182,6 +189,10 @@ class InvestigationMixin:
             notices.append('This change improves the worst in-band S11 by at least 1 dB against the base. Matching can be tried on it too: tune_matching with this ref tests the combination.')
         for closed, status, why in closures:
             notices.append(f'Suspect {closed.code} is now closed as {status}: {why}')
+        if fixed:
+            data['fixed_dips'] = [{'frequency_mhz': round(d['f_hz'] / 1e6, 1), 'moved_mhz': round(d['moved_hz'] / 1e6, 1)} for d in fixed]
+            notices.append(f'{len(fixed)} dip(s) stayed at the same frequency as the base although the antenna geometry changed ({", ".join(f"{d["f_hz"] / 1e6:.0f} MHz" for d in fixed)}). '
+                           + ev.FIXED_DIP_NOTE)
         if notices:
             data['notices'] = notices
         data['suspect'] = {'code': suspect.code, 'status': suspect.status}
@@ -236,23 +247,23 @@ class InvestigationMixin:
         # a dip that stays put while the antenna changes is probably a board mode
         changed_antenna = (va.get('whatif_ops') or []) != (vb.get('whatif_ops') or [])
         fixed = ev.fixed_dips(ma.get('dips') or [], mb.get('dips') or []) if changed_antenna else []
-        for index, dip in enumerate(fixed, start=1):
-            measurements[f'fixed_dip_{index}'] = {'value': round(dip['f_hz'] / 1e6, 1), 'unit': 'MHz'}
+        measurements.update(ev.fixed_dip_measurements(fixed))
         if fixed:
             hint = (f'{len(fixed)} dip(s) stay where they were between {args["a"]} and {args["b"]} although the antenna changed: ' +
-                    ', '.join(f'{d["f_hz"] / 1e6:.0f} MHz' for d in fixed) + '. A dip that does not move with the antenna is probably a board (ground plane) mode, not the antenna\'s own resonance.')
+                    ', '.join(f'{d["f_hz"] / 1e6:.0f} MHz' for d in fixed) + '. ' + ev.FIXED_DIP_NOTE)
         elif changed_antenna:
             hint = 'No dip stays fixed between these runs, so the dips seen here move with the antenna.'
         else:
             hint = 'Both results share the same antenna geometry, so dips say nothing about a board mode.'
         values = {'kind': 'simulated', 'comparative': True, 'quality': va.get('quality'), 'trust': {'status': 'ok' if trusted else 'fail', 'reasons': [] if trusted else ['one of the runs failed its trust checks']},
-                  'measurements': measurements, 'a': args['a'], 'b': args['b'], 'label': f'{args["b"]} compared with {args["a"]}'}
+                  'measurements': measurements, 'a': args['a'], 'b': args['b'], 'label': f'{args["b"]} compared with {args["a"]}',
+                  **({'fixed_dips': [{'f_hz': d['f_hz'], 'moved_hz': d['moved_hz']} for d in fixed], 'fixed_dip_note': ev.FIXED_DIP_NOTE} if fixed else {})}
         row = self.store.add_evidence(s.review_id, ev.COMPARISON, 'compare_results', values)
         data = {'evidence': row['code'], 'a': args['a'], 'b': args['b'], 'trust': values['trust'], 'b_minus_a': measurements,
                 'in_band': {'judged_by': 'worst S11 across the band, then the mean (as built)', 'a': s.in_band_view(ma), 'b': s.in_band_view(mb)},
                 's11_dips': {'a': [{'frequency_mhz': round(d['f_hz'] / 1e6, 1), 's11_db': d['s11_db']} for d in ma.get('dips') or []],
                              'b': [{'frequency_mhz': round(d['f_hz'] / 1e6, 1), 's11_db': d['s11_db']} for d in mb.get('dips') or []]},
-                'board_mode_hint': hint, 'note': extra.get('note'),
+                'board_mode_hint': hint, 'fixed_dips': [{'frequency_mhz': round(d['f_hz'] / 1e6, 1)} for d in fixed] or None, 'note': extra.get('note'),
                 'meaning': 'Negative S11 change means better matching. These are comparisons, not absolute results.' if values['quality'] == 'screen' else None}
         impedance = {k: s.impedance_view(m) for k, m in (('a', ma), ('b', mb)) if s.impedance_view(m)}
         if impedance:
@@ -287,7 +298,10 @@ class InvestigationMixin:
         metrics = {'trust_status': src.get('trust_status'), 'trust_reasons': [], 'solve_s': 0, 'basis': 'as_built',
                    'band_worst_s11_db': stats.get('band_worst_db'), 'band_mean_s11_db': stats.get('band_mean_db'), 's11_min_db': stats.get('s11_min_db'),
                    'f_res_hz': stats.get('f_min_hz'), 'as_built_band_worst_db': stats.get('band_worst_db'), 'as_built_band_best_db': stats.get('band_best_db'),
-                   'as_built_band_mean_db': stats.get('band_mean_db'), 'antenna_only_band_worst_db': src.get('antenna_only_band_worst_db'),
+                   'as_built_band_mean_db': stats.get('band_mean_db'),
+                   'band_worst_accepted_power_pct': stats.get('band_worst_accepted_power_pct'), 'band_mean_accepted_power_pct': stats.get('band_mean_accepted_power_pct'),
+                   'as_built_band_worst_accepted_power_pct': stats.get('band_worst_accepted_power_pct'), 'as_built_band_mean_accepted_power_pct': stats.get('band_mean_accepted_power_pct'),
+                   'antenna_only_band_worst_accepted_power_pct': src.get('antenna_only_band_worst_accepted_power_pct'), 'antenna_only_band_mean_accepted_power_pct': src.get('antenna_only_band_mean_accepted_power_pct'), 'antenna_only_band_worst_db': src.get('antenna_only_band_worst_db'),
                    'antenna_only_band_mean_db': src.get('antenna_only_band_mean_db'), 'dmax_dbi': src.get('dmax_dbi'),
                    'first_series_resonance_hz': out.get('first_series_resonance_hz'), 'centre_f_hz': centre.get('f_hz'), 'centre_re': centre.get('re'), 'centre_im': centre.get('im'),
                    'centre_basis': 'radio_side'}
@@ -442,6 +456,7 @@ class InvestigationMixin:
         try:
             texts = {'reasoning': args['reasoning']}
             check_wording(texts)
+            check_fixed_dip_claims(texts, s.engine.evidence_rows(), rows)
             check_numbers(texts, allowed, compare_only=True)     # a screen number may appear here when the sentence says it is a screen run or a comparison
         except FindingRejected as exc:
             return fail(exc.code, exc.message, **exc.data)
@@ -487,6 +502,7 @@ class InvestigationMixin:
         allowed = [q for r in rows for q in ev.quantities_of(r)] + s.context()
         try:
             check_wording({'summary': args['summary']})
+            check_fixed_dip_claims({'summary': args['summary']}, s.engine.evidence_rows(), rows)
             check_numbers({'summary': args['summary']}, allowed, compare_only=True)
         except FindingRejected as exc:
             return fail(exc.code, exc.message, **exc.data)
@@ -685,7 +701,8 @@ class InvestigationMixin:
         else:
             winner_row = s.refs[run_exp.ref]['evidence']
             final_metrics, final_ref = (locked['metrics'], locked['ref']) if locked else (run_exp.metrics, run_exp.ref)
-        confirmation, summary_row = self._compare_with_screen(inv, screen, final_metrics, final_ref, locked, free, slot=slot if refine else None)
+        final_row = locked['row'] if (locked and not geometry_is_base) else winner_row
+        confirmation, summary_row = self._compare_with_screen(inv, screen, final_metrics, final_ref, locked, free, slot=slot if refine else None, final_row=final_row)
         attach = [s.refs[confirm_base.ref]['evidence'] if confirm_base else None, winner_row, None if geometry_is_base else (locked and locked['row']), free and free['row'], summary_row]
         await self._attach_confirmation(inv, [r for r in attach if r], confirmation['outcome'], ('Refine round: ' + confirmation['statement']) if refine else confirmation['statement'])
         existing = (self.store.get_investigation(inv.id) or {}).get('outcome') or {}
@@ -702,8 +719,14 @@ class InvestigationMixin:
             data.pop('notices')
         return ok(data)
 
-    def _compare_with_screen(self, inv, screen: Experiment, final_metrics: dict, final_ref: str, locked: dict | None, free: dict | None, *, slot: str | None = None) -> tuple[dict, dict | None]:
-        """The honest comparison: did the screen's improvement hold at confirm quality? Also returns the evidence row that carries it."""
+    def _compare_with_screen(self, inv, screen: Experiment, final_metrics: dict, final_ref: str, locked: dict | None, free: dict | None, *, slot: str | None = None,
+                             final_row: dict | None = None) -> tuple[dict, dict | None]:
+        """The honest comparison: did the screen's improvement hold at confirm quality? Also returns the evidence row that carries it.
+
+        When the best confirm-quality candidate (the free re-tune included) gains PARTIAL_WIN_DB or more in band and still misses the target, the
+        outcome is `improved_short_of_target`: a partial win, reported with its best parts and the accepted power before and after. The finer
+        verdict about the screen's own parts stays in `hold`.
+        """
         s = self.s
         confirm_base = inv.confirms.get('base')
         gain = None if confirm_base is None else round(-(ev.delta(final_metrics, confirm_base.metrics).get('s11_db') or 0.0), 3)
@@ -724,15 +747,39 @@ class InvestigationMixin:
             outcome, statement = 'held_after_retune', NOT_HELD[:-1] + ' with the screen\'s parts; re-tuning the parts at confirm quality still improves the worst in-band S11.'
         else:
             outcome, statement = 'not_held', NOT_HELD
+        hold = outcome
         part_view = lambda parts: [{k: p.get(k) for k in ('ref', 'position', 'was', 'now')} for p in parts or []]
+        # the best confirm-quality candidate: the first attempt as confirmed, or the free re-tune, whichever is better in band
+        best = base_view = None
+        if confirm_base is not None:
+            final_code = (final_row or {}).get('code')
+            first_mode = 'screen_parts_locked' if locked else 'geometry_only'
+            best = partial.best_candidate([
+                (first_mode, final_ref, final_code, final_metrics, (locked or {}).get('parts') or [], (locked or {}).get('exp').ops if locked else list(screen.ops or []), meets),
+                *([('free_retune', free['ref'], free['evidence'], free['metrics'], free.get('parts') or [], list(free['exp'].ops or []), ev.meets_target(free['metrics'], s.goal, s.rf))] if free else []),
+            ])
+            bm = confirm_base.metrics
+            base_view = {'ref': confirm_base.ref, 'band_worst_s11_db': None if bm.get('band_worst_s11_db') is None else round(bm['band_worst_s11_db'], 2),
+                         'band_mean_s11_db': None if bm.get('band_mean_s11_db') is None else round(bm['band_mean_s11_db'], 2),
+                         'accepted_power_worst_pct': bm.get('band_worst_accepted_power_pct'), 'accepted_power_mean_pct': bm.get('band_mean_accepted_power_pct')}
+        best_gain = None if best is None or confirm_base is None or confirm_base.metrics.get('band_worst_s11_db') is None else round(confirm_base.metrics['band_worst_s11_db'] - best['band_worst_s11_db'], 2)
+        if best is not None and best_gain is not None and best_gain >= PARTIAL_WIN_DB and not best['meets_target'] and not meets and not (free and ev.meets_target(free['metrics'], s.goal, s.rf)):
+            outcome = partial.OUTCOME
+            statement = {
+                'held': 'The improvement held at confirm quality, but the tuning target is not met.',
+                'held_smaller': 'The improvement held at confirm quality but the screen overstated it, and the tuning target is not met.',
+            }.get(hold, 'The screen improvement did not hold with the screen\'s own parts. Re-tuning at confirm quality gives a real gain in band, but the tuning target is not met.')
+            statement += ' This is a partial win: the best confirm-quality parts are in the finding.'
         confirmation = {
-            'outcome': outcome, 'statement': statement, 'held': held_locked, 'agree_with_screen': agree,
+            'outcome': outcome, 'hold': hold, 'statement': statement, 'held': held_locked, 'agree_with_screen': agree,
             'winner': {'ref': screen.ref, 'ops': screen.ops, 'parts': part_view(screen.parts), 'experiment': screen.kind},
             'rows': {'base': {'screen': self._row(inv.base.metrics, inv.base.ref), 'confirm': self._row(confirm_base.metrics if confirm_base else None, confirm_base.ref if confirm_base else None)},
                      'winner': {'screen': self._row(screen.metrics, screen.ref), 'confirm': self._row(final_metrics, final_ref)}},
             'matching_at_confirm': {m: {'ref': x['ref'], 'parts': part_view(x['parts']), **(self._row(x['metrics']) or {}), 'meets_target': ev.meets_target(x['metrics'], s.goal, s.rf)}
                                     for m, x in (('locked', locked), ('free', free)) if x},
             'confirm_gain_db': gain, 'free_gain_db': free_gain, 'meets_target': meets,
+            'best': best, 'base': base_view, 'best_gain_db': best_gain,
+            'base_evidence': s.refs[confirm_base.ref]['evidence']['code'] if confirm_base else None,
         }
         if slot:
             inv.refine_confirmations[slot] = confirmation       # a refine round keeps the first attempt's comparison as it was
@@ -748,9 +795,65 @@ class InvestigationMixin:
         if free is not None and free_gain is not None:
             measurements['confirm_free_tuning_band_worst'] = {'value': round(free['metrics']['band_worst_s11_db'], 2), 'unit': 'dB'}
             measurements['confirm_free_tuning_gain'] = {'value': free_gain, 'unit': 'dB'}
+        # accepted power (mismatch only), before and after, for the base, the confirmed candidate and the best one
+        for key, metrics in (('confirm_base', confirm_base.metrics), ('confirm_winner', final_metrics), ('confirm_free_tuning', (free or {}).get('metrics') or {})):
+            for stat, name in (('band_worst_accepted_power_pct', 'accepted_power_worst'), ('band_mean_accepted_power_pct', 'accepted_power_mean')):
+                if metrics.get(stat) is not None:
+                    measurements[f'{key}_{name}'] = {'value': round(metrics[stat], 1), 'unit': '%'}
+        if best is not None:
+            measurements['confirm_best_band_worst'] = {'value': best['band_worst_s11_db'], 'unit': 'dB'}
+            if best_gain is not None:
+                measurements['confirm_best_gain'] = {'value': best_gain, 'unit': 'dB'}
+            for stat, name in (('accepted_power_worst_pct', 'confirm_best_accepted_power_worst'), ('accepted_power_mean_pct', 'confirm_best_accepted_power_mean')):
+                if best.get(stat) is not None:
+                    measurements[name] = {'value': round(best[stat], 1), 'unit': '%'}
         values = {'kind': 'simulated', 'quality': 'confirm', 'trust': {'status': 'ok', 'reasons': []}, 'measurements': measurements, 'label': 'refine confirm comparison' if slot else 'confirm comparison', 'outcome': outcome,
-                  'statement': ('Refine round: ' + statement) if slot else statement, 'confirm_held': outcome == 'held', 'calculation': True, 'confirmation': confirmation}
-        return confirmation, self.store.add_evidence(s.review_id, ev.CALCULATION, 'confirm_result', values)
+                  'statement': ('Refine round: ' + statement) if slot else statement, 'confirm_held': hold == 'held' and outcome != partial.OUTCOME, 'calculation': True, 'confirmation': confirmation,
+                  'accepted_power_note': ev.ACCEPTED_POWER_NOTE}
+        row = self.store.add_evidence(s.review_id, ev.CALCULATION, 'confirm_result', values)
+        confirmation['comparison_evidence'] = row['code']
+        return confirmation, row
+
+    # ---- the partial win gate ----------------------------------------------------------------
+    async def partial_win_gate(self) -> ToolResult | None:
+        """advance_phase out of phase 5 with a partial win (a confirm gain of 3 dB or more that still misses the target): the finding of that
+        investigation must cite the confirm evidence rows, name the best parts, give the accepted power before and after and say the target is not met.
+
+        Refused up to twice with what is missing. Then, or when a budget has ended, code adds the stored facts to the finding itself and records a
+        limit, so the gate never traps the run and the report never says less than the evidence shows.
+        """
+        s = self.s
+        for inv in s.ledger.investigations.values():
+            win = partial.pick([inv.confirmation, *inv.refine_confirmations.values()])
+            if win is None:
+                continue
+            code = ((self.store.get_investigation(inv.id) or {}).get('outcome') or {}).get('finding')
+            finding = self.store.get_finding_by_code(s.review_id, code) if code else None
+            if finding is None:
+                continue
+            cited = {r['code'] for r in (self.store.get_evidence(i) for i in finding['evidence_ids'] or []) if r}
+            missing = partial.problems(finding, win, cited)
+            if not missing:
+                continue
+            ended = s.budgets.global_exhausted() or s.budgets.calls_left(5) <= 0
+            if not ended and s.partial_refusals < 2:
+                s.partial_refusals += 1
+                return fail('partial_win_unreported', f'Confirm improved the worst S11 in the band by {win["gain_db"]} dB but the target is not met. This is a partial win, not a plain failure, and '
+                            f'{finding["code"]} must report it. Update it with record_finding (update: {finding["code"]}) to: ' + '; '.join(missing) + '.',
+                            finding=finding['code'], missing=missing, best_parts=partial.parts_text(win['best']), facts=partial.facts_text(win, ev.target_db(s.goal, s.rf)),
+                            evidence=[c for c in (win.get('base_evidence'), win['best'].get('evidence'), win.get('comparison_evidence')) if c])
+            target = ev.target_db(s.goal, s.rf)
+            ids = list(finding['evidence_ids'] or [])
+            for wanted in (win.get('base_evidence'), win['best'].get('evidence'), win.get('comparison_evidence')):
+                row = s.engine.row_by_code(wanted) if wanted else None
+                if row and row['id'] not in ids:
+                    ids.append(row['id'])
+            note = 'Confirmed result, written by the server from the stored evidence: ' + partial.facts_text(win, target)
+            updated = self.store.update_finding(finding['id'], 'review', 'partial win added from the confirm evidence', evidence_ids=ids,
+                                                recommendation=(finding['recommendation'].rstrip() + ' ' + note).strip())
+            s.add_limit('partial_win_completed_by_code', f'{finding["code"]} did not report the partial win fully ({"; ".join(missing)}), so the server added the stored confirm result.', finding=finding['code'])
+            await self.publish_finding(updated)
+        return None
 
     async def _attach_confirmation(self, inv, rows: list[dict], outcome: str, statement: str) -> None:
         """Put the confirm evidence on the finding the investigation was closed with, and record in it when the screen improvement did not hold."""
@@ -761,12 +864,25 @@ class InvestigationMixin:
             return
         ids = list(dict.fromkeys(list(finding['evidence_ids'] or []) + [r['id'] for r in rows]))
         not_tested = [t for t in (finding['not_tested'] or []) if t != SCREEN_ONLY]
-        if outcome in ('not_held', 'held_after_retune', 'held_smaller') and statement not in not_tested:
+        if outcome in ('not_held', 'held_after_retune', 'held_smaller', partial.OUTCOME) and statement not in not_tested:
             not_tested.append(statement)
         updated = self.store.update_finding(finding['id'], 'review', 'confirm result attached', evidence_ids=ids, not_tested=not_tested)
         await self.publish_finding(updated)
 
     # ---- the end ------------------------------------------------------------------------
+    def partial_win_summary_problem(self, summary: str) -> str | None:
+        """A review with a partial win leads with it: the summary says confirm improved the match, names the best parts and says the target is not met."""
+        s = self.s
+        for inv in s.ledger.investigations.values():
+            win = partial.pick([inv.confirmation, *inv.refine_confirmations.values()])
+            if win is None:
+                continue
+            refs = [p['ref'] for p in win['best'].get('parts') or [] if p.get('ref')]
+            if not partial.NOT_MET.search(summary) or any(not re.search(rf'\b{re.escape(r)}\b', summary) for r in refs):
+                return ('Confirm improved the worst S11 in the band but the target is not met: a partial win. Lead the summary with it: say the match improved at confirm quality, '
+                        'that the target is not met, and name the best parts (' + partial.parts_text(win['best']) + '). ' + partial.facts_text(win, ev.target_db(s.goal, s.rf)))
+        return None
+
     async def submit_summary(self, args: dict) -> ToolResult:
         s = self.s
         allowed = [q for row in s.engine.evidence_rows() for q in ev.quantities_of(row)] + s.context()
@@ -777,6 +893,10 @@ class InvestigationMixin:
             check_numbers(texts, allowed)
             if unknown:
                 raise FindingRejected('unknown_finding', f'{unknown[0]} is not a finding in this review.')
+            check_fixed_dip_claims(texts, s.engine.evidence_rows(), s.engine.evidence_rows())
+            lead = self.partial_win_summary_problem(args['summary'])
+            if lead:
+                raise FindingRejected('summary_must_lead_with_partial_win', lead)
         except FindingRejected as exc:
             s.summary_failures += 1
             extra = {'tries_left': max(0, 3 - s.summary_failures)}

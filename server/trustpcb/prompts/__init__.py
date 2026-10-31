@@ -23,3 +23,7 @@ def phase_brief(phase: int, **values: object) -> str:
 
 def followup_prompt(**values: object) -> str:
     return _read(ROOT / 'followup.md', **values)
+
+
+def recheck_brief(**values: object) -> str:
+    return _read(ROOT / 'recheck.md', **values)
