@@ -29,6 +29,8 @@ test("proxy serves one board simulation run, the raster of one overlay, and the 
   assert.ok(allowedRoute("GET", "reviews/r-1/sims/fx-p1"));
   assert.ok(allowedRoute("GET", "reviews/r-1/sims/ab12/overlay/vdrop_F.Cu"));
   assert.ok(allowedRoute("GET", "reviews/r-1/sims/ab12/overlay/temp"));
+  for (const id of ["drop:F.Cu", "current:B.Cu", "gndrise:F.Cu", "z0_deviation_F.Cu", "return_detour", "temp_board"]) assert.ok(allowedRoute("GET", `reviews/r-1/sims/ab12/overlay/${id}`), id);
+  for (const id of ["a:b:c", ":x", "drop:", "a:/b"]) assert.equal(allowedRoute("GET", `reviews/r-1/sims/ab12/overlay/${id}`), false, id);
   assert.ok(allowedRoute("GET", "settings/keys"));
   for (const path of ["reviews/r-1/sims/ab/overlay", "reviews/r-1/sims/ab/overlay/a/b", "reviews/r-1/sims/../x", "reviews/r-1/sims/ab/overlay/vdrop..Cu", "reviews/r-1/sims/ab/overlay/.hidden", "settings/keys/x", "settings/secrets"]) assert.equal(allowedRoute("GET", path), false, path);
   for (const method of ["POST", "PUT", "DELETE", "PATCH"]) assert.equal(allowedRoute(method, "reviews/r-1/sims/ab/overlay/a"), false);

@@ -175,3 +175,23 @@ def test_custom_pad_keeps_every_part_and_its_arcs():
     assert p.polys and len(p.polys) == 3                               # anchor and two separate parts
     assert geo.pad_geometry(p).area > 6.0
     assert "polys" not in p.to_dict()
+
+
+def test_the_lab_replaces_a_default_stackup_with_a_labelled_typical_one():
+    import asyncio
+
+    from trustpcb.review.lab_real import ASSUMED_BOARD_THICKNESS_MM, RealLab
+
+    odd = parse_board_text(board_text(d1=1.51, d2=1.51), "v-odd")
+    lab = RealLab.__new__(RealLab)          # only the planning path is used here: no queue, no store
+    lab._setups = {}
+
+    async def load_board(*, version_id):
+        return odd
+
+    lab.load_board = load_board
+    s = asyncio.run(lab._setup("v-odd"))
+    assert s.simulatable and s.stackup_origin == "assumed_by_user"
+    assert s.stackup["total_mm"] == pytest.approx(ASSUMED_BOARD_THICKNESS_MM - 0.035, abs=0.01)
+    label = next(x for x in s.assumptions if x.startswith("ASSUMED STACKUP"))
+    assert "KiCad default" in label and "supplied by the user" not in label

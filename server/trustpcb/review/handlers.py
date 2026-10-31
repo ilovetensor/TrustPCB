@@ -227,6 +227,8 @@ class Handlers:
         s = self.s
         if s.phase == 2 and s.brief is None:
             return fail('brief_required', 'Submit the board brief with submit_board_brief before leaving phase 2.')
+        if s.phase == 2 and (held := self.datasheets_gate()) is not None:
+            return held
         if s.phase == 4 and any(i.status == 'open' for i in s.ledger.investigations.values()):
             if not (s.budgets.global_exhausted() or s.budgets.calls_left(4) <= 0):
                 return fail('investigation_open', 'Close the open investigation with close_investigation before leaving phase 4.')
@@ -238,6 +240,8 @@ class Handlers:
                 inv.status, inv.outcome = 'incomplete', 'incomplete'
                 self.store.update_investigation(inv.id, status='incomplete', outcome={'outcome': 'incomplete', 'summary': 'A budget ended before this investigation was closed.'})
                 await self.publish_investigation(inv)
+        if s.phase == 4 and (held := self.kinds_gate()) is not None:
+            return held
         if s.phase == 3:
             refusal = await self.phase3_gate(args)
             if refusal is not None:
@@ -264,6 +268,35 @@ class Handlers:
             if s.coverage_waived:
                 data['coverage_waived'] = s.coverage_waived
         return ok(data)
+
+    def datasheets_gate(self) -> ToolResult | None:
+        """Datasheets were chosen to ground the simulation inputs. Leaving phase 2 without one lookup is refused once; the second advance_phase goes through
+        (a board with no part number the suppliers know must not jam the review)."""
+        s = self.s
+        if s.extent is None or not s.datasheets_on or not s.sim_kinds or s.part_lookups or s.lookup_refusals >= 1:
+            return None
+        s.lookup_refusals += 1
+        return fail('datasheets_unused', 'Datasheets were chosen but no part has been looked up. Call lookup_part with the exact part number of the part that sets a simulation input (the regulator, '
+                    'the main chip), then read_datasheet with mpn and question for the value, then set_sim_input with source datasheet. If no part on this board has a number the suppliers know, '
+                    'call advance_phase again and the inputs stay labelled defaults.')
+
+    def kinds_gate(self) -> ToolResult | None:
+        """Leaving phase 4 after a board simulation was started, with another chosen one (power, heat, signal, or the antenna) that nothing investigated, is refused once while an investigation,
+        time and calls remain, and names what is missing. The second advance_phase goes through, so a run never jams; the report lists what was not tested."""
+        s = self.s
+        if s.kinds_refusals >= 1 or s.mode != 'review' or not s.sim_kinds or s.extent is None:     # a review from before extents existed runs as it did
+            return None
+        chosen = [*(['antenna'] if s.antenna_on else []), *s.sim_kinds]
+        touched = {i.sim_kind or 'antenna' for i in s.ledger.investigations.values()}
+        missing = [k for k in chosen if k not in touched]
+        if not touched & set(s.sim_kinds):      # no board simulation was started at all: the antenna-only flow, as it always ran
+            return None
+        if not missing or s.budgets.investigations >= s.config.investigations or s.budgets.global_exhausted() or s.budgets.calls_left(4) <= 0:
+            return None
+        s.kinds_refusals += 1
+        return fail('checks_not_run', f'These checks were chosen at the start and nothing has tested them: {", ".join(missing)}. Open an investigation for each (open_investigation with kind), '
+                    'run its base, and test the suspect. If one cannot be tested, call advance_phase again and the report will say it was not tested.',
+                    not_run=missing, investigations_left=s.config.investigations - s.budgets.investigations)
 
     # ---- the layout judgement gate ------------------------------------------------------------
     def layout_finding_count(self) -> int:

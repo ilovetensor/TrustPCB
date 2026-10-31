@@ -498,6 +498,7 @@ class BoardSimMixin:
             return fail('datasheets_not_chosen', 'Part lookup is part of the datasheets extent, which this review did not choose.')
         if not (args.get('mpn') or args.get('value')):
             return fail('query_required', 'Pass mpn (an exact manufacturer part number) or value with footprint.')
+        s.part_lookups += 1
         try:
             found = await s.lab.part_lookup(mpn=args.get('mpn'), value=args.get('value'), footprint=args.get('footprint'), maker=args.get('maker'))
         except LabUnavailable as exc:
@@ -512,6 +513,7 @@ class BoardSimMixin:
             return fail('datasheets_not_chosen', 'Datasheet lookup is part of the datasheets extent, which this review did not choose.')
         if not args.get('question'):
             return fail('question_required', 'Pass question: what you want to know from the datasheet.')
+        s.part_lookups += 1
         try:
             answer = await s.lab.part_datasheet(mpn=args['mpn'], question=args['question'])
         except LabUnavailable as exc:

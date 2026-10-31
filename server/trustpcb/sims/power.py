@@ -980,7 +980,7 @@ class PowerSimulator(Simulator):
             m["worst_drop_pct"] = {"value": round(worst["pct"], 4), "unit": "%", "label": "Simulated worst drop as a percent of the nominal voltage (assumed currents)"}
         worst_r = max(((l["r_path_mohm"], n, l["ref"]) for n in plan.order for l in detail["nets"][n]["loads"] if l["r_path_mohm"] is not None and l["connected"] and _entry_active(l)), default=None)
         if worst_r:
-            m["worst_path_resistance_mohm"] = {"value": round(worst_r[0], 4), "unit": "mOhm", "label": f"Simulated resistance of the worst supply path, source to {worst_r[2]} on {worst_r[1]}; the drop per amp is this value in mV/A"}
+            m["worst_path_resistance_mohm"] = {"value": round(worst_r[0], 4), "unit": "mOhm", "label": f"Simulated copper resistance inside net {worst_r[1]}, from the net's source pad to {worst_r[2]}; the drop inside that net is this value times its current (copper in upstream nets and the ground return add to the total drop)"}
         m["peak_current_density_a_per_mm"] = {"value": round(max_k["value"], 4), "unit": "A/mm", "label": f"Simulated peak sheet current density at the assumed currents ({max_k['net']}, {max_k['layer']})"}
         m["worst_via_current_a"] = {"value": round(via_worst["amps"], 5), "unit": "A", "label": f"Simulated largest current through one via or plated hole ({via_worst['id']} on {via_worst['net']}); {via_worst['ratio']:.0%} of the IPC-2221 estimate"}
         m["total_load_current_a"] = {"value": round(sum(plan.nets[n].demand for n in plan.order if plan.nets[n].feeder is None), 6), "unit": "A", "label": "Sum of load current drawn from the top-level sources (inputs, not simulated)"}

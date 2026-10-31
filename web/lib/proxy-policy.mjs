@@ -1,5 +1,6 @@
 // Same-origin API proxy policy. Only the routes listed below pass.
 const ids = "[a-zA-Z0-9_-]+";
+const overlayId = "[a-zA-Z0-9_-]+(?::[a-zA-Z0-9_-]+)?";       // the power run names its maps drop:F.Cu, current:B.Cu, gndrise:F.Cu
 // The processed files of a simulation job (the API's simulation job files).
 const simFile = "(?:(?:s11|s11_as_built|zin|pattern|field|pulse|current|result|summary|meta)\\.json|(?:field_xy|field_xz|pulse|current)\\.bin|model\\.png)";
 const routes = [
@@ -17,7 +18,7 @@ const routes = [
   ["GET", new RegExp(`^sim/${ids}/files/${simFile}$`)],
   // power, heat and signal runs: the run itself, and the raster of one of its overlays
   ["GET", new RegExp(`^reviews/${ids}/sims/${ids}$`)],
-  ["GET", new RegExp(`^reviews/${ids}/sims/${ids}/overlay/${ids}(?:\\.${ids})*$`)],     // an overlay id may carry a layer name such as vdrop_F.Cu, never ".."
+  ["GET", new RegExp(`^reviews/${ids}/sims/${ids}/overlay/${overlayId}(?:\\.${ids})*$`)],     // an overlay id may carry a layer name such as vdrop_F.Cu, never ".."
   ["GET", new RegExp(`^reviews/${ids}/report/revisions$`)],
   ["GET", new RegExp(`^reviews/${ids}/report/${ids}\\.(html|pdf|json)$`)],
   ["POST", new RegExp(`^reviews/${ids}/(cancel|threads|restart)$`)],

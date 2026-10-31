@@ -69,8 +69,8 @@ export function TrustBlock({ result }: { result: SimResultJson }) {
       {!t.ok && <p className="sl-trust-warn">This result failed a check, so it cannot support a finding. Read it as a hint only.</p>}
       {t.checks.length > 0 && (
         <ul className="sl-checks">
-          {t.checks.map((c) => (
-            <li key={c.check} className={c.ok ? "" : "bad"}>
+          {t.checks.map((c, i) => (
+            <li key={`${i}:${c.check}`} className={c.ok ? "" : "bad"}>
               <span className="sl-check-ic"><Icon name={c.ok ? "check" : "close"} size={11} /></span>
               <span>{c.check}{c.detail && <small className="dim"> {c.detail}</small>}</span>
             </li>

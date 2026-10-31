@@ -31,6 +31,11 @@ from .lab import BadMatchingRequest, BaselineLab, LabUnavailable, Progress
 
 DOCKER_CHECK_SECONDS = 30.0
 DATASHEET_PAGE_CHARS = 6000
+#: A board file whose stackup is a KiCad default (never set to the fabricator's) is simulated on this typical 2-layer-class thickness instead,
+#: labelled as an assumption. A printed antenna's resonance depends strongly on the board thickness, so the label stays on the result.
+ASSUMED_BOARD_THICKNESS_MM = 1.6
+ASSUMED_STACKUP_LABEL = ('applied automatically, not read from the board file: the stackup in the file is a KiCad default that was never set to the '
+                         'fabricator\'s, so a typical 1.6 mm FR-4 board is assumed')
 SCREEN_NOTE = 'Screen results are for comparing a test with the base run at the same setup. Do not quote their absolute values; a passing confirm run is needed for that.'
 KINDS = ('s11', 'smith', 'field', 'pattern', 'current')
 
@@ -99,6 +104,11 @@ class RealLab(BaselineLab):
             board = await self.load_board(version_id=version_id)
             try:
                 result = await asyncio.to_thread(lambda: plan_setup(board, band_ghz=band, margin_mm=margin_mm))
+                if getattr(result, 'stackup_origin', None) == 'suspect_default':
+                    assumed = {'total_thickness_mm': ASSUMED_BOARD_THICKNESS_MM, 'label': ASSUMED_STACKUP_LABEL}
+                    again = await asyncio.to_thread(lambda: plan_setup(board, band_ghz=band, margin_mm=margin_mm, assumed_stackup=assumed))
+                    if getattr(again, 'simulatable', False):
+                        result = again
             except Exception as exc:  # a setup that cannot be planned is Not tested, with the reason
                 result = NotSimulatable('setup_failed', f'The antenna setup could not be planned: {type(exc).__name__}: {str(exc)[:200]}')
             self._setups[key] = result
