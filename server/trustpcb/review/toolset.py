@@ -56,7 +56,7 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
                h.read_schematic, phases=P({2, 3}), levels=ALL_LEVELS, trail=lambda a: f'Reading {a.get("kind")} data' + (f' ({a["query"]})' if a.get('query') else '')),
         define('read_datasheet', 'List uploaded datasheets, or read one page of one as text. With mpn and question (when datasheets are part of this review) it reads the supplier datasheet of that part and answers the question with a citation.',
                obj({'name': text(1, 120), 'page': {'type': 'integer', 'minimum': 1, 'maximum': 500}, 'mpn': text(2, 80), 'question': text(3, 300)}), h.read_datasheet,
-               phases=P({2, 3}), levels=ALL_LEVELS, trail=lambda a: 'Reading a datasheet' + (f': {a["name"]}' if a.get('name') else '')),
+               phases=P({2, 3}), free=True, levels=ALL_LEVELS, trail=lambda a: 'Reading a datasheet' + (f': {a["name"]}' if a.get('name') else '')),
         define('view_board', 'A rendered image of the board. Presets: view top, bottom or layer (give layer); around a target id (ref:U3, net:ANT_FEED, zone_role:radio, '
                'candidate:...) with margin_mm; or a region [x0,y0,x1,y1] in mm. annotate draws the candidate marks inside the window (numbered). '
                'targets or candidate_ids mark specific items. In phase 3 the review needs close region views of the areas that matter.',
@@ -118,7 +118,7 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
                phases=P({4, 5}), levels=TEST, trail=lambda a: f'Comparing {a.get("a")} with {a.get("b")}'),
         define('lookup_part', 'Look up a part at DigiKey and Mouser by manufacturer part number (mpn), or by value and footprint. Gives the maker, description, parameters and datasheet link; never guesses a part. '
                'Only when datasheets are part of this review.', obj({'mpn': text(2, 80), 'value': text(1, 40), 'footprint': text(1, 80), 'maker': text(1, 60)}), h.lookup_part,
-               phases=P({2, 3, 4}), levels=CHECK_UP, trail=lambda a: 'Looking up ' + (a.get('mpn') or a.get('value') or 'a part')),
+               phases=P({2, 3, 4}), free=True, levels=CHECK_UP, trail=lambda a: 'Looking up ' + (a.get('mpn') or a.get('value') or 'a part')),
         define('view_result', 'View a chart or field image of a stored result. kind: s11, smith, pattern, field or current.',
                obj({'ref': CODE, 'kind': {'type': 'string', 'enum': ['s11', 'smith', 'pattern', 'field', 'current']}}, ['ref', 'kind']), h.view_result,
                phases=P({4, 5}), levels=TEST, image=True, trail=lambda a: f'Viewing the {a.get("kind")} of {a.get("ref")}'),

@@ -13,7 +13,7 @@ from typing import Any
 
 from . import change
 from . import evidence as ev
-from .budgets import REFUSAL_STREAK_LIMIT, BudgetConfig, BudgetTracker, Clock, Ledger
+from .budgets import REFUSAL_MIXED_LIMIT, REFUSAL_STREAK_LIMIT, BudgetConfig, BudgetTracker, Clock, Ledger
 from .findings import FindingEngine
 from .lab import Lab, scenario_hash
 from .machine import PHASE_NAMES, PhaseMachine
@@ -110,6 +110,7 @@ class ReviewSession:
         self.finished = False
         self.finished_at: float | None = None
         self.refusal_streak = 0
+        self.same_refusals: dict = {}
         self.last_progress = clock.now()
         self.solver_busy = 0
         self.runner: Any = None
@@ -361,8 +362,10 @@ class ReviewSession:
         if code in NEXT_STEP_REFUSALS:
             pass                                            # a gate that says what to do next, once per state: not a sign the agent is stuck
         else:
+            # different refusals in a row usually mean the agent is working through corrections; the same one again means it is stuck
             self.refusal_streak = self.refusal_streak + 1 if result.is_error else 0
-        if self.refusal_streak >= REFUSAL_STREAK_LIMIT:
+            self.same_refusals = {**self.same_refusals, code: self.same_refusals.get(code, 0) + 1} if result.is_error else {}
+        if max(self.same_refusals.values(), default=0) >= REFUSAL_STREAK_LIMIT or self.refusal_streak >= REFUSAL_MIXED_LIMIT:
             self.add_limit('loop', f'{self.refusal_streak} refused or failed tool calls in a row')
             self.request_stop('loop', f'{self.refusal_streak} refused or failed tool calls in a row')
         wall = self.budgets.global_exhausted()
