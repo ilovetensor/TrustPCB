@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from . import evidence as ev
+from . import partial
 from .compare import classify_findings, previous_context
 from .machine import PHASE_NAMES
 
@@ -181,6 +182,7 @@ def build_snapshot(store, review_id: str, *, cause: str, incomplete: bool = Fals
         'not_tested': [], 'limits': summary.get('limits') or [], 'budget': review.get('budget') or {},
         'method': _method(store, review, rows),
     }
+    snapshot['headline'] = partial.headline(snapshot['investigations'], findings, ev.target_db(review.get('goal') or {}, summary.get('rf') or {}))
     snapshot['not_tested'] = _not_tested(summary, review, rf, unreviewed)
     snapshot['changes_since_last'] = diff_snapshots(previous, snapshot) if previous else None
     return snapshot
@@ -310,10 +312,28 @@ def _cell(row: dict | None, key: str, unit: str) -> str:
     return f'<td class="n">{esc(row[key])} {esc(unit)}</td>'
 
 
+def render_headline(h: dict) -> str:
+    """The partial win, first on the page: improved at confirm quality, target not met, with the best parts and the accepted power before and after."""
+    best, base = h['best'], h['base']
+    rows = [('Worst S11 in the band', f'{base.get("band_worst_s11_db")} dB', f'{best.get("band_worst_s11_db")} dB')]
+    if base.get('accepted_power_worst_pct') is not None and best.get('accepted_power_worst_pct') is not None:
+        rows.append(('Accepted power, worst point of the band', f'{base["accepted_power_worst_pct"]} %', f'{best["accepted_power_worst_pct"]} %'))
+    if base.get('accepted_power_mean_pct') is not None and best.get('accepted_power_mean_pct') is not None:
+        rows.append(('Accepted power, mean across the band', f'{base["accepted_power_mean_pct"]} %', f'{best["accepted_power_mean_pct"]} %'))
+    table = '<table><tr><th></th><th>Confirmed base</th><th>Best confirm-quality parts</th></tr>' + ''.join(f'<tr><td>{esc(a)}</td><td class="n">{esc(b)}</td><td class="n">{esc(c)}</td></tr>' for a, b, c in rows) + '</table>'
+    return ('<div class="card"><h2 style="margin-top:0;border:0">Improved, target not met</h2>'
+            f'<p>{pill("cls-simulated", "partial win")} Confirm improves the worst S11 in the band by {esc(h.get("gain_db"))} dB, and the tuning target'
+            f'{" of " + esc(format(h["target_db"], "g")) + " dB" if h.get("target_db") is not None else ""} is not met.</p>'
+            f'<p><strong>Parts to try, in your own tool:</strong> {esc(h["parts_text"])}.</p>{table}'
+            '<p class="small muted">Accepted power is 100 x (1 - |S11|^2) per frequency: a mismatch figure only. It is not radiated power or efficiency. '
+            f'Simulated; not a substitute for a real antenna measurement.{(" See finding " + esc(h["finding"]) + ".") if h.get("finding") else ""}</p></div>')
+
+
 def render_confirmation(c: dict, title: str = 'Screen against confirm') -> str:
     """Screen against confirm: the honest comparison, with the matching re-tuned at confirm quality."""
     rows = c.get('rows') or {}
-    tone = {'held': 'cls-measured', 'held_smaller': 'sev-medium', 'held_after_retune': 'sev-medium', 'not_held': 'sev-high', 'unconfirmed': 'cls-not_tested'}.get(c.get('outcome'), '')
+    tone = {'held': 'cls-measured', 'held_smaller': 'sev-medium', 'held_after_retune': 'sev-medium', 'not_held': 'sev-high', 'unconfirmed': 'cls-not_tested',
+            'improved_short_of_target': 'cls-simulated'}.get(c.get('outcome'), '')
     winner = c.get('winner') or {}
     change = []
     if winner.get('ops'):
@@ -356,6 +376,8 @@ def render_html(snap: dict, images: dict | None = None) -> str:
         out.append('<div class="notice">This revision ended before its run finished. Verified changes up to that point are included; the run is marked incomplete.</div>')
     if snap.get('changes_since_last') and not snap['changes_since_last'].get('empty'):
         out.append(render_changes(snap['changes_since_last'], snap['cause']))
+    if snap.get('headline'):
+        out.append(render_headline(snap['headline']))
     # 2 summary
     out.append('<h2>Summary</h2>')
     summary = snap.get('summary')

@@ -10,6 +10,7 @@ if str(SERVER) not in sys.path:
     sys.path.insert(0, str(SERVER))
 ROOT = SERVER.parent
 NRF_PCB = ROOT / "samples" / "nrf52840-node" / "nrf52840_rf_iot_node.kicad_pcb"
+NRF_V2_PCB = ROOT / "samples" / "nrf52840-node-v2" / "nrf52840_rf_iot_node.kicad_pcb"
 PATCH_PCB = ROOT / "samples" / "patch-2g5" / "patch_antenna.kicad_pcb"
 
 
@@ -45,5 +46,21 @@ def patch_setup(patch_board):
     from trustpcb.rf.setup import plan_setup
 
     s = plan_setup(patch_board)
+    assert s.simulatable
+    return s
+
+
+@pytest.fixture(scope="session")
+def nrf_v2_board():
+    from trustpcb.pcb.model import parse_board
+
+    return parse_board(NRF_V2_PCB, "v-nrf-2")
+
+
+@pytest.fixture(scope="session")
+def nrf_v2_setup(nrf_v2_board):
+    from trustpcb.rf.setup import plan_setup
+
+    s = plan_setup(nrf_v2_board)
     assert s.simulatable
     return s

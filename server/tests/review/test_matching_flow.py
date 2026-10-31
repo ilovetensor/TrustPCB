@@ -47,7 +47,7 @@ async def test_the_compare_tool_notes_a_dip_that_stays_put(env):
     assert 'delta_s11' in compared['b_minus_a'] and compared['in_band']['a']['worst_s11_db'] == -3.1
     assert compared['band_centre_impedance']['a']['character'] == 'inductive'
     assert any(abs(d['frequency_mhz'] - 2254.0) < 1 for d in compared['s11_dips']['b'])
-    assert 'ground plane' in compared['board_mode_hint'] and compared['b_minus_a']['fixed_dip_2']['value'] == 2254.0
+    assert 'unknown origin' in compared['board_mode_hint'] and compared['b_minus_a']['fixed_dip_2']['value'] == 2254.0
     assert compared['evidence'] and compared['trust']['status'] == 'ok'
 
 
@@ -93,7 +93,9 @@ async def test_the_screens_parts_that_fail_at_confirm_are_retuned_and_both_are_r
     env.lab.match_gain.update({'confirm_locked': 0.4, 'confirm_free': 5.0})
     review = await env.review(SCRIPTS / 'matching_win.json')
     confirmation = env.store.list_investigations(review['id'])[0]['outcome']['confirmation']
-    assert confirmation['outcome'] == 'held_after_retune' and 'did not hold at confirm quality with the screen' in confirmation['statement']
+    # a free re-tune that gains 5 dB in band and still misses the target is a partial win; the finer verdict stays in `hold`
+    assert confirmation['outcome'] == 'improved_short_of_target' and confirmation['hold'] == 'held_after_retune' and 'did not hold with the screen' in confirmation['statement']
+    assert confirmation['best']['mode'] == 'free_retune' and confirmation['best_gain_db'] == 5.0 and 'not met' in confirmation['statement']
     assert confirmation['confirm_gain_db'] == 0.4 and confirmation['free_gain_db'] == 5.0
     finding = env.store.get_finding_by_code(review['id'], 'F-001')
     assert confirmation['statement'] in finding['not_tested']

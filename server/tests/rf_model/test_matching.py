@@ -153,3 +153,25 @@ def test_match_changes_on_the_real_confirm_result():
     assert 1.85e9 < min(d["f_hz"] for d in stock["dips"]) < 1.9e9 and out["curve"]["freq_hz"] and len(out["curve"]["freq_hz"]) == len(out["curve"]["s11_db"])
     best = lab.tune_matching(job)
     assert best["best"]["result"]["band_worst_db"] == pytest.approx(-6.12, abs=0.02) and best["best"]["meets_target"] is False   # the honest best at confirm quality
+
+
+def test_accepted_power_is_100_times_one_minus_gamma_squared_per_frequency_then_worst_and_mean():
+    gamma = np.array([0.0, 0.5, 1.0, 0.1], complex)
+    assert np.allclose(M.accepted_power_pct(gamma), [100.0, 75.0, 0.0, 99.0])
+    f = np.array([2.3e9, 2.39e9, 2.42e9, 2.45e9, 2.5e9])
+    g = np.array([0.9, 0.5, 0.2, 0.1, 0.8], complex)
+    stats = M.band_stats(f, g, BAND)                       # the band holds the points at 2.42 and 2.45 GHz
+    assert stats["band_worst_accepted_power_pct"] == 96.0 and stats["band_mean_accepted_power_pct"] == 97.5
+    # per frequency first: the mean of the accepted powers, not the accepted power of the mean reflection
+    assert stats["band_mean_accepted_power_pct"] != round(float(100 * (1 - np.mean([0.2, 0.1]) ** 2)), 1)
+
+
+def test_every_summary_of_a_result_carries_accepted_power():
+    g = antenna_gamma()
+    built = M.as_built(pi_network(), F, g, BAND)
+    for key in ("antenna_only", "as_built"):
+        assert 0 <= built[key]["band_worst_accepted_power_pct"] <= built[key]["band_mean_accepted_power_pct"] <= 100
+    applied = M.apply_changes(pi_network(), F, g, BAND, [{"ref": "L1", "kind": "C", "value": 0.47e-12}])
+    assert applied["ok"] and "band_worst_accepted_power_pct" in applied["result"]
+    tuned = M.tune_matching(pi_network(), F, g, BAND)
+    assert "band_worst_accepted_power_pct" in tuned["best"]["result"] and "band_worst_accepted_power_pct" in tuned["as_built"]

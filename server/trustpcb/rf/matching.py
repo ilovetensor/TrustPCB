@@ -126,6 +126,14 @@ def parts_as_built(network: MatchNetwork, overrides: dict[str, float | None] | N
     return parts, why
 
 
+def accepted_power_pct(gamma: np.ndarray) -> np.ndarray:
+    """Share of the source power that gets past the mismatch at each frequency: 100 * (1 - |S11|^2).
+
+    This is a mismatch figure only. It is not radiated power and not efficiency: loss in the board and the parts is not in it.
+    """
+    return 100.0 * (1.0 - np.minimum(np.abs(gamma) ** 2, 1.0))
+
+
 def band_stats(freqs: np.ndarray, gamma: np.ndarray, band_hz: tuple[float, float]) -> dict[str, Any]:
     mag_db = 20 * np.log10(np.maximum(np.abs(gamma), 1e-9))
     m = (freqs >= band_hz[0]) & (freqs <= band_hz[1])
@@ -149,6 +157,9 @@ def band_stats(freqs: np.ndarray, gamma: np.ndarray, band_hz: tuple[float, float
         "band_worst_db": round(float(mag_db[m].max()), 3),
         "band_best_db": round(float(mag_db[m].min()), 3),
         "band_mean_db": round(float(20 * np.log10(max(float(np.mean(np.abs(gamma[m]))), 1e-9))), 3),
+        # accepted power per frequency, then the worst (lowest) and the mean across the band: mismatch only, not radiated power or efficiency
+        "band_worst_accepted_power_pct": round(float(accepted_power_pct(gamma[m]).min()), 1),
+        "band_mean_accepted_power_pct": round(float(accepted_power_pct(gamma[m]).mean()), 1),
         "band_covered_10db": bool(np.all(mag_db[m] <= -10.0)),
         "minus10db_range": bw,
     }

@@ -98,6 +98,17 @@ async def test_a_recheck_is_told_what_the_previous_version_found(env):
     request = env.runners[-1].requests[0]
     assert 'recheck of version 2' in request.user_text and 'F-001' in request.user_text and 'decoupling||ref:C13,ref:U3' in request.user_text
     assert second['end_state'] in ('agent_stopped', 'complete')
+    first = env.store.list_reviews(version_id=env.store.list_versions(env.project['id'])[0]['id'])[-1]
+    assert second['summary']['previous_review_id'] == first['id'] and second['summary']['previous_version_number'] == 1 and first['id'] in request.user_text
+    assert 'Investigate only what changed' in request.user_text and 'fixed, still present or changed' in request.user_text
+    status = [e['payload'] for e in env.events(second['chat_id'], 'tool_result') if e['payload']['name'] == 'get_status'][0]
+    assert 'recheck' in status['content'] and 'not_recorded_again' in status['content']
+
+
+async def test_a_recheck_summary_counts_fixed_still_present_and_new(env):
+    await env.review(finding_script('candidate:decoupling:1', 'Capacitor C13 is far from U3', 'C13 sits 5.2 mm from the U3 supply pin.'), depth='quick')
+    second = await second_version(env, [{'tool': 'get_status'}])                      # the agent records nothing: the earlier finding is gone from this version's results
+    assert 'Compared with version 1: 1 finding(s) fixed, 0 still present, 0 new.' in second['summary']['summary']['text']
 
 
 async def test_spotlight_and_placement_events(env):

@@ -30,6 +30,26 @@ def test_hash_is_stable_and_sensitive(nrf_board, nrf_setup):
     assert S.Scenario.from_dict(b.to_dict()).hash() == b.hash()
 
 
+def test_the_cache_key_follows_the_geometry_and_not_the_version_or_the_matching_parts(nrf_board, nrf_setup, nrf_v2_board, nrf_v2_setup):
+    from dataclasses import replace
+
+    a = S.scenario_for(nrf_board, nrf_setup, "confirm")
+    b = S.scenario_for(nrf_v2_board, nrf_v2_setup, "confirm")           # another version id, other matching parts, the same copper
+    assert nrf_board.version_id != nrf_v2_board.version_id and a.hash() == b.hash() and a.geometry_key == b.geometry_key
+    assert a.legacy_hash() != b.legacy_hash()                            # the old key held the version id
+    assert replace(a, version_id="anything").hash() == a.hash()
+    assert S.Scenario.from_dict(a.to_dict()).hash() == a.hash()
+    # a change of copper changes the key
+    moved = S.scenario_for(nrf_board, nrf_setup, "confirm", [W.AdjustAntennaLength(-1.0)])
+    assert moved.hash() != a.hash()
+    nrf_board.tracks[0].width += 0.1
+    try:
+        assert S.geometry_key(nrf_board, nrf_setup) != a.geometry_key
+    finally:
+        nrf_board.tracks[0].width -= 0.1
+    assert S.geometry_key(nrf_board, nrf_setup) == a.geometry_key
+
+
 @pytest.fixture(scope="module")
 def nrf_job(tmp_path_factory, nrf_board, nrf_setup):
     d = tmp_path_factory.mktemp("job")

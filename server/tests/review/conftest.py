@@ -61,6 +61,11 @@ def default_candidates():
     ]
 
 
+def accepted_pct(db):
+    """100 x (1 - |S11|^2) for an S11 given in dB: the share of power accepted past the mismatch."""
+    return round(100.0 * (1.0 - 10 ** (db / 10.0)), 1)
+
+
 def default_model(scenario):
     """A stand-in antenna: clearing copper near the feed helps a lot; length tweaks and part removal do almost nothing."""
     quality = scenario['quality']
@@ -84,6 +89,7 @@ def default_model(scenario):
         f, s11, worst = f - 2e6, s11 - 0.8 if worst < -10 else s11 + 0.2, worst - 0.7 if worst < -10 else worst + 0.2
     reactance = 62.0 if worst > -10 else 4.0         # an unmatched antenna looks inductive at the band centre
     return {'f_res': f, 's11_min_db': s11, 'band_worst_s11_db': worst, 'band_mean_s11_db': round(worst - 1.5, 2), 'bandwidth': {'width_hz': bw}, 'zin_at_res': {'re': 48.2, 'im': 3.1},
+            'band_worst_accepted_power_pct': accepted_pct(worst), 'band_mean_accepted_power_pct': accepted_pct(worst - 1.5),
             'zin_at_band_centre': {'f_hz': 2.44175e9, 're': 31.0, 'im': reactance}, 's11_dips': [{'f_hz': f, 's11_db': s11}, {'f_hz': 2.254e9, 's11_db': -4.2}],
             'first_series_resonance_hz': series, 'dmax_dbi': 2.1,
             'efficiency_est': 0.62, 'trust': {'status': 'ok', 'reasons': []}, 'quality': quality}
@@ -168,7 +174,8 @@ class FakeLab:
             parts = [{'ref': 'L1', 'position': 'series', 'kind': 'C', 'value': 0.75e-12, 'was': '2.2 nH', 'now': '0.75 pF'}]
         return {'topology': 'series_c', 'components': [{'name': 'L1_series', 'kind': 'C', 'value': 0.75, 'unit': 'pF', 'ref': 'L1', 'position': 'series'}], 'parts': parts,
                 'changes': [{'ref': p['ref'], 'position': p['position'], 'was': p['was'], 'now': p['now']} for p in parts],
-                'predicted': {'s11_min_db': worst - 6, 'f_min_hz': 2.44e9, 'band_worst_db': worst, 'band_best_db': worst - 4, 'band_mean_db': round(worst - 1.5, 2)},
+                'predicted': {'s11_min_db': worst - 6, 'f_min_hz': 2.44e9, 'band_worst_db': worst, 'band_best_db': worst - 4, 'band_mean_db': round(worst - 1.5, 2),
+                              'band_worst_accepted_power_pct': accepted_pct(worst), 'band_mean_accepted_power_pct': accepted_pct(worst - 1.5)},
                 'meets_target': worst <= -10, 'target_db': -10, 'best_single_change': None, 'note': 'E24 values',
                 'dips': [{'f_hz': 2.44e9, 's11_db': worst - 6}], 'first_series_resonance_hz': 2.4e9, 'zin_band_centre': {'f_hz': 2.44175e9, 're': 49.0, 'im': 2.0},
                 'curve': {'freq_hz': [2.3e9, 2.5e9], 's11_db': [-3.0, worst]}}
