@@ -16,9 +16,29 @@ import { WaveField3D } from "../rf/WaveField3D";
 import { TuningGraph } from "../rf/charts";
 import { ClassStamp, DemoNotice, FixtureBadge, Icon, Logo, SevBar } from "../ui";
 import { useAppEnv } from "../../lib/demo";
+import { discordUrl, githubUrl } from "../../lib/links.mjs";
 import { PowerPair } from "../rf/PowerPair";
 import { acceptedPct } from "../../lib/sims";
 import dynamic from "next/dynamic";
+
+/** The two outside links, as small pills. The Discord invite comes from NEXT_PUBLIC_DISCORD_URL and the chip stays hidden while it is unset. */
+const DISCORD_URL = discordUrl(process.env.NEXT_PUBLIC_DISCORD_URL);
+function LinkChips({ repoUrl }: { repoUrl: string | null }) {
+  return (
+    <div className="ld-links rise" style={{ animationDelay: "960ms" }}>
+      <a className="ld-chip" href={githubUrl(repoUrl)} target="_blank" rel="noopener noreferrer">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+        <span>GitHub</span>
+      </a>
+      {DISCORD_URL && (
+        <a className="ld-chip" href={DISCORD_URL} target="_blank" rel="noopener noreferrer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M20.317 4.37a19.79 19.79 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.74 19.74 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.1 13.1 0 01-1.872-.892.077.077 0 01-.008-.128c.126-.094.252-.192.372-.292a.074.074 0 01.078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.079.009c.12.1.246.198.373.293a.077.077 0 01-.006.127 12.3 12.3 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.84 19.84 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" /></svg>
+          <span>Join Discord</span>
+        </a>
+      )}
+    </div>
+  );
+}
 
 const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false });
 /** Loops the solver's real time-domain pulse frames so the hero keeps radiating. */
@@ -119,7 +139,7 @@ function HowItWorks() {
 }
 
 export function Landing() {
-  const { demo } = useAppEnv();
+  const { demo, repoUrl } = useAppEnv();
   const calm = useReducedMotion();
   const [rf, setRf] = useState<RfBundle | null>(null);
   const nrf = useNrfHero();
@@ -176,11 +196,11 @@ export function Landing() {
         <div className="ld-copy">
           <span className="idx rise" style={{ animationDelay: "100ms" }}>Open-source inspection layer for circuit boards</span>
           <h1 className="heading">
-            <span className="rise l1" style={{ animationDelay: "200ms" }}>Others read your datasheets.</span>
-            <span className="rise l2" style={{ animationDelay: "380ms" }}>TrustPCB tests your board.</span>
+            <span className="rise l1" style={{ animationDelay: "200ms" }}>Catch board problems</span>
+            <span className="rise l2" style={{ animationDelay: "380ms" }}>before you pay to build them.</span>
           </h1>
           <p className="rise" style={{ animationDelay: "560ms" }}>
-            Upload a KiCad board. Get it marked up like a senior engineer went over the drawing: layout measurements, real simulations, and tested fixes. Nothing is edited. Nothing is guessed.
+            Upload a KiCad board. Every issue is marked on the design, measured and explained, and antennas are tested in simulation. Your design is never changed.
           </p>
           <div className="ld-cta rise" style={{ animationDelay: "720ms" }}>
             {!demo && <Link className="btn primary big" href="/upload"><Icon name="upload" size={15} /> Upload a board</Link>}
@@ -190,6 +210,7 @@ export function Landing() {
             <span className="idx">Every claim is labelled</span>
             <ClassStamp cls="measured" /><ClassStamp cls="simulated" /><ClassStamp cls="opinion" /><ClassStamp cls="not_tested" />
           </div>
+          <LinkChips repoUrl={repoUrl} />
         </div>
         <div className="ld-fig rise" style={{ animationDelay: "1000ms" }}>
           <span>{useRealBoard

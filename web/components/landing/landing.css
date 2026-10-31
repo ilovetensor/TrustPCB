@@ -102,6 +102,36 @@
   align-items: center;
   flex-wrap: wrap;
 }
+.ld-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: -8px;
+}
+.ld-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  background: var(--panel-3);
+  border-radius: 999px;
+  font: 500 12px/1 var(--font-ui);
+  color: var(--paper-2);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.ld-chip svg {
+  color: var(--paper-3);
+}
+.ld-chip:hover {
+  background: var(--hair-2);
+  color: var(--paper);
+}
+.ld-chip:focus-visible {
+  outline: 2px solid var(--paper-2);
+  outline-offset: 2px;
+}
 .ld-fig {
   position: absolute;
   z-index: 4;
