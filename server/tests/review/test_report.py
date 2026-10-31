@@ -193,3 +193,22 @@ def test_pattern_caption_says_plainly_when_the_pattern_is_outside_the_band():
     assert 'outside the board' in pattern_caption(1.869e9, band) and '1.869 GHz' in pattern_caption(1.869e9, band)
     assert 'inside the band' in pattern_caption(2.44e9, band)
     assert pattern_caption(None, band).startswith('Directivity from the confirm run')
+
+
+def test_a_board_with_no_radio_gets_one_plain_line_in_the_rf_section():
+    html = report.render_rf({'status': 'not_tested', 'kind': 'none', 'reason': 'no wireless part or antenna was found on this board', 'target_db': -10.0, 'band_hz': None})
+    assert 'No wireless part or antenna was found on this board.' in html and 'covers the rules and the layout only' in html
+    assert 'antenna as unverified' not in html and 'S11 curve' not in html and 'radiation pattern' not in html
+
+
+def test_a_chip_antenna_board_keeps_the_not_tested_warning_with_a_sentence_reason():
+    html = report.render_rf({'status': 'not_tested', 'kind': 'chip', 'reason': 'the antenna is a chip antenna', 'target_db': -10.0, 'band_hz': None})
+    assert 'The antenna is a chip antenna.' in html and 'Treat the antenna as unverified' in html
+
+
+async def test_the_code_written_summary_does_not_apologise_for_antenna_tuning_on_a_board_with_no_radio(env):
+    from trustpcb.review.service import deterministic_summary
+    review = await standard(env)
+    none = deterministic_summary(env.store, review['id'], 'complete', 'completed', 'not_tested', extra={'rf_kind': 'none'})
+    chip = deterministic_summary(env.store, review['id'], 'complete', 'completed', 'not_tested', extra={'rf_kind': 'chip'})
+    assert 'antenna tuning' not in none['text'] and 'antenna tuning' in chip['text']

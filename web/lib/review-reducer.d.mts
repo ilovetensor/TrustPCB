@@ -18,6 +18,7 @@ export interface ReviewState {
   budget: Budget | null; /** ms timestamp of the last budget event */ budgetAt: number | null; trail: TrailEntry[]; findings: Record<string, Finding>; findingOrder: string[]; marks: Mark[]; brief: Brief | null;
   refine: { round: number; rounds: number | null; investigation: string | null } | null;
   cleared: { id: string; rule: string | null; count: number; reason: string }[];
+  skipped: { phase: number; name: string; reason: string }[];
   candidates: { total: number; reviewed: number; byRule: Record<string, number> };
   investigations: Record<string, Investigation>; investigationOrder: string[]; sims: Record<string, Sim>; experiments: Experiment[];
   spotlight: { targets: string[]; findingId: string | null; reason: string; seq: number } | null; reportReady: { revision: number } | null;

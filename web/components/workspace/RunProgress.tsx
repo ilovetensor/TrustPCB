@@ -18,7 +18,7 @@ export function RunProgress({ phase, budget, budgetAt, solving = false, refine, 
   const solverOff = !!solver && solver.limit === 0;
   const rows: [string, string, string | undefined][] = [];
   if (wall) rows.push(["Time limit left", fmtClock((wall.left ?? wall.limit - wall.used) - gone), "The most this review may take, not when it will finish."]);
-  if (solver) rows.push(["Solver limit left", solverOff ? "none" : fmtClock((solver.left ?? solver.limit - solver.used) - (solving ? gone : 0)), solverOff ? "This review depth runs no simulation." : undefined]);
+  if (solver) rows.push(["Solver limit left", solverOff ? "none" : fmtClock((solver.left ?? solver.limit - solver.used) - (solving ? gone : 0)), solverOff ? "Nothing is simulated in this review." : undefined]);
   if (turns) rows.push(["Turns", `${turns.used} of ${turns.limit}`, undefined]);
   return (
     <div className="rp" role="group" aria-label="Review progress">

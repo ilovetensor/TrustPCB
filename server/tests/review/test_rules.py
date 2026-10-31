@@ -19,6 +19,16 @@ def test_default_budgets_match_the_spec(depth, expected):
     assert c.phase_calls[2] == 10 and c.phase_calls[3] == {'quick': 60, 'standard': 80, 'deep': 80}[depth] and c.phase_images[3] == 8
 
 
+@pytest.mark.parametrize('depth', ['standard', 'deep'])
+def test_a_board_that_cannot_be_simulated_gets_no_solver_budget(depth):
+    c = config_for(depth, simulatable=False)
+    assert (c.solver_s, c.investigations, c.experiments_per_investigation, c.confirm_runs, c.refine_rounds, c.full_investigation) == (0, 0, 0, 0, 0, False)
+    assert c.phase_calls[4] == 0 and c.phase_calls[5] == 0
+    assert (c.wall_s, c.model_turns, c.phase_calls[3], c.phase_calls[6]) == (config_for(depth).wall_s, config_for(depth).model_turns, config_for(depth).phase_calls[3], 4)
+    assert config_for(depth).solver_s > 0                       # the shared default is untouched
+    assert config_for('quick', simulatable=False) is config_for('quick')
+
+
 def test_unknown_depth_is_rejected():
     with pytest.raises(ValueError):
         config_for('thorough')

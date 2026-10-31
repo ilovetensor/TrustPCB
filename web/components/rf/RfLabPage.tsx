@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { FIXTURE_MODE, getBoardBundle, getReview, getSnapshot, listRevisions, normaliseBoard, type BoardBundle, type ReviewMeta } from "../../lib/api";
 import { headlineOf, versionChangeOf, type Headline, type VersionChange } from "../../lib/story.mjs";
 import { liveSource, listSims, NRF_BOARD, nrfSampleSource, type SimJob, type SimSource } from "../../lib/sims";
+import { rfLabExplanation } from "../../lib/rf-note.mjs";
 import { Icon, Panel, TopBar } from "../ui";
 import { RfLabView, type Band } from "./RfLab";
 
@@ -91,15 +92,16 @@ function RfLive({ reviewId, job }: { reviewId: string; job: string | null }) {
       </>
     );
   }
+  const noSim = rfLabExplanation(meta?.rf);
   return (
     <Shell reviewId={reviewId} meta={meta}>
       {(error || simError) && <p className="chat-err" role="alert">{error ?? simError}</p>}
       {source && source.jobs.length === 0 && (
         <Panel className="card" title="No simulation result for this review" actions={<span className="stamp">Not tested</span>}>
           <div style={{ padding: 16 }}>
-            <p style={{ margin: "0 0 10px" }}>Nothing in this review was simulated, so there is no resonance, S11 curve, field or pattern to show. Nothing here is estimated.</p>
-            {meta?.rf?.reason && <p className="dim" style={{ margin: "0 0 10px" }}>{meta.rf.reason}</p>}
-            <p className="dim" style={{ margin: 0 }}>Quick reviews run no simulation. Standard and Deep reviews simulate the antenna when the RF lab is installed.</p>
+            <p style={{ margin: "0 0 10px" }}>{noSim.lead}</p>
+            {noSim.why && <p className="dim" style={{ margin: 0 }} data-testid="no-sim-reason">{noSim.why}</p>}
+            {noSim.hint && <p className="dim" style={{ margin: 0 }}>{noSim.hint}</p>}
             <p style={{ margin: "16px 0 0", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><Link href={`/reviews/${reviewId}/rf?sample=1`} className="btn sm"><Icon name="wave" size={13} /> View a bundled sample simulation</Link> <span className="dim">A different board, labelled as a sample</span></p>
           </div>
         </Panel>

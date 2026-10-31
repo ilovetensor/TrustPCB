@@ -577,14 +577,26 @@ def render_changes(changes: dict, cause: str) -> str:
     return f'<div class="changes"><strong>Changes since revision r{esc(changes.get("from_revision"))}</strong> <span class="muted small">({esc(cause)})</span><ul>{"".join(rows)}</ul></div>'
 
 
+def _sentence(text: Any) -> str:
+    """A reason that is written to be joined into other text, as a sentence of its own."""
+    t = str(text or '').strip()
+    if not t:
+        return ''
+    t = t[0].upper() + t[1:]
+    return t if t[-1] in '.!?' else t + '.'
+
+
 NOT_TESTED_RF = ('S11 curve and match to the target band', 'electric-field picture of the antenna', 'radiation pattern')
 
 
 def render_rf(rf: dict, images: dict | None = None) -> str:
     images = images or {}
+    if rf['status'] == 'not_tested' and rf.get('kind') == 'none':
+        # nothing to tune: a board with no radio and no antenna gets one plain line, not a list of missing curves and a warning about an antenna
+        return f'<div class="notice"><p><strong>No RF check.</strong> {esc(_sentence(rf.get("reason")) or "No radio part or antenna was found on this board.")} The review covers the rules and the layout only.</p></div>'
     if rf['status'] == 'not_tested':
         shown = ', '.join(NOT_TESTED_RF)
-        return (f'<div class="notice"><p><strong>{pill("cls-not_tested", "Not tested")} RF behaviour.</strong> {esc(rf["reason"])}</p>'
+        return (f'<div class="notice"><p><strong>{pill("cls-not_tested", "Not tested")} RF behaviour.</strong> {esc(_sentence(rf["reason"]))}</p>'
                 f'<p>Because no simulation ran, this report has no {esc(shown)}. Statements about antenna tuning, matching or radiated power are '
                 f'engineering opinion or layout measurements, not simulated results. Treat the antenna as unverified until it is measured on a real board.</p></div>')
     parts = []

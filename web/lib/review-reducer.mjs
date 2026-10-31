@@ -33,6 +33,8 @@ export function initialReviewState(mode = "review") {
     refine: null,
     /** analyzer results the agent judged harmless: [{rule, count, reason}] */
     cleared: [],
+    /** phases the server skipped, with its reason: [{phase, name, reason}] */
+    skipped: [],
     candidates: { total: 0, reviewed: 0, byRule: {} },
     investigations: {},
     investigationOrder: [],
@@ -136,8 +138,11 @@ export function reviewReducer(state, event) {
       next = { ...next, status: "running", phase: p.phase, refine };
       const label = refine ? `Refine round ${refine.round}${refine.rounds ? ` of ${refine.rounds}` : ""}` : p.label ?? PHASES[p.phase]?.label ?? p.name ?? "";
       next = upsertTrail(next, { id: `phase-${p.phase}-${event.sequence}`, kind: "phase", phase: p.phase, substep: refine ? "refine" : undefined, round: refine?.round, text: label, at, seq: event.sequence });
-      for (const s of p.skipped ?? [])
-        next = upsertTrail(next, { id: `skip-${s.phase}-${event.sequence}`, kind: "result", text: `Skipped ${s.name ?? PHASES[s.phase]?.label}`, detail: s.reason, at, seq: event.sequence });
+      for (const s of p.skipped ?? []) {
+        const reason = typeof s.reason === "string" && s.reason ? s.reason.charAt(0).toUpperCase() + s.reason.slice(1) : s.reason;
+        next = upsertTrail(next, { id: `skip-${s.phase}-${event.sequence}`, kind: "result", text: `Skipped ${s.name ?? PHASES[s.phase]?.label}`, detail: reason, at, seq: event.sequence });
+        next = { ...next, skipped: [...next.skipped.filter((x) => x.phase !== s.phase), { phase: s.phase, name: s.name ?? PHASES[s.phase]?.label ?? "", reason: reason ?? "" }] };
+      }
       return next;
     }
     case "budget":

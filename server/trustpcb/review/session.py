@@ -26,6 +26,20 @@ GATE_REFUSALS = ('agent_stopped', 'not_allowed_in_phase', 'invalid_arguments', '
 GRACE_AFTER_SUMMARY_S = 3.0
 
 
+THOUGHT_LIMIT = 1500
+
+
+def clip_text(text: str, limit: int) -> str:
+    """`text` shortened to at most `limit` characters at the end of a line, a sentence or a word, never in the middle of one, with an ellipsis."""
+    if len(text) <= limit:
+        return text
+    head = text[:limit - 2]
+    for cut in (head.rfind('\n'), head.rfind('. ') + 1, head.rfind(' ')):
+        if cut > limit * 0.6:
+            return head[:cut].rstrip() + ' …'
+    return head.rstrip() + ' …'
+
+
 class ReviewSession:
     mode = 'review'
 
@@ -303,7 +317,7 @@ class ReviewSession:
         text = self._text.strip()
         self._text = ''
         if text:
-            await self.emit('thought', {'text': text[:1500]})
+            await self.emit('thought', {'text': clip_text(text, THOUGHT_LIMIT)})
 
     # ---- stopping the agent -----------------------------------------------------------------
     def request_stop(self, reason: str, detail: str = '') -> None:
