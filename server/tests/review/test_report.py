@@ -163,3 +163,19 @@ def test_still_sources_follow_a_matching_winner_to_its_base_run():
     winner = {'id': 'b', 'code': 'E-2', 'values': {'ref': 'R6', 'label': 'confirm winner', 'job_id': None, 'derived_from': 'R3'}}
     out = _still_sources([base, winner])
     assert out == [(base, winner)]                                         # one source, listed once, standing in for the winner
+
+
+def test_metric_names_are_readable_and_unknown_keys_degrade_gracefully():
+    from trustpcb.review.report import metric_name
+    assert metric_name('resonance') == 'Deepest dip' and metric_name('s11_band_worst') == 'Worst S11 in the band'
+    assert metric_name('band_worst_accepted_power_pct') == 'Accepted power, worst point of the band'
+    assert metric_name('antenna_only_band_mean_accepted_power_pct').endswith('antenna alone')
+    assert metric_name('s11_dip_2_depth') == 'S11 dip 2 depth' and metric_name('some_new_key') == 'Some new key' and metric_name('s11_new') == 'S11 new'
+
+
+def test_pattern_caption_says_plainly_when_the_pattern_is_outside_the_band():
+    from trustpcb.review.report import pattern_caption
+    band = [2.4e9, 2.4835e9]
+    assert 'outside the board' in pattern_caption(1.869e9, band) and '1.869 GHz' in pattern_caption(1.869e9, band)
+    assert 'inside the band' in pattern_caption(2.44e9, band)
+    assert pattern_caption(None, band).startswith('Directivity from the confirm run')
