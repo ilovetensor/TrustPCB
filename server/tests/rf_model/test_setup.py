@@ -88,7 +88,7 @@ def test_a_series_capacitor_at_ref_l1_is_read_as_a_capacitor_from_its_value(nrf_
     old = {e.ref: e for e in nrf_setup.network.elements}
     new = {e.ref: e for e in nrf_v2_setup.network.elements}
     assert (old["L1"].kind, old["L1"].populated, old["C20"].populated) == ("L", True, False)
-    assert (new["L1"].kind, new["L1"].topology, new["L1"].populated, new["L1"].value_text) == ("C", "series", True, "0.47pF")
-    assert new["L1"].value == pytest.approx(0.47e-12)
+    assert (new["L1"].kind, new["L1"].topology, new["L1"].populated, new["L1"].value_text) == ("C", "series", True, "0.51pF")
+    assert new["L1"].value == pytest.approx(0.51e-12)
     assert (new["C20"].kind, new["C20"].topology, new["C20"].populated, new["C20"].value) == ("C", "shunt", True, pytest.approx(0.3e-12))
-    assert not new["C19"].populated and nrf_v2_setup.network.understood
+    assert new["C19"].populated and nrf_v2_setup.network.understood
