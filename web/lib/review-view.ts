@@ -27,7 +27,7 @@ export const fmtClock = (s: number) => {
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 };
 
-const NAMES: Record<string, string> = { resonance: "deepest dip", f_res_hz: "f0", s11_min: "S11", s11_min_db: "S11", bandwidth_hz: "BW", dmax_dbi: "gain", efficiency: "eff", band_worst_s11_db: "band worst" };
+const NAMES: Record<string, string> = { resonance: "deepest dip", f_res_hz: "deepest dip", s11_min: "S11", s11_min_db: "S11", bandwidth_hz: "BW", dmax_dbi: "directivity", efficiency: "eff", band_worst_s11_db: "band worst" };
 /** Display rows for a simulation's measurements, in friendly units. Only what the solver reported. */
 export function measurementLine(m: Record<string, { value: number; unit: string }>) {
   return Object.entries(m).slice(0, 4).map(([k, x]) => {

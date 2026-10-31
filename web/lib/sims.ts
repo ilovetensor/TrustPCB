@@ -67,7 +67,7 @@ export interface Summary {
     network_note?: string | null;
   };
   sim?: {
-    f_res?: number; s11_min_db?: number; dmax_dbi?: number; efficiency_est?: number; solve_s?: number; cells?: number;
+    f_res?: number; s11_min_db?: number; dmax_dbi?: number; efficiency_est?: number; pattern_f_hz?: number; solve_s?: number; cells?: number;
     s11_dips?: { f_hz: number; s11_db: number }[]; first_series_resonance_hz?: number | null;
     bandwidth?: { f_low_hz: number; f_high_hz: number; width_hz: number } | null;
   };

@@ -13,7 +13,7 @@ from trustpcb.review.lab_real import RealLab
 from trustpcb.rf.queue import SimQueue
 
 HOST = 'http://127.0.0.1:8118'
-NRF_BASE_HASH = '6c4fdf521cd1c1ecaa8d'          # the nRF base scenario at screen quality (rf-model-3: 801 sweep points; band 2.4 to 2.4835 GHz)
+NRF_BASE_HASH = 'fb2cc51db9a44812ad1f'          # the nRF base scenario at screen quality (rf-model-4: far field at the band centre; 801 sweep points; band 2.4 to 2.4835 GHz)
 
 
 def payload(result):

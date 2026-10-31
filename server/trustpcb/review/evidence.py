@@ -52,7 +52,7 @@ def metrics_from_result(run: dict, goal: dict | None = None) -> dict:
         'band_worst_accepted_power_pct': result.get('band_worst_accepted_power_pct', stats.get('band_worst_accepted_power_pct')),
         'band_mean_accepted_power_pct': result.get('band_mean_accepted_power_pct', stats.get('band_mean_accepted_power_pct')),
         'f_res_hz': result.get('f_res'), 's11_min_db': result.get('s11_min_db'), 'bandwidth_hz': bandwidth.get('width_hz'),
-        'dmax_dbi': result.get('dmax_dbi'), 'efficiency': result.get('efficiency_est'),
+        'dmax_dbi': result.get('dmax_dbi'), 'efficiency': result.get('efficiency_est'), 'pattern_f_hz': result.get('pattern_f_hz'),
         'zin_re': zin.get('re'), 'zin_im': zin.get('im'), 'band_worst_s11_db': worst, 'band_mean_s11_db': mean,
         'centre_f_hz': centre.get('f_hz'), 'centre_re': centre.get('re'), 'centre_im': centre.get('im'),
         'trust_status': trust.get('status'), 'trust_reasons': list(trust.get('reasons') or []), 'solve_s': run.get('solve_s') or result.get('solve_s'),
@@ -200,6 +200,8 @@ def measurements_of(metrics: dict) -> dict:
         out['bandwidth'] = {'value': round(metrics['bandwidth_hz'] / 1e6, 2), 'unit': 'MHz'}
     if metrics.get('dmax_dbi') is not None:
         out['peak_directivity'] = {'value': round(metrics['dmax_dbi'], 2), 'unit': 'dBi'}
+    if metrics.get('pattern_f_hz') is not None and (metrics.get('dmax_dbi') is not None or metrics.get('efficiency') is not None):
+        out['pattern_frequency'] = {'value': round(metrics['pattern_f_hz'] / 1e6, 2), 'unit': 'MHz'}  # peak directivity and efficiency are both at this frequency
     if metrics.get('efficiency') is not None:
         out['radiation_efficiency'] = {'value': round(metrics['efficiency'] * 100, 1), 'unit': '%'}
     if metrics.get('zin_re') is not None:
