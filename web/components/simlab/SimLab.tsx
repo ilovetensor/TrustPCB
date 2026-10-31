@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { BoardBundle } from "../../lib/api";
 import {
-  BOARD_KINDS, defaultCount, describeBoardOps, isDoneRun, isLiveRun, KIND_LABEL, KIND_NOUN, pairOf, panelModel, pickRun, trustOf,
+  BOARD_KINDS, defaultCount, defaultsClaim, describeBoardOps, isDoneRun, isLiveRun, KIND_LABEL, KIND_NOUN, pairOf, panelModel, pickRun, trustOf,
   type BoardSimKind, type BoardSimRun, type BoardSimSource,
 } from "../../lib/board-sims";
 import { diffOverlay, fmtNum, fmtVal, mapsOf, sampleAt, sharedRange, type OverlayMeta } from "../../lib/overlay-math.mjs";
@@ -244,7 +244,7 @@ export function SimLabView({ reviewId, source, bundle, title, initialKind = null
       )}
       {primary && result && result.status === "ok" && (
         <>
-          <Stats tiles={tilesOf(result, cmp)} defaults={dc} paired={!!cmp} />
+          <Stats tiles={tilesOf(result, cmp)} defaults={dc} paired={!!cmp} claim={defaultsClaim(result.assumptions)} />
           {kind === "power" && <PowerPanel run={primary} before={cmp} />}
           {kind === "thermal" && <HeatPanel run={primary} before={cmp} />}
           {kind === "signal" && <SignalPanel run={primary} before={compare} />}

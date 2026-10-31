@@ -22,6 +22,8 @@ from .tools import ToolDef, ToolResult, fail
 
 logger = logging.getLogger('trustpcb')
 
+#: Refusals of a bounded, state-changing gate: each is given once per set of missing steps, so they cannot loop and do not count toward the refused-calls-in-a-row stop.
+NEXT_STEP_REFUSALS = ('checks_not_run', 'datasheets_unused')
 GATE_REFUSALS = ('agent_stopped', 'not_allowed_in_phase', 'invalid_arguments', 'budget_exhausted', 'review_complete', 'unknown_tool', 'level_not_allowed', 'no_further_evidence')
 GRACE_AFTER_SUMMARY_S = 3.0
 
@@ -96,7 +98,12 @@ class ReviewSession:
         self.partial_refusals = 0                       # refusals of advance_phase for a partial win the finding does not report yet
         self.part_lookups = 0                           # lookup_part and read_datasheet calls made (datasheets chosen)
         self.lookup_refusals = 0                        # refusals of advance_phase out of phase 2 while datasheets were chosen and never used (once)
-        self.kinds_refusals = 0                         # refusals of advance_phase out of phase 4 while a chosen simulation kind has no investigation (once)
+        self.kinds_refusals = 0                         # refusals of advance_phase out of phase 4 while a chosen kind has no base run and no stated reason
+        self.kinds_refused: list[tuple] = []            # the sets of missing kinds already refused: the same set is refused once, a changed set may be refused again (bounded)
+        self.kind_reasons: dict[str, str] = {}          # chosen kind -> why it has no base run (stated by the agent, or recorded by the server when it gave way)
+        self.lookups_tried: list[dict] = []             # {mpn, value, read, question}: every lookup_part and read_datasheet attempt, whatever it returned
+        self.datasheet_refused: list[tuple] = []        # the sets of missing datasheet steps already refused out of phase 2
+        self.datasheet_gaps: list[str] = []             # what the datasheets were chosen for and never got
         self.coverage_waived: dict | None = None
         self.stop_reason: str | None = None
         self.stop_detail: str = ''
@@ -351,7 +358,10 @@ class ReviewSession:
         elif not tool.free:
             self.budgets.add_call(self.phase)
         self.tool_calls += 1
-        self.refusal_streak = self.refusal_streak + 1 if result.is_error else 0
+        if code in NEXT_STEP_REFUSALS:
+            pass                                            # a gate that says what to do next, once per state: not a sign the agent is stuck
+        else:
+            self.refusal_streak = self.refusal_streak + 1 if result.is_error else 0
         if self.refusal_streak >= REFUSAL_STREAK_LIMIT:
             self.add_limit('loop', f'{self.refusal_streak} refused or failed tool calls in a row')
             self.request_stop('loop', f'{self.refusal_streak} refused or failed tool calls in a row')

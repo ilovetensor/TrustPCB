@@ -71,13 +71,15 @@ export function pairOf(runs, active) {
   return after ? { before: active, after } : null;
 }
 
-/** The run shown first: the newest finished base run of the asked kind, else any finished one, else any. */
+/** The run shown first: the newest finished base run of the asked kind that passed its checks, else the newest that passed, else the same of the finished runs that did not (a failed confirm is not what a reader should land on), else any. */
 export function pickRun(runs, { kind = null, run = null, ref = null } = {}) {
   if (run) { const f = runs.find((r) => r.run_id === run); if (f) return f; }
   if (ref) { const f = runs.find((r) => r.ref === ref); if (f) return f; }
   const pool = kind ? runs.filter((r) => r.kind === kind) : runs;
   const done = pool.filter(isDoneRun);
-  return [...done].reverse().find((r) => !r.whatif.length) ?? done[done.length - 1] ?? pool[pool.length - 1] ?? null;
+  const passing = done.filter((r) => trustOf(r.result).ok);
+  const ranked = passing.length ? passing : done;
+  return [...ranked].reverse().find((r) => !r.whatif.length) ?? ranked[ranked.length - 1] ?? pool[pool.length - 1] ?? null;
 }
 
 const GROUPS = ["load", "part", "segment", "net"];
@@ -103,6 +105,14 @@ export function seriesOf(result) {
 }
 
 export const defaultCount = (assumptions) => (assumptions ?? []).filter((a) => a.source === "default").length;
+
+/** The plain sentence under a headline number when defaults are in force: which inputs nobody gave, and that the number is about them. "" when none. */
+export function defaultsClaim(assumptions) {
+  const names = [...new Set((assumptions ?? []).filter((a) => a.source === "default" && a.name).map((a) => String(a.name).replace(/_/g, " ")))];
+  if (!names.length) return "";
+  const shown = names.slice(0, 3).join(", ") + (names.length > 3 ? ` and ${names.length - 3} more` : "");
+  return `This number rests on defaults nobody gave (${shown}). It is about those defaults, not about this board.`;
+}
 
 /** The sources of the assumptions that begin with a part's reference: "U3 current" belongs to U3. */
 export function sourcesFor(ref, assumptions) {

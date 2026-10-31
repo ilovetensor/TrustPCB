@@ -1,6 +1,6 @@
 ## Board simulations: {sim_text}
 
-The same method as the antenna, for each kind chosen: `open_investigation` with `kind` and up to three ranked suspects (open one investigation per kind; this review allows {investigations} in all), then:
+Every kind chosen that can run needs at least a base run before you leave this phase; if one cannot be run, say why with `advance_phase` `not_run_reasons`. The server refuses `advance_phase` once and names the calls to make. The same method as the antenna, for each kind chosen: `open_investigation` with `kind` and up to three ranked suspects (open one investigation per kind; this review allows {investigations} in all), then:
 1. `get_sim_inputs`, then `run_board_sim` with no `whatif`: the base. Everything is compared with it. A base run that used defaults says so in `defaults_in_use`.
 2. One suspect at a time, one change per run: `run_board_sim` with a `whatif` (its ops are in `accepted_whatif_ops`). A what-if lives only in the simulation; the server edits nothing.
 3. Read the result before the next test: `primary` first, then every number, then the inputs with their sources. `compare_sims` gives the difference between two runs of the same kind.

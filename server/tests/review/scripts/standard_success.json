@@ -252,7 +252,7 @@
   "tool": "record_finding",
   "args": {
    "title": "Ground copper next to the feed detunes the antenna",
-   "severity": "high",
+   "severity": "medium",
    "what": "In the simulation, clearing the copper next to the antenna feed improves the return loss by 9.3 dB compared with the base run.",
    "why_it_matters": "A detuned antenna wastes transmit power and shortens range.",
    "recommendation": "Clear the ground copper next to the antenna feed in your layout tool, then recheck the match.",

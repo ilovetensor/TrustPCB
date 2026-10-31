@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from typing import Any
 
 from .. import prompts
@@ -31,6 +32,8 @@ MAX_GROUP_EVIDENCE = 60          # record_finding with a rule group: evidence ro
 MAX_ANNOTATED = 30               # view_board annotate: candidate marks drawn on one image
 REGION_MAX_SHARE = 0.7           # a view covering more than this share of the board is an overview, not a region view
 REGION_OVERLAP = 0.6             # a new region overlapping an earlier counted one by more than this does not count again
+MAX_GATE_REFUSALS = 3            # a gate that says what to do next (datasheets, chosen checks) refuses at most this many different states, then gives way
+MIN_KIND_REASON = 30             # a chosen check left unrun needs a stated reason of at least this many characters
 MIN_DISMISS_REASON_RISKY = 30    # a group with high or medium results needs a real reason
 SEV_ORDER = {name: i for i, name in enumerate(SEVERITIES)}
 
@@ -240,7 +243,7 @@ class Handlers:
                 inv.status, inv.outcome = 'incomplete', 'incomplete'
                 self.store.update_investigation(inv.id, status='incomplete', outcome={'outcome': 'incomplete', 'summary': 'A budget ended before this investigation was closed.'})
                 await self.publish_investigation(inv)
-        if s.phase == 4 and (held := self.kinds_gate()) is not None:
+        if s.phase == 4 and (held := self.kinds_gate(args)) is not None:
             return held
         if s.phase == 3:
             refusal = await self.phase3_gate(args)
@@ -269,34 +272,119 @@ class Handlers:
                 data['coverage_waived'] = s.coverage_waived
         return ok(data)
 
-    def datasheets_gate(self) -> ToolResult | None:
-        """Datasheets were chosen to ground the simulation inputs. Leaving phase 2 without one lookup is refused once; the second advance_phase goes through
-        (a board with no part number the suppliers know must not jam the review)."""
-        s = self.s
-        if s.extent is None or not s.datasheets_on or not s.sim_kinds or s.part_lookups or s.lookup_refusals >= 1:
-            return None
-        s.lookup_refusals += 1
-        return fail('datasheets_unused', 'Datasheets were chosen but no part has been looked up. Call lookup_part with the exact part number of the part that sets a simulation input (the regulator, '
-                    'the main chip), then read_datasheet with mpn and question for the value, then set_sim_input with source datasheet. If no part on this board has a number the suppliers know, '
-                    'call advance_phase again and the inputs stay labelled defaults.')
+    # ---- datasheets and chosen checks: gates that say what to do next ------------------------------------
+    MEASURABLE = re.compile(r'(?P<power>-?\d+(?:[.,]\d+)?\s*(?:dBm|mW)\b)|\b(?:transmit(?:s|ting)?|tx)\b[^.]{0,40}\d', re.I)
 
-    def kinds_gate(self) -> ToolResult | None:
-        """Leaving phase 4 after a board simulation was started, with another chosen one (power, heat, signal, or the antenna) that nothing investigated, is refused once while an investigation,
-        time and calls remain, and names what is missing. The second advance_phase goes through, so a run never jams; the report lists what was not tested."""
+    def measurable_purpose(self) -> str | None:
+        """A radio output the purpose or focus states as a number (for example 8 dBm transmit): the supply current at that output is a datasheet value, not a guess."""
+        from .boardsim import goal_texts
+        texts = goal_texts(self.s.goal)
+        for text in texts:
+            if (found := re.search(r'-?\d+(?:[.,]\d+)?\s*(?:dBm|mW)\b', text, re.I)):
+                return found.group(0).strip()
+        return 'the transmit rate or power the request states' if any(self.MEASURABLE.search(text) for text in texts) else None
+
+    def datasheet_steps(self) -> list[dict]:
+        """What the datasheets extent still owes before phase 2 ends: a lookup of each main part (the radio and the regulator at least), and a datasheet read of the radio
+        when the purpose states something measurable. Each item: {step, ref, value, role, text}. A lookup counts when it was tried, whatever it returned."""
         s = self.s
-        if s.kinds_refusals >= 1 or s.mode != 'review' or not s.sim_kinds or s.extent is None:     # a review from before extents existed runs as it did
+        parts = part_roles_check.main_parts(s.board, (s.brief or {}).get('part_roles'))
+        tried = s.lookups_tried
+        steps: list[dict] = []
+        for part in parts:
+            if not any(part_roles_check.same_part(part['value'], item.get('mpn') or item.get('value') or '') for item in tried):
+                steps.append({'step': 'lookup', 'text': f'lookup_part with mpn "{part["value"]}" ({part["ref"]}, the {part["role"]})', **part})
+        measurable = self.measurable_purpose()
+        radios = [p for p in parts if p['role'] == 'radio']
+        if measurable:
+            reads = [item for item in tried if item.get('read')]
+            for part in radios or [{'ref': '', 'value': '', 'role': 'radio'}]:
+                if not any(not part['value'] or part_roles_check.same_part(part['value'], item.get('mpn') or '') for item in reads):
+                    name = f'"{part["value"]}" ({part["ref"]})' if part['value'] else 'the part that transmits'
+                    steps.append({'step': 'read', 'text': f'read_datasheet with mpn {name} and question "supply current while transmitting at {measurable}"', **part})
+        if not parts and not tried:
+            steps.append({'step': 'lookup', 'ref': '', 'value': '', 'role': '', 'text': 'lookup_part with the exact part number of the part that sets a simulation input (the regulator or the main chip)'})
+        return steps
+
+    def datasheets_gate(self) -> ToolResult | None:
+        """Datasheets were chosen: leaving phase 2 needs a lookup of the main parts (the radio and the regulator at least) and, when the purpose states something measurable
+        (for example 8 dBm transmit), a datasheet read of the radio for its current. The set of missing steps is refused once; when the agent does some of them the set has
+        changed and it is told what is left (at most three refusals in all). A part the suppliers do not know still counts as tried, so a board with no known part number cannot jam."""
+        s = self.s
+        if s.extent is None or not s.datasheets_on or s.mode != 'review':
             return None
-        chosen = [*(['antenna'] if s.antenna_on else []), *s.sim_kinds]
-        touched = {i.sim_kind or 'antenna' for i in s.ledger.investigations.values()}
-        missing = [k for k in chosen if k not in touched]
-        if not touched & set(s.sim_kinds):      # no board simulation was started at all: the antenna-only flow, as it always ran
+        steps = self.datasheet_steps()
+        if not steps:
             return None
-        if not missing or s.budgets.investigations >= s.config.investigations or s.budgets.global_exhausted() or s.budgets.calls_left(4) <= 0:
+        key = tuple(sorted(f'{i["step"]}:{i["ref"]}' for i in steps))
+        if key in s.datasheet_refused or len(s.datasheet_refused) >= MAX_GATE_REFUSALS:
+            s.lookup_refusals += 1
+            for item in steps:
+                gap = f'{"Datasheet not read" if item["step"] == "read" else "Part not looked up"}: {item["ref"] or "main part"} {item["value"]}'.strip()
+                if gap not in s.datasheet_gaps:
+                    s.datasheet_gaps.append(gap)
+                    s.add_limit('datasheets_gap', f'Datasheets were chosen but this step never happened: {item["text"]}. Inputs it would have set stay labelled defaults.')
+            return None
+        s.datasheet_refused.append(key)
+        s.lookup_refusals += 1
+        return fail('datasheets_unused', 'Datasheets were chosen, so the main parts must be looked up before phase 2 ends. Do this next: ' + '; then '.join(i['text'] for i in steps)
+                    + '. Then set_sim_input with source datasheet for any value you read (the current at the stated output is a datasheet value, not a guess). '
+                    'If the suppliers do not know a part, the attempt still counts: call advance_phase again and its inputs stay labelled defaults.',
+                    next_steps=[i['text'] for i in steps], refusals_left=MAX_GATE_REFUSALS - len(s.datasheet_refused))
+
+    def kinds_chosen(self) -> list[str]:
+        s = self.s
+        return [*(['antenna'] if s.antenna_on else []), *s.sim_kinds]
+
+    def kinds_missing(self) -> list[str]:
+        """Chosen kinds that can run and have neither a base run nor a stated reason."""
+        s = self.s
+        started = {i.sim_kind or 'antenna' for i in s.ledger.investigations.values() if i.base is not None}
+        return [k for k in self.kinds_chosen() if k not in started and k not in s.kind_reasons]
+
+    def accept_kind_reasons(self, reasons: dict | None) -> list[str]:
+        """Take the reasons given with advance_phase for chosen kinds that were not run; returns the kinds whose reason was too short."""
+        short = []
+        for kind, reason in (reasons or {}).items():
+            if kind not in self.kinds_chosen():
+                continue
+            if len(str(reason).strip()) >= MIN_KIND_REASON:
+                self.s.kind_reasons[kind] = str(reason).strip()
+            else:
+                short.append(kind)
+        return short
+
+    def kinds_gate(self, args: dict | None = None) -> ToolResult | None:
+        """Leaving phase 4 needs every chosen kind that can run (antenna, power, thermal, signal) to have at least a base run, or a reason the agent stated with advance_phase
+        (not_run_reasons {kind: reason}). Whatever is missing is refused once per set of missing kinds, with the exact calls to make; a changed set may be refused again, at most
+        three refusals in all, and a budget that has ended gives way, so a run never jams. What is still missing then is recorded with its reason and listed as not tested.
+        This holds even when no board simulation was started at all."""
+        s = self.s
+        if s.mode != 'review' or s.extent is None or not self.kinds_chosen():       # a review from before extents existed runs as it did
+            return None
+        short = self.accept_kind_reasons((args or {}).get('not_run_reasons'))
+        missing = self.kinds_missing()
+        if not missing:
+            return None
+        wall = s.budgets.global_exhausted()
+        no_room = s.budgets.investigations >= s.config.investigations or s.budgets.calls_left(4) <= 0
+        key = tuple(sorted(missing))
+        if wall or no_room or key in s.kinds_refused or len(s.kinds_refused) >= MAX_GATE_REFUSALS:
+            why = (f'The {str(wall).replace("_", " ")} budget ended first.' if wall else 'The investigation or tool-call budget of Investigate was used first.' if no_room
+                   else 'The agent left Investigate without running it and stated no reason.')
+            for kind in missing:
+                s.kind_reasons[kind] = why
+                s.add_limit('check_not_run', f'{s.sim_label(kind) if kind != "antenna" else "Antenna simulation"} was chosen but has no base run: {why}', kind=kind)
             return None
         s.kinds_refusals += 1
-        return fail('checks_not_run', f'These checks were chosen at the start and nothing has tested them: {", ".join(missing)}. Open an investigation for each (open_investigation with kind), '
-                    'run its base, and test the suspect. If one cannot be tested, call advance_phase again and the report will say it was not tested.',
-                    not_run=missing, investigations_left=s.config.investigations - s.budgets.investigations)
+        s.kinds_refused.append(key)
+        steps = {k: (f'open_investigation with kind "{k}" and ranked suspects, then run_board_sim with kind "{k}" and no whatif for the base' if k != 'antenna'
+                     else 'open_investigation with no kind and ranked suspects, then run_scenario with no change for the base') for k in missing}
+        left = max(0, s.config.investigations - s.budgets.investigations)
+        return fail('checks_not_run', f'These checks were chosen at the start and have no base run: {", ".join(missing)}. Do this next: ' + '; and '.join(f'{k}: {v}' for k, v in steps.items())
+                    + f'. You have {left} investigation(s) left. If one cannot be run, call advance_phase with not_run_reasons {{kind: reason of {MIN_KIND_REASON}+ characters}} and the report will state it as not tested.'
+                    + (f' (A reason for {", ".join(short)} was too short.)' if short else ''),
+                    not_run=missing, next_steps=steps, investigations_left=left, refusals_left=MAX_GATE_REFUSALS - len(s.kinds_refused))
 
     # ---- the layout judgement gate ------------------------------------------------------------
     def layout_finding_count(self) -> int:

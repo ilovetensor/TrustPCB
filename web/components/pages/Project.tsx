@@ -11,7 +11,7 @@ import { PowerBar } from "../rf/PowerPair";
 import { RunsList } from "../workspace/RunsList";
 
 const total = (c: Record<Severity, number>) => c.critical + c.high + c.medium + c.low + c.info;
-const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Agent stopped", queued: "Queued", failed: "Failed", canceled: "Stopped", interrupted: "Interrupted", no_review: "No review yet" };
+const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Stopped early", queued: "Queued", failed: "Failed", canceled: "Stopped", interrupted: "Interrupted", no_review: "No review yet" };
 
 function RfStatus({ r, loading }: { r: VersionRf | null | undefined; loading: boolean }) {
   if (loading) return <span className="dim">reading</span>;

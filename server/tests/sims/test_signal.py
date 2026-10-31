@@ -535,7 +535,11 @@ def test_nrf_sample_usb_pair_antenna_and_crystal(tmp_path):
     series = {e["id"]: e for e in res.detail["series"]}
     assert {"profile", "tdr", "profile:ANT_FEED", "tdr:XTAL_A"} <= set(series)
     for e in series.values():
-        assert len(e["x"]) == len(e["y"]) > 2 and e["x_unit"] and e["y_unit"] == "ohm" and e["target"] > 0 and e["tolerance_pct"] == 10.0
+        assert len(e["x"]) == len(e["y"]) > 2 and e["x_unit"] and e["y_unit"] == "ohm"
+        if e["net"] == "XTAL_A":          # a crystal line has no impedance requirement: its curve has no target line and no tolerance band
+            assert "target" not in e and "tolerance_pct" not in e
+        else:
+            assert e["target"] > 0 and e["tolerance_pct"] == 10.0
     # overlays are rasters of the stated size
     ids = {o.id for o in res.overlays}
     assert "return_detour" in ids and any(i.startswith("z0_deviation_") for i in ids)
@@ -620,3 +624,54 @@ def test_nrf_default_selection_runs_inside_the_time_target(tmp_path):
     # when the machine is busy the time budget can run out; the result then says so in its checks
     reused = res.detail["solver"]["reused_after_budget"]
     assert (reused > 0) == any(c["name"] == "time_budget" for c in res.trust["checks"])
+
+
+# ----------------------------------------------------------------------------- targets only where a net has one
+
+
+def test_a_usb_cc_line_has_no_target_and_no_deviation_and_stays_out_of_the_worst_metric(tmp_path):
+    b = parse_board(USB, "v")
+    res = run(b, {"nets": ["CC1", "CC2"]}, out=tmp_path)
+    assert res.status == "ok"
+    for net in ("CC1", "CC2"):
+        assert f"{net}.z0_median" in res.metrics and f"{net}.z0_worst_deviation" not in res.metrics and f"{net}.z0_target" not in res.metrics
+        row = net_row(res, net)
+        assert row["has_target"] is False and row["target_ohm"] is None and "no impedance requirement" in row["target_basis"]
+    assert not any(a.name.startswith("z0_target") for a in res.assumptions)
+    series = res.detail["series"]
+    assert series and all("target" not in e and "tolerance_pct" not in e for e in series)
+    assert not any(o.id.startswith("z0_deviation_") for o in res.overlays)
+    from trustpcb.review import simmetrics as sm
+    primary = sm.primary_of(res.to_dict())
+    assert primary and primary[0].endswith("reference_gap_length")           # no net has a target: the run is judged by the reference gap, not by a made-up deviation
+
+
+def test_the_worst_deviation_counts_only_nets_with_a_target(tmp_path):
+    b = parse_board(NRF, "v")
+    res = run(b, {"nets": ["ANT_FEED", "USB_D+_MCU", "USB_D-_MCU", "XTAL_A"]}, out=tmp_path)
+    with_target = {n for n, r in res.detail["nets"].items() if r["has_target"]}
+    assert with_target == {"ANT_FEED", "USB_D+_MCU", "USB_D-_MCU"} and not res.detail["nets"]["XTAL_A"]["has_target"]
+    deviations = {k.split(".")[0] for k in res.metrics if k.endswith("z0_worst_deviation")}
+    assert deviations == with_target
+    from trustpcb.review import simmetrics as sm
+    name, _ = sm.primary_of(res.to_dict())
+    assert name.split(".")[0] in with_target and name.endswith("z0_worst_deviation")
+
+
+def test_declared_and_net_class_targets_apply():
+    from trustpcb.sims.signal import sb_has_target, sb_target
+    actx = AnalyzerContext()
+    assert not sb_has_target(actx, "CC1") and not sb_has_target(actx, "I2C_SDA")
+    assert sb_has_target(actx, "ANT_FEED") and sb_has_target(actx, "USB_D+") and sb_has_target(actx, "USB_D-")
+    actx.net_targets = {"CC1": 60.0}
+    assert sb_has_target(actx, "CC1") and sb_target(actx, "CC1") == (60.0, "set in the brief")
+    assert sb_target(AnalyzerContext(), "GPIO3")[1].startswith("no impedance requirement")
+
+
+def test_a_net_class_that_states_an_impedance_gives_its_nets_a_target(monkeypatch):
+    from trustpcb.analyzers import project
+    from trustpcb.sims.signal import sb_has_target, sb_target
+    monkeypatch.setattr(project, "net_class_info", lambda board, ctx, net: {"name": "Ctrl_75ohm" if net == "VIDEO" else "Default"})
+    actx = AnalyzerContext()
+    assert sb_has_target(actx, "VIDEO", object()) and sb_target(actx, "VIDEO", object()) == (75.0, "stated by the net class")
+    assert not sb_has_target(actx, "GPIO1", object())

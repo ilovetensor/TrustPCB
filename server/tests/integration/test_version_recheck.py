@@ -27,13 +27,14 @@ OPEN = {'tool': 'open_investigation', 'args': {'question': 'Does the antenna sit
 BASE = {'tool': 'run_simulation', 'args': {'suspect_id': 'S1', 'label': 'base'}}
 MATCH = {'tool': 'tune_matching', 'args': {'ref': 'R1', 'suspect_id': 'S2'}}
 FINDING = {'tool': 'record_finding', 'args': {
-    'title': 'The matching network leaves the antenna out of band', 'severity': 'high', 'what': 'In the screen comparison a different series part at L1 improves the match across the band against the base.',
+    'title': 'The matching network leaves the antenna out of band', 'severity': 'medium', 'what': 'In the screen comparison a different series part at L1 improves the match across the band against the base.',
     'why_it_matters': 'An antenna that reflects most of the power in band shortens the radio link.', 'recommendation': 'Try a different series part at L1 in your own tool and measure the match again.',
     'evidence_ids': ['E-002'], 'targets': ['ref:L1']}}
+NOT_RUN = {'tool': 'advance_phase', 'args': {'not_run_reasons': {'power': 'Power delivery is outside this antenna test: no load current is stated for the board and nothing here changes it.'}}}
 V1_STEPS = [BRIEF, {'tool': 'advance_phase'}, *VIEWS, {'tool': 'advance_phase'}, OPEN, BASE, MATCH,
             {'tool': 'conclude_suspect', 'args': {'suspect_id': 'S2', 'verdict': 'confirmed', 'reasoning': 'The screen comparison shows a clear gain from a different series part at L1.'}},
             FINDING, {'tool': 'close_investigation', 'args': {'investigation_id': 'I1', 'outcome': 'improved', 'summary': 'A matching change improves the band result in the screen comparison.', 'finding_code': 'F-001'}},
-            {'tool': 'advance_phase'}, {'tool': 'confirm_result', 'args': {'investigation_id': 'I1', 'which': 'winner'}}]
+            NOT_RUN, {'tool': 'confirm_result', 'args': {'investigation_id': 'I1', 'which': 'winner'}}]
 DECLINE_REFINE = {'tool': 'advance_phase', 'args': {'decline_refine': 'The confirm base E-003 and the confirm winner E-004 do not meet the target, but the second geometry attempt is not warranted here.'}}
 V2_STEPS = [{'tool': 'get_board_summary'}, BRIEF, {'tool': 'advance_phase'}, *VIEWS, {'tool': 'advance_phase'}, OPEN, BASE, {'tool': 'get_status'}]
 

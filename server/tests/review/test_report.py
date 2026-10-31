@@ -123,7 +123,7 @@ async def test_pdf_is_printed_by_a_real_browser(env):
 async def test_a_report_for_a_failed_run_says_where_and_why(env):
     review = await env.review(SCRIPTS / 'agent_crash.json')
     html = await html_of(env, review)
-    assert 'agent_stopped'.replace('_', ' ') in html and 'The agent stopped before finishing' in html and 'upstream connection lost' in html
+    assert 'stopped early' in html and 'agent stopped' not in html.lower() and 'the agent ended before finishing' in html and 'upstream connection lost' in html
     assert 'ended before its run finished' in html and 'Written by code from the stored findings' in html
     assert 'Not tested' in html and 'Unreviewed' in html
 
@@ -212,3 +212,16 @@ async def test_the_code_written_summary_does_not_apologise_for_antenna_tuning_on
     none = deterministic_summary(env.store, review['id'], 'complete', 'completed', 'not_tested', extra={'rf_kind': 'none'})
     chip = deterministic_summary(env.store, review['id'], 'complete', 'completed', 'not_tested', extra={'rf_kind': 'chip'})
     assert 'antenna tuning' not in none['text'] and 'antenna tuning' in chip['text']
+
+
+def test_board_simulation_keys_have_plain_names_that_keep_net_and_part_names():
+    names = {
+        'worst_drop_mv': 'Largest voltage drop', 'drop_pct:VBUS_F': 'Voltage drop on VBUS_F, share of nominal', 'drop_mv:VBUS_F': 'Voltage drop on VBUS_F',
+        'v_pin:U1@VBUS_F': 'Voltage at the lowest U1 supply pin on VBUS_F', 'peak_rise': 'Hottest point above ambient', 'ANT_FEED.z0_median': 'ANT_FEED: median impedance',
+        'CC1.reference_gap_length': 'CC1: track length with no ground under it', 'delta_peak_rise': 'Change in hottest point above ambient',
+        'confirm_winner_worst_drop_pct': 'Best change at the finer mesh: largest voltage drop, share of nominal', 'USB_D+.z0_worst_deviation': 'USB_D+: largest impedance deviation from the target',
+    }
+    for key, expected in names.items():
+        assert report.metric_name(key) == expected, key
+    assert report.metric_name('s11_min') == 'Lowest S11' and report.metric_name('some_new_key') == 'Some new key'          # antenna names and unknown keys are as before
+    assert not any(raw in report.metric_name(k) for k in names for raw in ('_mv', '_pct', '@', 'v_pin', 'drop_'))

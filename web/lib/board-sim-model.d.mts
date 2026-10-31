@@ -30,6 +30,7 @@ export function pickRun(runs: BoardSimRun[], opts?: { kind?: BoardSimKind | null
 export interface PanelRow extends SimMetric { key: string }
 export function panelModel(result: SimResultJson | null | undefined): { headline: PanelRow[]; load: PanelRow[]; part: PanelRow[]; segment: PanelRow[]; net: PanelRow[]; other: PanelRow[] };
 export function seriesOf(result: SimResultJson | null | undefined): SimSeries[];
+export function defaultsClaim(assumptions: SimAssumption[] | null | undefined): string;
 export function defaultCount(assumptions: SimAssumption[] | null | undefined): number;
 export function sourcesFor(ref: string | null | undefined, assumptions: SimAssumption[] | null | undefined): string[];
 export function usesDefault(ref: string | null | undefined, assumptions: SimAssumption[] | null | undefined): boolean;

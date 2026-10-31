@@ -227,6 +227,7 @@ class NetResult:
     unique: int = 0
     quant: float = 0.005
     builds: list[Any] = field(default_factory=list)
+    has_target: bool = True   # False: the net has no impedance requirement; its impedance is reported with no pass or fail
 
 
 _BIN_EDGES = (0.0, 0.15, 0.4, 0.8, 1.5, 3.0, 6.0, 12.0)
@@ -364,7 +365,7 @@ class SignalSimulator(Simulator):
             {"name": "source_ohm", "label": "TDR source resistance", "default": 50.0, "unit": "ohm", "source": "default", "note": "Output resistance of the driver or instrument for the TDR plot."},
             {"name": "load_ohm", "label": "TDR load resistance", "default": None, "unit": "ohm", "source": "default", "note": "None is an open end (a CMOS input with no termination)."},
             {"name": "aggressor_swing_v", "label": "Aggressor swing", "default": 3.3, "unit": "V", "source": "default", "note": "Used to turn crosstalk fractions into volts."},
-            {"name": "target_ohm", "label": "Impedance target", "default": {n: sb_target(actx, n)[0] for n in picks}, "unit": "ohm", "source": "board", "note": "Single-ended target per net; differential pair legs use half the differential target."},
+            {"name": "target_ohm", "label": "Impedance target", "default": {n: sb_target(actx, n, board)[0] for n in picks if sb_has_target(actx, n, board)}, "unit": "ohm", "source": "board", "note": "Single-ended target per net that has one (radio nets, differential data pairs, declared and net-class targets); differential pair legs use half the differential target. Other nets are reported without a target."},
             {"name": "driver_ref", "label": "Driver part reference", "default": None, "unit": "", "source": "default", "note": "Reference designator at the source end of the TDR. Default: the first IC pad on the net."},
             {"name": "quality", "label": "Mesh quality", "default": "screen", "unit": "", "source": "default", "note": "'screen' or 'confirm' (four times the work, about a third of the discretisation error)."},
             {"name": "time_budget_s", "label": "Solver time budget", "default": 18.0, "unit": "s", "source": "default", "note": "Once spent, remaining sections reuse the nearest solved neighbour and the result says so."},
@@ -587,8 +588,9 @@ class SignalSimulator(Simulator):
                 zcm[i] = r.z0 / 2
         _fill_vias(samples, z0, ee, tpd, z_eff, tpd_eff, zdiff, zcm, stack)
         supported = np.array([(s.kind == "via") or cover[i] >= SUPPORT_COVER for i, s in enumerate(samples)])
-        target, basis = sb_target(actx, net)
+        target, basis = sb_target(actx, net, board)
         res = NetResult(net, iface, path, samples, target, basis, partner, z0, ee, tpd, z_eff, tpd_eff, coupled, cover, supported, exempt, valid)
+        res.has_target = sb_has_target(actx, net, board)
         res.zdiff = zdiff if partner else None
         res.zcm = zcm if partner else None
         res.sections = sum(1 for b in builds if b is not None)
@@ -881,6 +883,8 @@ class SignalSimulator(Simulator):
         layers = sorted({s.layer for r in results.values() for s in r.samples if s.kind == "trace"})
         grids = {la: np.full((ny, nx), np.nan, dtype=np.float32) for la in layers}
         for r in results.values():
+            if not r.has_target:
+                continue
             dev = 100.0 * (r.z_eff - r.target) / r.target
             for i, s in enumerate(r.samples):
                 if s.kind != "trace" or not np.isfinite(dev[i]):
@@ -947,14 +951,15 @@ class SignalSimulator(Simulator):
         for net, r in results.items():
             ok = r.valid & np.array([s.kind == "trace" for s in r.samples])
             ze = r.z_eff[ok] if ok.any() else r.z_eff[np.isfinite(r.z_eff)]
-            dev = 100 * (ze - r.target) / r.target
+            dev = 100 * (ze - r.target) / r.target if r.has_target else None
             unsupported = sum(s.ds for s, sup, ex in zip(r.samples, r.supported, r.exempt) if not (sup or ex))
             put(f"{net}.z0_median", np.median(ze), "ohm", f"{net}: median impedance (quasi-static estimate)")
             put(f"{net}.z0_min", ze.min(), "ohm", f"{net}: lowest impedance along the route")
             put(f"{net}.z0_max", ze.max(), "ohm", f"{net}: highest impedance along the route")
-            put(f"{net}.z0_target", r.target, "ohm", f"{net}: impedance target ({r.target_basis})")
-            put(f"{net}.z0_worst_deviation", dev[np.argmax(np.abs(dev))], "percent", f"{net}: largest deviation from target")
-            m[f"{net}.z0_worst_deviation"].update({"better": "lower", "limit": 10.0, "limit_label": "impedance tolerance used by the layout checks (10 percent, default)"})
+            if r.has_target:      # a net with no impedance requirement is reported with its impedance only: no target, no deviation, and it stays out of the worst metric
+                put(f"{net}.z0_target", r.target, "ohm", f"{net}: impedance target ({r.target_basis})")
+                put(f"{net}.z0_worst_deviation", dev[np.argmax(np.abs(dev))], "percent", f"{net}: largest deviation from target")
+                m[f"{net}.z0_worst_deviation"].update({"better": "lower", "limit": 10.0, "limit_label": "impedance tolerance used by the layout checks (10 percent, default)"})
             put(f"{net}.length", r.path.length_mm, "mm", f"{net}: routed length of the analysed route")
             put(f"{net}.delay", r.tdr["delay_ps"], "ps", f"{net}: one-way propagation delay (estimate)")
             put(f"{net}.rise_time", r.iface.rise_ns, "ns", f"{net}: rise time used ({r.iface.source}: {r.iface.label})")
@@ -1006,8 +1011,9 @@ class SignalSimulator(Simulator):
                 ev.append(row)
             nets[net] = {
                 "interface": {"kind": r.iface.kind, "label": r.iface.label, "rise_ns": r.iface.rise_ns, "source": r.iface.source, "cite": r.iface.cite},
-                "target_ohm": r.target,
-                "target_basis": r.target_basis,
+                "target_ohm": r.target if r.has_target else None,
+                "target_basis": r.target_basis if r.has_target else NO_TARGET_BASIS,
+                "has_target": r.has_target,
                 "source_pad": r.path.source,
                 "sink_pad": r.path.sink,
                 "route_length_mm": round(r.path.length_mm, 3),
@@ -1055,7 +1061,8 @@ class SignalSimulator(Simulator):
         out.append(Assumption("terminations", "matched", "", "default", "crosstalk formulas assume lines terminated in their own impedance and weak coupling"))
         for net, r in results.items():
             out.append(Assumption(f"rise_time:{net}", round(r.iface.rise_ns, 4), "ns", r.iface.source, r.iface.cite))
-            out.append(Assumption(f"z0_target:{net}", round(r.target, 2), "ohm", "user" if net in actx.net_targets else "default", r.target_basis))
+            if r.has_target:
+                out.append(Assumption(f"z0_target:{net}", round(r.target, 2), "ohm", "user" if net in actx.net_targets else "default", r.target_basis))
             out.append(Assumption(f"route:{net}", f"{r.path.source} to {r.path.sink}", "", "default" if not inputs.get("driver_ref") else "user", "source pad is the first IC pad on the net (or the driver_ref input); the sink is the farthest pad over the routed copper"))
         return out
 
@@ -1197,12 +1204,39 @@ def _analyzer_ctx(ctx: Any) -> AnalyzerContext:
     return out
 
 
-def sb_target(actx: AnalyzerContext, net: str) -> tuple[float, str]:
+NO_TARGET_BASIS = "no impedance requirement on this net; the impedance is reported with no pass or fail"
+_CLASS_OHM = re.compile(r"(\d+(?:\.\d+)?)\s*(?:ohm|\u03a9|r)(?![a-z])", re.I)
+
+
+def _class_target(board: Board | None, actx: AnalyzerContext, net: str) -> float | None:
+    """A target the project's net class states in its own name (for example \"RF_50ohm\"), or None."""
+    if board is None:
+        return None
+    try:
+        from ..analyzers.project import net_class_info
+        info = net_class_info(board, actx, net)
+    except Exception:
+        return None
+    found = _CLASS_OHM.search(str((info or {}).get("name") or ""))
+    return float(found.group(1)) if found else None
+
+
+def sb_has_target(actx: AnalyzerContext, net: str, board: Board | None = None) -> bool:
+    """Does this net have an impedance requirement? Only a declared target (the brief, a net class that states an impedance), a radio net or a differential data pair (USB D+ and D-) does.
+    A USB CC line, a GPIO or an I2C line has none: measuring it against a default 50 ohm would report a deviation nobody asked for."""
+    return net in actx.net_targets or is_rf_net(net, actx) or is_diff_net(net) or _class_target(board, actx, net) is not None
+
+
+def sb_target(actx: AnalyzerContext, net: str, board: Board | None = None) -> tuple[float, str]:
     if net in actx.net_targets:
         return float(actx.net_targets[net]), "set in the brief"
     if is_diff_net(net) and not is_rf_net(net, actx):
         return float(actx.diff_target_ohms) / 2.0, f"differential target {actx.diff_target_ohms:g} ohm halved per leg"
-    return float(actx.target_ohms), "default single-ended target"
+    if (stated := _class_target(board, actx, net)) is not None:
+        return stated, "stated by the net class"
+    if is_rf_net(net, actx):
+        return float(actx.target_ohms), "radio net, default single-ended target"
+    return float(actx.target_ohms), NO_TARGET_BASIS
 
 
 def _parse_whatif(board: Board, whatif: list[dict]) -> list[dict]:
@@ -1297,7 +1331,7 @@ def _curves(r: NetResult) -> dict[str, Any]:
         "reference_cover": a(r.cover),
         "reference_supported": [bool(v) for v in (r.supported | r.exempt)[::keep]],
         "model_valid": [bool(v) for v in r.valid[::keep]],
-        "target_ohm": r.target,
+        "target_ohm": r.target if r.has_target else None,
     }
     if r.zdiff is not None:
         prof["zdiff_ohm"] = a(r.zdiff)
@@ -1312,6 +1346,8 @@ def _series(results: dict[str, NetResult]) -> list[dict[str, Any]]:
     time) are the net with the largest impedance deviation; ``profile:<net>`` and ``tdr:<net>`` exist for every net.
     """
     def worst(r: NetResult) -> float:
+        if not r.has_target:
+            return -1.0
         ok = [v for v, s in zip(r.z_eff, r.samples) if s.kind == "trace" and np.isfinite(v)]
         return max((abs(100 * (v - r.target) / r.target) for v in ok), default=0.0)
 
@@ -1324,9 +1360,10 @@ def _series(results: dict[str, NetResult]) -> list[dict[str, Any]]:
         pts = [(x, round(float(y), 3)) for x, y in zip(xs, ys) if np.isfinite(y)]
         t = r.tdr["interface"]
         tp = [(a, b) for a, b in zip(t["t_ns"], t["z_apparent_ohm"]) if b is not None]
+        goal = {"target": r.target, "tolerance_pct": 10.0} if r.has_target else {}
         entries = [
-            {"id": "profile", "net": net, "label": f"{net}: impedance along the route", "x": [p[0] for p in pts], "y": [p[1] for p in pts], "x_unit": "mm", "y_unit": "ohm", "target": r.target, "tolerance_pct": 10.0},
-            {"id": "tdr", "net": net, "label": f"{net}: TDR, {t['rise_ns']:.3g} ns rise (lossless model)", "x": [round(p[0], 5) for p in tp], "y": [p[1] for p in tp], "x_unit": "ns", "y_unit": "ohm", "target": r.target, "tolerance_pct": 10.0},
+            {"id": "profile", "net": net, "label": f"{net}: impedance along the route", "x": [p[0] for p in pts], "y": [p[1] for p in pts], "x_unit": "mm", "y_unit": "ohm", **goal},
+            {"id": "tdr", "net": net, "label": f"{net}: TDR, {t['rise_ns']:.3g} ns rise (lossless model)", "x": [round(p[0], 5) for p in tp], "y": [p[1] for p in tp], "x_unit": "ns", "y_unit": "ohm", **goal},
         ]
         for e in entries:
             out.append({**e, "id": f"{e['id']}:{net}"})

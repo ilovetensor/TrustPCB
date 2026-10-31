@@ -127,7 +127,7 @@ async def test_approved_test_runs_within_its_limits_and_creates_a_revision(env):
         {'tool': 'open_investigation', 'args': {'question': 'A second question while the first is open?', 'suspects': [{'title': 'Something else', 'why': 'No.'}]}},
         {'tool': 'run_simulation', 'args': {'suspect_id': 'S1', 'label': 'base'}},
         {'tool': 'run_simulation', 'args': {'suspect_id': 'S1', 'label': 'clear', 'whatif_ops': [clear]}},
-        {'tool': 'propose_finding_change', 'args': {'action': 'new', 'title': 'Ground copper next to the feed detunes the antenna', 'severity': 'high',
+        {'tool': 'propose_finding_change', 'args': {'action': 'new', 'title': 'Ground copper next to the feed detunes the antenna', 'severity': 'medium',
                                                     'what': 'In the simulation, clearing the copper next to the feed improves the return loss by 9.3 dB compared with the base run.',
                                                     'why_it_matters': 'A detuned antenna wastes transmit power.', 'recommendation': 'Review the ground copper next to the antenna feed in your layout tool.',
                                                     'evidence_ids': ['E-003'], 'targets': ['net:ANT_CHIP'], 'rule': 'antenna_detune'}},

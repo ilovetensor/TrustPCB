@@ -361,3 +361,65 @@ def test_four_layer_inner_plane_spreads_heat(tmp_path):
     assert with_plane.metrics["peak_rise"]["value"] < without.metrics["peak_rise"]["value"]
     assert {o.id for o in with_plane.overlays} >= {"temp_In1_Cu", "temp_In2_Cu"}
     assert with_plane.trusted
+
+
+# ----------------------------------------------------------------------------- the grid convergence measure
+
+
+@pytest.mark.parametrize("pitch", [0.07, 0.113, 0.2, 0.31, 0.5])
+def test_region_mean_covers_the_same_board_on_every_raster(pitch):
+    """A mean over whole cells moves with the raster; a mean over a fixed region weighted by cell overlap does not (for a linear field it is the field at the region's centre)."""
+    b = make_board()
+    g = T.make_grid(b, pitch)
+    xs = g.x0 + (np.arange(g.nx) + 0.5) * g.d
+    field = np.tile(20.0 + 3.0 * xs, (g.ny, 1))
+    got = T._region_mean(field, g, np.ones((g.ny, g.nx)), (23.0, 23.0, 27.0, 27.0), 1.0)
+    assert got == pytest.approx(20.0 + 3.0 * 25.0, abs=0.02)
+
+
+def test_region_mean_ignores_cells_with_no_board_and_a_region_off_the_board():
+    b = make_board()
+    g = T.make_grid(b, 0.5)
+    area = np.ones((g.ny, g.nx))
+    area[:, : g.nx // 2] = 0.0
+    field = np.full((g.ny, g.nx), 40.0)
+    field[:, : g.nx // 2] = np.nan
+    assert T._region_mean(field, g, area, (30.0, 20.0, 34.0, 24.0)) == pytest.approx(40.0)
+    assert T._region_mean(field, g, area, (2.0, 20.0, 6.0, 24.0)) is None
+
+
+def test_a_hot_regulator_passes_grid_convergence_at_screen_and_confirm_pitch_and_the_text_has_the_percentages(tmp_path):
+    b = parse_board(USB)
+    ldo = T.find_ldos(b)[0]
+    default = T.default_pitch(b, 2)
+    for pitch in (default, round(default * 0.6, 3)):                 # the screen pitch and the confirm pitch (the simulator never goes below 0.1 mm)
+        r = run(b, {"ldo": {ldo["ref"]: {"load_a": 0.5}}, "pitch_mm": pitch}, tmp=tmp_path)
+        assert r.status == "ok", r.reason
+        check = next(c for c in r.trust["checks"] if c["name"] == "grid_convergence")
+        part = float(check["value"].split("part mean")[1].split("%")[0])
+        assert check["status"] != "failed" and r.trusted and part < 8.0, check
+        assert "board mean" in check["value"] and "peak" in check["value"]
+        assert "pads plus 2.5 mm" in check["detail"] and "weighted by cell overlap" in check["detail"]
+
+
+def test_the_part_mean_does_not_depend_on_where_the_pads_fall_in_the_raster():
+    """The pad extent alone moved by about 5 % between rasters of almost the same pitch; the fixed region past the pads must hold within 5 % over all of them."""
+    b = parse_board(USB)
+    ldo = T.find_ldos(b)[0]
+    stack = T.board_stack(b)
+    params = T.Params(*[T.DEFAULTS[n][0] for n in ("ambient_c", "h_conv", "emissivity", "k_fr4_inplane", "k_fr4_through", "via_plating_um")])
+    sources, _ = T.collect_sources(b, stack, {"ldo": {ldo["ref"]: {"load_a": 0.5}}}, [], [], [])
+    sites = T.via_sites(b, [], stack)
+    region = T.part_region(b, ldo["ref"])[0]
+    means = []
+    for pitch in (0.1, 0.12, 0.141, 0.15, 0.18):
+        c = T.run_case(b, stack, params, pitch, sources, sites, [], params.emissivity)
+        means.append(T._region_mean(c.sol.temp_c[T.part_layer(b, stack, ldo["ref"])], c.grid, c.model.area, region, T.CONV_MARGIN_MM) - params.ambient_c)
+    assert (max(means) - min(means)) / np.mean(means) < 0.05, means
+
+
+def test_the_failure_reason_shows_what_was_measured_against_its_limit():
+    from trustpcb.review.simmetrics import trust_of
+    check = {"name": "grid_convergence", "status": "failed", "value": "board mean 0.40 %, part mean 10.60 %, peak 9.00 %", "limit": "part mean 8 %", "detail": "0.085 mm raster against a coarser 0.127 mm raster."}
+    out = trust_of({"status": "ok", "trust": {"status": "failed", "checks": [check]}})
+    assert out["status"] == "fail" and "part mean 10.60 %" in out["reasons"][0] and "limit part mean 8 %" in out["reasons"][0] and "0.127 mm" in out["reasons"][0]

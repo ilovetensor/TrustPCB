@@ -1322,9 +1322,16 @@ class PowerSimulator(Simulator):
                 if o and o["drop_mv"] is not None and l["drop_mv"] is not None:
                     before = o["drop_mv"] + o["upstream_drop_mv"]
                     after = l["drop_mv"] + l["upstream_drop_mv"]
+                    # The change is the part's own copper plus the copper upstream of its rail, so it is not "change in path resistance x current" of the own net alone:
+                    # r_*_mohm is the mean over the part's pads, the drop is the worst pad's, and the upstream copper carries the current of everything fed through it.
                     rows.append({"net": n, "ref": l["ref"], "before_mv": round(before, 5), "after_mv": round(after, 5), "change_mv": round(after - before, 5),
-                                 "r_before_mohm": o["r_path_mohm"], "r_after_mohm": l["r_path_mohm"]})
-        res.detail["delta"] = {"baseline_run": run_hash(self.kind, board, inputs, []), "baseline_worst_drop_mv": base.metrics.get("worst_drop_mv", {}).get("value"), "basis": "supply copper only (drop at the pin plus any upstream copper), so a flagged ground return cannot skew the comparison", "loads": rows}
+                                 "own_before_mv": o["drop_mv"], "own_after_mv": l["drop_mv"], "own_change_mv": round(l["drop_mv"] - o["drop_mv"], 5),
+                                 "upstream_before_mv": o["upstream_drop_mv"], "upstream_after_mv": l["upstream_drop_mv"], "upstream_change_mv": round(l["upstream_drop_mv"] - o["upstream_drop_mv"], 5),
+                                 "amps": l["amps"], "r_before_mohm": o["r_path_mohm"], "r_after_mohm": l["r_path_mohm"],
+                                 "r_worst_pad_before_mohm": o["r_path_worst_pad_mohm"], "r_worst_pad_after_mohm": l["r_path_worst_pad_mohm"]})
+        res.detail["delta"] = {"baseline_run": run_hash(self.kind, board, inputs, []), "baseline_worst_drop_mv": base.metrics.get("worst_drop_mv", {}).get("value"),
+                               "basis": "supply copper only: the drop at the worst pin of the part plus the copper upstream of its rail (change_mv = own_change_mv + upstream_change_mv), so a flagged ground return cannot skew the comparison. "
+                                        "r_*_mohm is the mean path resistance over the part's pads; r_worst_pad_*_mohm is the worst pad's, which is the one the drop is read at.", "loads": rows}
         res.notes.append("What-if applied in simulation memory only; the design is not changed. Baseline comparison is under detail.delta.")
 
 
