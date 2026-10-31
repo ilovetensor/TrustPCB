@@ -459,3 +459,27 @@ def test_sample_nrf52840_node(tmp_path):
     assert u3["current_known"] is False and u3["current_source"] == "default" and u3["drop_per_amp_mv"] > 0
     # the fuse sits in series and says its own drop is left out
     assert "not included" in nets["VBUS_F"]["upstream_note"]
+
+
+# ----------------------------------------------------------------------------- a what-if's change is explained by its own copper plus the upstream copper
+
+
+USB_SAMPLE = Path(__file__).resolve().parents[2].parent / "samples" / "usb-ldo-led" / "usb_ldo_led_node.kicad_pcb"
+
+
+def test_widening_a_supply_track_changes_the_drop_by_resistance_times_current_and_the_rows_say_where_it_comes_from(tmp_path):
+    """Widening VBUS_F from 0.3 to 0.5 mm: the change at U1 is the change of the worst-pad path resistance times the current, own copper plus upstream copper
+    (a reported mismatch of 0.0144 mV against 0.0107 mV came from reading the mean-pad resistance against the worst-pad drop)."""
+    b = parse_board(USB_SAMPLE)
+    r = power.SIMULATOR.run(b, AnalyzerContext(), {}, [{"op": "widen_track", "net": "VBUS_F", "width_mm": 0.5}], tmp_path)
+    assert r.status == "ok", r.reason
+    rows = {(x["net"], x["ref"]): x for x in r.detail["delta"]["loads"]}
+    u1 = rows[("VBUS_F", "U1")]
+    assert u1["change_mv"] == pytest.approx(u1["own_change_mv"] + u1["upstream_change_mv"], abs=2e-5)
+    assert u1["upstream_change_mv"] == pytest.approx(0.0, abs=1e-6)                     # widening VBUS_F does not touch the copper upstream of it (VBUS)
+    expected = (u1["r_worst_pad_after_mohm"] - u1["r_worst_pad_before_mohm"]) * u1["amps"]   # mohm x A = mV
+    assert u1["own_change_mv"] < 0 and u1["own_change_mv"] == pytest.approx(expected, rel=0.05)
+    assert "own_change_mv + upstream_change_mv" in r.detail["delta"]["basis"]
+    # a part on a rail fed through the widened copper shows the upstream part of the change on its own row
+    for (net, ref), row in rows.items():
+        assert row["change_mv"] == pytest.approx(row["own_change_mv"] + row["upstream_change_mv"], abs=2e-5), (net, ref)

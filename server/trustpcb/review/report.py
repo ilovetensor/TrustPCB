@@ -32,10 +32,12 @@ CLASS_LABEL = {'measured': 'Measured', 'simulated': 'Simulated', 'opinion': 'Eng
 END_STATE_TEXT = {
     'complete': 'The review ran to the end within its budgets.',
     'complete_with_limits': 'The review ended with a budget or limit reached; the sections below say which.',
-    'agent_stopped': 'The agent stopped before finishing; code assembled this report from what was recorded.',
+    'agent_stopped': 'The review stopped early: the agent ended before finishing, so code assembled this report from what was recorded.',
     'canceled': 'The review was stopped by the user; code assembled this report from what was recorded.',
     'pipeline_failed': 'The checks before the agent could not finish; this report shows what was available.',
 }
+#: The words for an end state on screen and in the report: only a review that ran to the end is "complete".
+END_STATE_LABEL = {'complete': 'complete', 'complete_with_limits': 'complete, limits', 'agent_stopped': 'stopped early', 'canceled': 'stopped by the user', 'pipeline_failed': 'failed'}
 EVIDENCE_SHOWN = 8
 SIM_NOTE = 'Simulated. Not a substitute for a real antenna measurement.'
 
@@ -300,11 +302,52 @@ METRIC_NAMES = {
 }
 
 
+#: Plain names for the numbers of the board simulations (power, thermal, signal). A key may carry a net or a part ("drop_pct:VBUS_F", "v_pin:U1@VBUS_F",
+#: "ANT_FEED.z0_median"); the net and part names are kept exactly as they are on the board.
+SIM_METRIC_NAMES = {
+    'worst_drop_mv': 'Largest voltage drop', 'worst_drop_pct': 'Largest voltage drop, share of nominal', 'worst_path_resistance_mohm': 'Resistance of the worst supply path',
+    'worst_via_current_a': 'Largest current through one via', 'peak_current_density_a_per_mm': 'Peak current per track width', 'total_load_current_a': 'Total load current',
+    'currents_assumed': 'Load currents that are assumptions',
+    'total_power': 'Heat put into the board', 'peak_temperature': 'Hottest point', 'peak_rise': 'Hottest point above ambient', 'peak_at': 'Where it is hottest', 'mean_rise': 'Board mean rise above ambient',
+    'ambient': 'Ambient temperature', 'heat_out_convection': 'Heat lost by convection', 'heat_out_radiation': 'Heat lost by radiation', 'energy_balance_error': 'Gap between heat in and heat out',
+    'power_basis': 'Where the heat comes from', 'peak_rise_without_copper': 'Hottest point above ambient with no copper', 'peak_rise_before_whatif': 'Hottest point above ambient without the change',
+    'peak_rise_change': 'Change of the hottest point caused by the change', 'hottest_powered_part': 'Hottest powered part',
+    'nets_analysed': 'Nets analysed', 'sections_solved': 'Cross-sections solved', 'cross_section_nodes': 'Largest mesh used',
+    'delta_primary_gain': 'Gain in the main number', 'confirm_gain': 'Gain at the finer mesh',
+}
+NET_METRIC_NAMES = {
+    'z0_median': 'median impedance', 'z0_min': 'lowest impedance', 'z0_max': 'highest impedance', 'z0_target': 'impedance target', 'z0_worst_deviation': 'largest impedance deviation from the target',
+    'length': 'routed length', 'delay': 'one-way delay', 'rise_time': 'rise time used', 'reference_gap_length': 'track length with no ground under it', 'reference_gap_events': 'ground gap crossings',
+    'max_return_detour': 'largest return path detour', 'extra_loop_inductance': 'extra loop inductance', 'crosstalk_near_end': 'worst near-end crosstalk', 'crosstalk_far_end': 'far-end crosstalk',
+    'via_inductance': 'via inductance', 'quasi_static_limit': 'frequency limit of the model', 'zdiff_median': 'differential impedance', 'skew': 'delay difference between the legs', 'length_mismatch': 'length difference',
+}
+
+
+def sim_metric_name(key: str) -> str | None:
+    """The plain name of a board-simulation key, or None when the key is not one of theirs."""
+    if key in SIM_METRIC_NAMES:
+        return SIM_METRIC_NAMES[key]
+    if (found := re.fullmatch(r'drop_mv:(.+)', key)):
+        return f'Voltage drop on {found.group(1)}'
+    if (found := re.fullmatch(r'drop_pct:(.+)', key)):
+        return f'Voltage drop on {found.group(1)}, share of nominal'
+    if (found := re.fullmatch(r'v_pin:(.+?)@(.+)', key)):
+        return f'Voltage at the lowest {found.group(1)} supply pin on {found.group(2)}'
+    if (found := re.fullmatch(r'(.+?)\.([a-z0-9_]+)', key)) and found.group(2) in NET_METRIC_NAMES:
+        return f'{found.group(1)}: {NET_METRIC_NAMES[found.group(2)]}'
+    for prefix, words in (('confirm_base_', 'Base at the finer mesh: '), ('confirm_winner_', 'Best change at the finer mesh: '), ('delta_', 'Change in ')):
+        if key.startswith(prefix) and (inner := sim_metric_name(key[len(prefix):])):
+            return words + inner[:1].lower() + inner[1:]
+    return None
+
+
 def metric_name(key: str) -> str:
     """The name a reader sees for a stored measurement key. Only the display changes; an unknown key is shown as plain words."""
     key = str(key)
     if key in METRIC_NAMES:
         return METRIC_NAMES[key]
+    if (named := sim_metric_name(key)):
+        return named
     dip = re.fullmatch(r's11_dip_(\d+)(_depth)?', key)
     if dip:
         return f'S11 dip {dip.group(1)} {"depth" if dip.group(2) else "frequency"}'
@@ -465,7 +508,7 @@ def render_html(snap: dict, images: dict | None = None) -> str:
     out.append(f'<h1>{esc(cover["project"])}</h1><p class="meta">Version {esc(version["number"])}{" - " + esc(version["label"]) if version.get("label") else ""} - '
                f'report revision r{esc(snap["revision"])} - {esc(snap["created_at"][:10])} - {esc(cover["depth"])} review - runner {esc((cover["profile"] or {}).get("name") or "unknown")}'
                f'{" (" + esc(cover["profile"]["model"]) + ")" if (cover["profile"] or {}).get("model") else ""}</p>')
-    out.append(f'<p>{pill("", (cover.get("end_state") or "unknown").replace("_", " "))} {esc(END_STATE_TEXT.get(cover.get("end_state"), ""))}'
+    out.append(f'<p>{pill("", END_STATE_LABEL.get(cover.get("end_state"), (cover.get("end_state") or "unknown").replace("_", " ")))} {esc(END_STATE_TEXT.get(cover.get("end_state"), ""))}'
                f'{(" " + esc(cover["end_detail"])) if cover.get("end_detail") else ""}</p>')
     if snap.get('incomplete'):
         out.append('<div class="notice">This revision ended before its run finished. Verified changes up to that point are included; the run is marked incomplete.</div>')

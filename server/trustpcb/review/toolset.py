@@ -45,8 +45,8 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
     return [
         define('get_status', 'Current phase, allowed tools, time and budgets left, candidate counts.', obj({}), h.get_status,
                phases=ALL_PHASES, levels=ALL_LEVELS, free=True, closing=True, trail=lambda a: 'Checking status and budgets'),
-        define('advance_phase', 'Close the current phase and move to the next. Returns the brief for the new phase. Phase 3 needs placement and routing judgement: layout_reasons {group: reason of 60+ characters} '
-               'says why a layout group merits no finding. In phase 5, a confirm that missed the target opens a refine round instead (decline_refine: a reason that cites confirm evidence; refused on Standard while solver budget allows).', obj({'note': text(1, 300), 'layout_reasons': {'type': 'object', 'additionalProperties': text(1, 600)}, 'decline_refine': text(1, 600)}), h.advance_phase,
+        define('advance_phase', 'Close the phase and move on; returns the next brief. Phase 3: layout_reasons {group: 60+ characters} says why a group merits no finding. Phase 4 needs a base run '
+               'of every chosen check; not_run_reasons {kind: 30+ characters} says why one was not run. Phase 5: a confirm that missed the target opens a refine round (decline_refine: a reason citing confirm evidence).', obj({'note': text(1, 300), 'layout_reasons': {'type': 'object', 'additionalProperties': text(1, 600)}, 'decline_refine': text(1, 600), 'not_run_reasons': {'type': 'object', 'additionalProperties': text(1, 600)}}), h.advance_phase,
                phases=P({2, 3, 4, 5}), free=True, closing=True, trail=lambda a: 'Moving to the next phase'),
         define('get_board_summary', 'Parts, nets, layers, stackup, goal, assumptions and candidate counts for this board.', obj({}), h.get_board_summary,
                phases=P({2}), trail=lambda a: 'Reading the board summary'),

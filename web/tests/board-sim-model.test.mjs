@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evidenceLink, simKindName, simStatusText, describeBoardOps, defaultCount, isBoardRow, limitShare, metricChange, normaliseRun, pairOf, panelModel, pickRun, seriesOf, sourcesFor, trustOf, usesDefault } from "../lib/board-sim-model.mjs";
+import { defaultsClaim, evidenceLink, simKindName, simStatusText, describeBoardOps, defaultCount, isBoardRow, limitShare, metricChange, normaliseRun, pairOf, panelModel, pickRun, seriesOf, sourcesFor, trustOf, usesDefault } from "../lib/board-sim-model.mjs";
 
 const run = (over) => normaliseRun({ run_id: "r", kind: "power", status: "done", result: { metrics: {} }, ...over });
 
@@ -51,6 +51,20 @@ test("the first run shown is the newest finished base run of the kind", () => {
   assert.equal(pickRun([a, w, t, live], { ref: "zz" }).run_id, "t");
   assert.equal(pickRun([live], {}).run_id, "l");
   assert.equal(pickRun([], {}), null);
+});
+
+test("the lab opens on the latest run that passed its checks, not on a failed confirm", () => {
+  const ok = { trust: { status: "ok", checks: [] } }, bad = { trust: { status: "failed", checks: [{ name: "grid_convergence", ok: false }] } };
+  const screen = run({ run_id: "screen", result: { metrics: {}, ...ok } });
+  const w = run({ run_id: "w", whatif: [{ op: "x" }], base_run: "screen", result: { metrics: {}, ...ok } });
+  const failedConfirm = run({ run_id: "confirm", result: { metrics: {}, ...bad } });
+  assert.equal(pickRun([screen, w, failedConfirm], { kind: "power" }).run_id, "screen", "the failed confirm is the newest base run and is passed over");
+  assert.equal(pickRun([screen, failedConfirm, w], { kind: "power" }).run_id, "screen");
+  const goodConfirm = run({ run_id: "confirm2", result: { metrics: {}, ...ok } });
+  assert.equal(pickRun([screen, w, failedConfirm, goodConfirm], { kind: "power" }).run_id, "confirm2", "the newest passing base run wins");
+  assert.equal(pickRun([failedConfirm], { kind: "power" }).run_id, "confirm", "when nothing passed, a finished run is still shown");
+  assert.equal(pickRun([screen, failedConfirm], { run: "confirm" }).run_id, "confirm", "a run asked for by id is still honoured");
+  assert.equal(pickRun([w, failedConfirm], { kind: "power" }).run_id, "w", "no passing base run: the newest passing one");
 });
 
 test("metrics go to the panel that shows them", () => {
@@ -111,4 +125,16 @@ test("evidence links to the lab that shows its simulation", () => {
   assert.equal(evidenceLink("r1", { source_tool: "measure", values: { width: { value: 1, unit: "mm" } } }), null);
   assert.equal(evidenceLink("r1", null), null);
   assert.equal(evidenceLink("r 1", { values: { sim_kind: "signal", run_id: "a/b" } }).href, "/reviews/r 1/sim?kind=signal&run=a%2Fb");
+});
+
+test("with defaults in force the headline says so plainly, and says nothing when every input was given", () => {
+  const given = [{ name: "ambient", source: "user" }, { name: "stackup", source: "board" }];
+  assert.equal(defaultsClaim(given), "");
+  assert.equal(defaultsClaim([]), "");
+  assert.equal(defaultsClaim(undefined), "");
+  const one = defaultsClaim([...given, { name: "U3 current", source: "default" }]);
+  assert.match(one, /rests on defaults nobody gave \(U3 current\)/);
+  assert.match(one, /about those defaults, not about this board/);
+  const many = defaultsClaim(["a_b", "c", "d", "e", "f"].map((name) => ({ name, source: "default" })));
+  assert.match(many, /\(a b, c, d and 2 more\)/);
 });

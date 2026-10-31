@@ -38,7 +38,7 @@ export const VERSIONS: Record<string, VersionRow[]> = {
     { id: "ver-u3", label: "v3", review_id: "r-0037", at: "2026-10-29T12:00:00Z", counts: c(1, 2, 4, 5, 1), f0_ghz: null, note: "" },
   ],
   "p-sensorpod": [
-    { id: "ver-s1", label: "v1", review_id: "r-0033", at: "2026-10-28T08:40:00Z", counts: c(0, 1, 0, 2, 0), f0_ghz: null, note: "Agent stopped at the budget." },
+    { id: "ver-s1", label: "v1", review_id: "r-0033", at: "2026-10-28T08:40:00Z", counts: c(0, 1, 0, 2, 0), f0_ghz: null, note: "Stopped early at the budget." },
   ],
 };
 

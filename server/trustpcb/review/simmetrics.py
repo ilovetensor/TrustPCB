@@ -24,7 +24,7 @@ BENIGN_UNITS = ('count', '-', '')
 #: how a simulator writes a unit -> how the number check reads it
 UNIT_NAMES = {'C': '°C', 'mOhm': 'mΩ', 'percent': '%', 'pct': '%', 'ohm': 'ohm'}
 #: the number an experiment is judged by, when the simulator did not flag one: metric names in order of preference; `*suffix` picks the metric with the largest absolute value
-PRIMARY_RULES = {'power': ('worst_drop_pct', 'worst_drop_mv'), 'thermal': ('peak_rise', 'peak_temperature'), 'signal': ('*.z0_worst_deviation',)}
+PRIMARY_RULES = {'power': ('worst_drop_pct', 'worst_drop_mv'), 'thermal': ('peak_rise', 'peak_temperature'), 'signal': ('*.z0_worst_deviation', '*.reference_gap_length')}
 #: a primary metric whose limit is an assumption of the same run (the percent drop is held to the allowed drop)
 LIMIT_FROM_ASSUMPTION = {'worst_drop_pct': 'allowed voltage drop'}
 ASSUME_WORDS = ('assum', 'default', 'estimat', 'if the', 'if it', 'provided', 'given a', 'given an', 'would', 'unless', 'conditional', 'not from your design', 'placeholder')
@@ -32,6 +32,17 @@ ASSUME_WORDS = ('assum', 'default', 'estimat', 'if the', 'if it', 'provided', 'g
 
 def is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value
+
+
+def _reason_of(check: dict) -> str:
+    """Why a check failed, with what it measured against its limit, so the failure text shows the numbers and not only the rule."""
+    name = str(check.get('name') or check.get('check') or '').replace('_', ' ')
+    detail = str(check.get('detail') or check.get('message') or name or 'a check failed')
+    value, limit = check.get('value'), check.get('limit')
+    if value is None or value == '':
+        return detail[:300]
+    shown = f'{name or "check"}: measured {value}' + (f", limit {limit}" if limit not in (None, '') else '') + '. '
+    return (shown + detail)[:420]
 
 
 def trust_of(result: dict) -> dict:
@@ -42,7 +53,7 @@ def trust_of(result: dict) -> dict:
     for check in trust.get('checks') or []:
         if isinstance(check, dict):
             if check.get('ok') is False or check.get('passed') is False or check.get('status') in ('failed', 'fail'):
-                reasons.append(str(check.get('detail') or check.get('message') or check.get('name') or check.get('check') or 'a check failed')[:200])
+                reasons.append(_reason_of(check))
         elif isinstance(check, str) and check.startswith(('fail', 'FAIL')):
             reasons.append(check[:200])
     if result.get('status') != 'ok':

@@ -377,7 +377,7 @@ class FindingEngine:
                 raise FindingRejected('confirm_required', f'Confirm-quality {kind} results exist for this review ({", ".join(r["code"] for r in confirmed[:3])}). A finding about {kind} must cite and quote them, not screen runs alone.')
         rows = simtrust.attach_assumption_rows(self.evidence_rows(), rows)       # the inputs travel with the numbers
         class_ = ev.derive_class(rows)
-        capped = simtrust.severity_problem(merged['severity'], rows)
+        capped = simtrust.severity_problem(merged['severity'], rows) or simtrust.antenna_severity_problem(merged['severity'], rows, self.board)
         if capped:
             raise FindingRejected(capped[0], capped[1])
         if class_ == 'opinion' and merged['severity'] == 'critical':
@@ -487,6 +487,10 @@ class FindingEngine:
         if with_defaults != assumption_names:
             notes.append('The server listed the default inputs of the cited simulation under assumptions: ' + '; '.join(with_defaults[len(assumption_names):])[:300])
             assumption_names = with_defaults
+        with_stackup = simtrust.stackup_assumption(self.board, rows, assumption_names)       # a result on an assumed stackup says so, whatever the agent wrote
+        if with_stackup != assumption_names:
+            notes.append('The server listed the assumed stackup under assumptions: ' + with_stackup[-1][:200])
+            assumption_names = with_stackup
         reason = str(args.get('severity_reason') or '').strip()
         if reason and len(reason) >= MIN_SEVERITY_REASON and candidate_ids:
             hints = [str(known[c].get('severity_hint')) for c in candidate_ids if known.get(c) and known[c].get('severity_hint') in SEVERITIES]

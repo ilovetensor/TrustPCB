@@ -9,6 +9,7 @@ import { changeByCode, headlineOf, screenVsConfirm, testsOf, versionChangeOf, ty
 import { indexBoard, resolveMark, bboxUnion } from "../../lib/geometry.mjs";
 import { tabProps, tablistKeys, useNarrow } from "../../lib/hooks";
 import { activeMarks } from "../../lib/review-reducer.mjs";
+import { endStateText } from "../../lib/end-state.mjs";
 import { buildMeta, fmtClock, findingLabel } from "../../lib/review-view";
 import { useReview, type Selected } from "../../lib/use-review";
 import { useReviewSims } from "../../lib/use-stage-rf";
@@ -155,7 +156,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     : ["What did you not test?", "What should I check first?"];
   const running = state.status === "running";
   const canStop = state.status === "running" || state.followup.running;
-  const status = FIXTURE_MODE ? "Replay" : rv.stream === "retrying" ? "Reconnecting" : rv.stream === "error" ? "Offline" : state.status === "running" ? (state.queue ? "Queued" : "Running") : state.status === "idle" ? "Loading" : state.endState === "interrupted" ? "Interrupted" : state.status === "canceled" ? "Stopped" : cap(state.status);
+  const status = FIXTURE_MODE ? "Replay" : rv.stream === "retrying" ? "Reconnecting" : rv.stream === "error" ? "Offline" : state.status === "running" ? (state.queue ? "Queued" : "Running") : state.status === "idle" ? "Loading" : state.endState === "interrupted" ? "Interrupted" : state.status === "canceled" ? "Stopped" : endStateText(state.endState, cap(state.status));
   const liveFindings = state.findingOrder.filter((id) => { const f = state.findings[id]; return f && f.status !== "dismissed" && f.status !== "superseded"; }).length;
   const hasResult = !!(story.headline || story.change);
   const shown: ViewId = view === "result" && !hasResult ? "findings" : view;

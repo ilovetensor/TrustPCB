@@ -842,6 +842,28 @@ def _cells_of(grid: Grid, region, margin: float = 0.0):
     return j0, j1, c0, c1
 
 
+#: The fixed physical region of the part-mean convergence measure reaches this far past the part's pads. Measured on a 0.85 W regulator: the mean over the pad extent alone moved by up to 5 % of its
+#: rise between rasters of nearly the same pitch (0.15 mm against 0.141 mm), because pad copper a few cells wide is resolved differently by every raster; 2.5 mm past the pads it moves by about 1 %.
+CONV_MARGIN_MM = 2.5
+
+
+def _region_mean(t: np.ndarray, grid: Grid, area: np.ndarray, region, margin: float = 0.0) -> float | None:
+    """Mean temperature over a fixed physical rectangle (grown by `margin`), each cell weighted by the part of it the rectangle covers and by how much of it is board.
+
+    Unlike a mean over whole cells, the region is the same on every raster, so two pitches measure the same piece of the board."""
+    x0, y0, x1, y1 = region
+    x0, y0, x1, y1 = x0 - margin, y0 - margin, x1 + margin, y1 + margin
+    xe = grid.x0 + np.arange(grid.nx + 1) * grid.d
+    ye = grid.y0 + np.arange(grid.ny + 1) * grid.d
+    ox = np.clip(np.minimum(xe[1:], x1) - np.maximum(xe[:-1], x0), 0, None)
+    oy = np.clip(np.minimum(ye[1:], y1) - np.maximum(ye[:-1], y0), 0, None)
+    w = np.outer(oy, ox) * area
+    ok = ~np.isnan(t) & (w > 0)
+    if not ok.any():
+        return None
+    return float(np.sum(t[ok] * w[ok]) / np.sum(w[ok]))
+
+
 def _field_stats(t: np.ndarray, grid: Grid, region) -> tuple[float, float, tuple[float, float]] | None:
     j0, j1, c0, c1 = _cells_of(grid, region)
     sub = t[j0:j1, c0:c1]
@@ -991,23 +1013,30 @@ class ThermalSimulator(Simulator):
         bal = sol.balance_error
         check("energy_balance", "ok" if bal <= 0.01 else "failed", round(bal, 6), 0.01, f"heat in {sol.q_in_w:.4f} W, out by convection {sol.q_conv_w:.4f} W and radiation {sol.q_rad_w:.4f} W")
         check("solver", "ok" if (sol.converged and sol.residual < 1e-8) else "failed", f"{sol.iterations} iterations, residual {sol.residual:.1e}", "residual < 1e-8", "radiation and copper-loss iteration, then the linear residual")
-        # the mean over each powered part's own footprint is far less mesh-sensitive than a single hot cell
-        part_diff = 0.0
+        # The mean over a fixed physical region around each powered part is far less mesh-sensitive than a single hot cell. It is weighted by how much of each
+        # cell the region covers (a region cut by whole cells moves by up to a cell at each side when the pitch changes, which is what made a finer pair look worse
+        # than a coarser one), and it reaches CONV_MARGIN_MM past the part's pads so that the pad cells, where a raster resolves narrow copper least well, are not the number.
+        part_diff, part_worst = 0.0, ""
         for ref in info:
             reg = part_region(board, ref)
             if reg is None:
                 continue
             li = part_layer(board, stack, ref)
-            a, b = _field_stats(sol.temp_c[li], base.grid, reg[0]), _field_stats(ref_case.sol.temp_c[li], ref_case.grid, reg[0])
-            if a and b:
-                part_diff = max(part_diff, abs(a[1] - b[1]) / max(a[1] - ta, 1e-9))
+            a = _region_mean(sol.temp_c[li], base.grid, base.model.area, reg[0], CONV_MARGIN_MM)
+            b = _region_mean(ref_case.sol.temp_c[li], ref_case.grid, ref_case.model.area, reg[0], CONV_MARGIN_MM)
+            if a is not None and b is not None:
+                d = abs(a - b) / max(a - ta, 1e-9)
+                if d >= part_diff:
+                    part_diff, part_worst = d, ref
         status = "failed" if (mean_diff > 0.03 or part_diff > 0.08 or peak_diff > 0.30) else ("warn" if peak_diff > 0.12 else "ok")
         check(
             "grid_convergence",
             status,
             f"board mean {mean_diff * 100:.2f} %, part mean {part_diff * 100:.2f} %, peak {peak_diff * 100:.2f} %",
             "board mean 3 %, part mean 8 %, peak 30 % (warn above 12 %), as a share of the rise",
-            f"{pitch:g} mm raster against a {ref_label} {ref_pitch:g} mm raster (peak {peak_t - ta:.2f} K against {peak_ref - ta:.2f} K). The single hottest cell depends on how finely pad copper is resolved; the part and board means are the steadier numbers. Re-run with a smaller pitch_mm to confirm.",
+            f"{pitch:g} mm raster against a {ref_label} {ref_pitch:g} mm raster (peak {peak_t - ta:.2f} K against {peak_ref - ta:.2f} K). The part mean is the mean rise over the part's pads plus {CONV_MARGIN_MM:g} mm"
+            + (f" (worst part {part_worst})" if part_worst else "")
+            + ", weighted by cell overlap. The single hottest cell depends on how finely pad copper is resolved; the part and board means are the steadier numbers. Re-run with a smaller pitch_mm to confirm.",
         )
         rise = peak_t - ta
         tmin = float(np.nanmin(sol.temp_c))

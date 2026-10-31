@@ -140,7 +140,7 @@
   "tool": "record_finding",
   "args": {
    "title": "Ground copper next to the feed detunes the antenna",
-   "severity": "high",
+   "severity": "medium",
    "what": "In the screen comparison, clearing the copper next to the antenna feed improves the worst in-band S11 by 9.3 dB against the base.",
    "why_it_matters": "A detuned antenna wastes transmit power.",
    "recommendation": "Review the ground copper next to the antenna feed in your own tool.",

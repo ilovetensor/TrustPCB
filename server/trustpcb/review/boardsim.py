@@ -499,6 +499,7 @@ class BoardSimMixin:
         if not (args.get('mpn') or args.get('value')):
             return fail('query_required', 'Pass mpn (an exact manufacturer part number) or value with footprint.')
         s.part_lookups += 1
+        s.lookups_tried.append({'mpn': args.get('mpn') or '', 'value': args.get('value') or '', 'read': False})
         try:
             found = await s.lab.part_lookup(mpn=args.get('mpn'), value=args.get('value'), footprint=args.get('footprint'), maker=args.get('maker'))
         except LabUnavailable as exc:
@@ -514,6 +515,7 @@ class BoardSimMixin:
         if not args.get('question'):
             return fail('question_required', 'Pass question: what you want to know from the datasheet.')
         s.part_lookups += 1
+        s.lookups_tried.append({'mpn': args.get('mpn') or '', 'value': '', 'read': True, 'question': str(args.get('question') or '')[:200]})
         try:
             answer = await s.lab.part_datasheet(mpn=args['mpn'], question=args['question'])
         except LabUnavailable as exc:

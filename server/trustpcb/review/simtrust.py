@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import simmetrics as sm
-from .evidence import BOARD_SIM, SIM_ASSUMPTIONS  # noqa: F401
+from .evidence import BOARD_SIM, CONFIRM, COMPARISON, SIM_ASSUMPTIONS, SIMULATION  # noqa: F401
 from .number_check import Problem, _explains, extract, sentence_spans
 
 CAPPED = ('critical', 'high')
@@ -93,6 +93,55 @@ def severity_problem(severity: str, rows: list[dict]) -> tuple[str, str] | None:
     return ('severity_rests_on_default',
             f'This finding is rated {severity} on a simulation that used default inputs nobody gave ({names}). A number that comes from a default is not a fact about this board. '
             'Rate it medium or lower, or get the real input (the engineer\'s request or a datasheet, set with set_sim_input), run the simulation again and cite that run.')
+
+
+# ---- the antenna simulation on an assumed stackup ------------------------------------------------------------------------------
+
+def antenna_rows(rows: list[dict]) -> list[dict]:
+    """The cited antenna simulation rows (screen runs, confirm runs and their comparisons): simulated, and not a board simulation."""
+    return [r for r in rows if r.get('type') in (SIMULATION, CONFIRM, COMPARISON) and (r.get('values') or {}).get('kind') == 'simulated' and not (r.get('values') or {}).get('sim_kind')]
+
+
+def stackup_is_assumed(board: Any, rows: list[dict] | None = None) -> bool:
+    """Did the board file give no real stackup? (the simulation then runs on a typical board of an assumed thickness, which moves a printed antenna's resonance)"""
+    stack = getattr(board, 'stackup', None) or {}
+    if stack.get('assumed') or stack.get('source') in ('default', 'assumed_by_user'):
+        return True
+    return any((r.get('values') or {}).get('stackup_assumed') for r in rows or [])
+
+
+def stackup_line(board: Any) -> str:
+    total = (getattr(board, 'stackup', None) or {}).get('total_thickness_mm')
+    size = f'{total:g} mm ' if sm.is_number(total) else ''
+    return (f'Stackup assumed: the board file gives no real stackup, so the antenna simulation uses a typical {size}FR-4 board. '
+            'The resonant frequency and match of a printed antenna depend strongly on the dielectric thickness and permittivity.')
+
+
+def stackup_assumption(board: Any, rows: list[dict], existing: list[str]) -> list[str]:
+    """`existing` plus the stackup assumption, by code, when a cited antenna simulation ran on an assumed stackup and the finding does not already state it."""
+    if not antenna_rows(rows) or not stackup_is_assumed(board, rows):
+        return list(existing)
+    if any('stackup' in line.lower() and ('assum' in line.lower() or 'default' in line.lower()) for line in existing):
+        return list(existing)
+    return [*existing, stackup_line(board)]
+
+
+def antenna_severity_problem(severity: str, rows: list[dict], board: Any) -> tuple[str, str] | None:
+    """(code, message) when a finding rated critical or high rests on antenna simulation runs on an assumed stackup that never reached confirm quality.
+
+    The cap for default inputs applies here too: high needs a confirm run, unless a cited analyzer or KiCad measurement corroborates it."""
+    if severity not in CAPPED:
+        return None
+    runs = antenna_rows(rows)
+    if not runs or not stackup_is_assumed(board, rows):
+        return None
+    if any((r.get('values') or {}).get('quality') == 'confirm' for r in runs):
+        return None
+    if any((r.get('values') or {}).get('kind') == 'measured' and r.get('type') == 'candidate' for r in rows):
+        return None
+    return ('severity_rests_on_default',
+            f'This finding is rated {severity} on antenna simulation runs of screen quality, on a stackup the board file does not give (a typical board is assumed). A screen run compares a change with the base; '
+            'it is not an absolute result, and the assumed stackup moves the resonance. Rate it medium or lower, or run the confirm (confirm_result) and cite those runs.')
 
 
 def conditional(sentence: str) -> bool:

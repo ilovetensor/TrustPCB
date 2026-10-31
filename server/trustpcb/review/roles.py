@@ -75,3 +75,35 @@ def conflicts(board: Any, part_roles: dict[str, str]) -> list[dict]:
         out.append({'ref': ref, 'role': role, 'value': value, 'expected': expected, 'suggested': suggested,
                     'message': f'{ref} is called "{role}", but its symbol value is {value}, which is {what}. Use "{suggested}", or leave {ref} out of part_roles if you are not sure.'})
     return out
+
+
+_MAIN_REF = re.compile(r'^(U|IC|M|MOD|A)\d', re.I)
+_NO_VALUE = {'', '~', '?', 'value', 'unknown'}
+
+
+def main_parts(board: Any, part_roles: dict[str, str] | None, limit: int = 4) -> list[dict]:
+    """The parts whose datasheets set the simulation inputs: the radio and the regulator (more than one of each is kept, up to `limit`).
+
+    [{ref, value, role}] in board order. A part counts when its symbol value says it is a radio or a regulator, or when the brief gave it such a role. Passives, connectors and parts
+    with no value are never main parts: there is nothing to look up for them."""
+    out: list[dict] = []
+    footprints = list(getattr(board, 'footprints', None) or [])
+    roles = {str(k): str(v) for k, v in (part_roles or {}).items()}
+    for fp in footprints:
+        ref = getattr(fp, 'ref', '') or ''
+        value = (getattr(fp, 'value', '') or '').strip()
+        if not _MAIN_REF.match(ref) or value.lower() in _NO_VALUE or getattr(fp, 'dnp', False):
+            continue
+        family = family_of(value, getattr(fp, 'lib_id', '') or '')
+        if family not in ('radio', 'regulator'):
+            family = _ALL_ROLE_WORDS.get(_norm(roles.get(ref, ''))) if family is None else None
+        if family in ('radio', 'regulator'):
+            out.append({'ref': ref, 'value': value, 'role': family})
+    out.sort(key=lambda item: (item['role'] != 'radio', item['role'] != 'regulator'))
+    return out[:limit]
+
+
+def same_part(a: str, b: str) -> bool:
+    """Does a looked-up part number or value name the same part as a symbol value? (case, punctuation and a packaging suffix are ignored)"""
+    x, y = re.sub(r'[^a-z0-9]', '', (a or '').lower()), re.sub(r'[^a-z0-9]', '', (b or '').lower())
+    return len(x) >= 4 and len(y) >= 4 and (x in y or y in x)

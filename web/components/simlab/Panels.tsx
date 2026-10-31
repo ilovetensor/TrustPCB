@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import { limitShare, panelModel, seriesOf, SOURCE_HINT, SOURCE_LABEL, trustOf, usesDefault, type BoardSimRun, type PanelRow, type SimAssumption, type SimResultJson } from "../../lib/board-sim-model.mjs";
+import { defaultsClaim, limitShare, panelModel, seriesOf, SOURCE_HINT, SOURCE_LABEL, trustOf, usesDefault, type BoardSimRun, type PanelRow, type SimAssumption, type SimResultJson } from "../../lib/board-sim-model.mjs";
 import { fmtNum, fmtVal } from "../../lib/overlay-math.mjs";
 import { Icon } from "../ui";
 import { LineChart, type Line } from "./LineChart";
+import { impedanceRange } from "../../lib/line-chart-math.mjs";
 
 /* ------------------------------ sources and assumptions ------------------------------ */
 
@@ -109,7 +110,7 @@ export function QBar({ value, max, before = null, limit = null, label, armKey = 
 
 interface Tile { key: string; label: string; value: number | null; unit: string; was?: number | null }
 const delta = (a: number, b: number) => b - a;
-export function Stats({ tiles, defaults, paired }: { tiles: Tile[]; defaults: number; paired: boolean }) {
+export function Stats({ tiles, defaults, paired, claim = "" }: { tiles: Tile[]; defaults: number; paired: boolean; /** the plain sentence when defaults are in force */ claim?: string }) {
   if (!tiles.length) return null;
   return (
     <section className="sl-stats" aria-label="Key numbers">
@@ -120,6 +121,7 @@ export function Stats({ tiles, defaults, paired }: { tiles: Tile[]; defaults: nu
           {paired && t.was != null && t.value != null && (
             <span className="sl-was num">{fmtNum(delta(t.was, t.value)) === "0" ? `was ${fmtVal(t.was, t.unit)}, no change` : `was ${fmtVal(t.was, t.unit)}, ${delta(t.was, t.value) < 0 ? "\u2212" : "+"}${fmtNum(Math.abs(delta(t.was, t.value)))} ${t.unit}`}</span>
           )}
+          {i === 0 && claim && <span className="sl-claim">{claim}</span>}
         </div>
       ))}
     </section>
@@ -210,6 +212,8 @@ export function SignalPanel({ run, before }: { run: BoardSimRun; before: BoardSi
     return out;
   };
   const segs = panelModel(r).segment;
+  /* the TDR of a line with an open end ramps to kilo-ohms: its axis follows the line's own section values and the target, and the open end is marked */
+  const tdrRange = prof ? impedanceRange(prof.y, prof.target ?? null, prof.tolerance_pct ?? 0) : null;
   return (
     <>
       {prof && (
@@ -221,7 +225,7 @@ export function SignalPanel({ run, before }: { run: BoardSimRun; before: BoardSi
       {tdr && (
         <section className="sl-sec" aria-label="Time domain reflection">
           <div className="sl-sec-head"><h3>Time domain reflection</h3><span className="idx">what a TDR scope would see</span></div>
-          <LineChart lines={mk(tdr, theirs.find((s) => s.id === tdr.id))} xUnit={tdr.x_unit} yUnit={tdr.y_unit} xLabel="Time" yLabel="Z" ariaLabel="Time domain reflection" target={tdr.target != null ? { y: tdr.target, tolPct: tdr.tolerance_pct } : null} />
+          <LineChart lines={mk(tdr, theirs.find((s) => s.id === tdr.id))} xUnit={tdr.x_unit} yUnit={tdr.y_unit} xLabel="Time" yLabel="Z" ariaLabel="Time domain reflection" yRange={tdrRange} target={tdr.target != null ? { y: tdr.target, tolPct: tdr.tolerance_pct } : null} />
         </section>
       )}
       {segs.length > 0 && (

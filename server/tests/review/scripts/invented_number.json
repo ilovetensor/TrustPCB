@@ -120,6 +120,10 @@
   "args": {}
  },
  {
+  "tool": "advance_phase",
+  "args": {}
+ },
+ {
   "tool": "submit_summary",
   "args": {
    "summary": "C13 sits 9 mm from the supply pin.",

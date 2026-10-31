@@ -1,12 +1,15 @@
 "use client";
 import { useRef, useState } from "react";
 import { fmtNum, legendTicks } from "../../lib/overlay-math.mjs";
+import { clipCurve } from "../../lib/line-chart-math.mjs";
 
 export interface Line { id: string; label: string; x: number[]; y: number[]; color: string; dashed?: boolean; width?: number; opacity?: number }
 interface Props {
   lines: Line[]; xUnit: string; yUnit: string; xLabel: string; yLabel: string; height?: number; ariaLabel: string;
   /** a horizontal target with a tolerance band, in y units */ target?: { y: number; tolPct?: number; label?: string } | null;
+  /** a fixed y range; values above it are held at its top and the point where a line leaves it is marked as the open end */
   yRange?: [number, number] | null;
+  openEndLabel?: string;
 }
 
 const interp = (xs: number[], ys: number[], x: number) => {
@@ -17,22 +20,24 @@ const interp = (xs: number[], ys: number[], x: number) => {
 };
 
 /** A line chart in the style of the tuning graph: hairline grid, small numerals, a target band, a marker that follows the pointer. */
-export function LineChart({ lines, xUnit, yUnit, xLabel, yLabel, height = 190, ariaLabel, target = null, yRange = null }: Props) {
+export function LineChart({ lines, xUnit, yUnit, xLabel, yLabel, height = 190, ariaLabel, target = null, yRange = null, openEndLabel = "Open end" }: Props) {
   const W = 400, m = { l: 44, r: 12, t: 14, b: 30 };
   const svg = useRef<SVGSVGElement>(null);
   const [at, setAt] = useState<number | null>(null);
-  const all = lines.flatMap((l) => l.y).filter(Number.isFinite);
+  const clipped = yRange ? lines.map((l) => clipCurve(l.x, l.y, yRange[0], yRange[1])) : null;
+  const all = (clipped ? clipped.flatMap((c) => c.shown) : lines.flatMap((l) => l.y)).filter(Number.isFinite);
   const xs = lines.flatMap((l) => l.x);
   if (!lines.length || !all.length || !xs.length) return <p className="dim">No curve for this run.</p>;
   const x0 = Math.min(...xs), x1 = Math.max(...xs);
   let lo = Math.min(...all, target ? target.y * (1 - (target.tolPct ?? 0) / 100) : Infinity), hi = Math.max(...all, target ? target.y * (1 + (target.tolPct ?? 0) / 100) : -Infinity);
   if (yRange) [lo, hi] = yRange;
-  const pad = (hi - lo) * 0.12 || 1;
+  const pad = yRange ? 0 : (hi - lo) * 0.12 || 1;
   lo -= pad; hi += pad;
+  const openEnd = clipped?.find((c) => c.exitX != null) ?? null;
   const X = (v: number) => m.l + ((v - x0) / (x1 - x0 || 1)) * (W - m.l - m.r);
   const Y = (v: number) => m.t + ((hi - v) / (hi - lo)) * (height - m.t - m.b);
   const yt = legendTicks(lo, hi, 4), xt = legendTicks(x0, x1, 5);
-  const path = (l: Line) => "M" + l.x.map((v, i) => `${X(v).toFixed(1)} ${Y(l.y[i]).toFixed(1)}`).join("L");
+  const path = (l: Line, k: number) => "M" + l.x.map((v, i) => `${X(v).toFixed(1)} ${Y(clipped ? clipped[k].shown[i] : l.y[i]).toFixed(1)}`).join("L");
   const fromEvent = (e: React.PointerEvent) => {
     const r = svg.current!.getBoundingClientRect();
     const px = ((e.clientX - r.left) / r.width) * W;
@@ -48,7 +53,13 @@ export function LineChart({ lines, xUnit, yUnit, xLabel, yLabel, height = 190, a
       {xt.map((v) => (<g key={`x${v}`}><line x1={X(v)} x2={X(v)} y1={height - m.b} y2={height - m.b + 4} stroke="var(--paper-3)" /><text x={X(v)} y={height - m.b + 15} textAnchor="middle" className="rl-t">{fmtNum(v)}</text></g>))}
       <text x={m.l} y={height - 2} className="rl-t">{xLabel}, {xUnit}</text>
       <text x={m.l + 4} y={m.t + 8} className="rl-t">{yLabel}, {yUnit}</text>
-      {lines.map((l) => (<path key={l.id} d={path(l)} fill="none" stroke={l.color} strokeWidth={l.width ?? 1.8} strokeDasharray={l.dashed ? "4 3" : undefined} opacity={l.opacity} strokeLinejoin="round" />))}
+      {openEnd && openEnd.exitX != null && (
+        <g>
+          <line x1={X(openEnd.exitX)} x2={X(openEnd.exitX)} y1={m.t} y2={height - m.b} stroke="var(--paper-3)" strokeDasharray="2 3" />
+          <text x={X(openEnd.exitX) - 4} y={m.t + 22} textAnchor="end" className="rl-t" fill="var(--paper-2)">{openEndLabel}: the line rises past {fmtNum(yRange![1])} {yUnit}</text>
+        </g>
+      )}
+      {lines.map((l, k) => (<path key={l.id} d={path(l, k)} fill="none" stroke={l.color} strokeWidth={l.width ?? 1.8} strokeDasharray={l.dashed ? "4 3" : undefined} opacity={l.opacity} strokeLinejoin="round" />))}
       {at != null && (
         <g>
           <line x1={X(at)} x2={X(at)} y1={m.t} y2={height - m.b} stroke="var(--paper)" strokeWidth="1" />

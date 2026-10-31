@@ -134,7 +134,7 @@ async def test_the_report_has_a_section_per_simulator_with_numbers_assumptions_s
     assert html.count('src="data:') + html.count('href="data:image/png;base64') >= 2           # the base and the best change, drawn inline
     assert 'http://' not in re.sub(r'xmlns="[^"]+"', '', html) and 'https://' not in html
     assert 'Extent.' in html and 'Simulation</th>' in html
-    assert 'Worst drop pct' in html
+    assert 'Largest voltage drop, share of nominal' in html and 'Worst drop pct' not in html
 
 
 async def test_the_report_with_stills_prints_under_the_locked_down_pdf_path(simenv):
@@ -189,7 +189,7 @@ async def test_every_extent_combination_reaches_the_right_phases(simenv):
                                                      'region_bbox': [15.0, 0.0, 45.0, 30.0], 'band_hz': [2.4e9, 2.4835e9], 'target_s11_db': -10.0}
         script = [*simple]
         if len(expected) == 6 and 4 in expected:
-            script += [step('advance_phase')]                                       # Investigate with nothing tested: move on
+            script += [step('advance_phase'), step('advance_phase')]                # Investigate with nothing run: refused once with the next steps, then it gives way
         script += steps_after_3
         review = await simenv.review(script, goal=GOAL, extent=extent)
         assert phases_of(simenv, review) == expected, (extent, review['summary']['end'])
@@ -215,6 +215,117 @@ async def test_datasheets_chosen_but_never_used_is_refused_once_in_understand(si
     texts = [json.dumps(p.get('content')) for n, p in results(simenv, review['chat_id'], 'advance_phase')]
     assert sum('datasheets_unused' in t for t in texts) == 1 and 'lookup_part' in texts[0]
     assert 3 in phases_of(simenv, review) and review['end_state'] == 'complete'
+
+
+def advance_texts(env, review):
+    return [json.dumps(p.get('content')) for n, p in results(env, review['chat_id'], 'advance_phase')]
+
+
+async def test_chosen_checks_with_no_board_simulation_started_are_refused_once_with_the_exact_next_steps(simenv):
+    simenv.lab.rf = dict(NO_RADIO)
+    script = [BRIEF, step('advance_phase'), *clear(), step('advance_phase'), step('advance_phase'), step('advance_phase'),
+              step('submit_summary', summary='Only the rules and layout were reviewed in this run.', top_actions=['Check the board.'])]
+    review = await simenv.review(script, goal=GOAL, extent=['layout', 'power', 'thermal'])
+    texts = advance_texts(simenv, review)
+    refused = [x for x in texts if 'checks_not_run' in x]
+    assert len(refused) == 1 and 'power, thermal' in refused[0] and 'open_investigation with kind' in refused[0] and 'run_board_sim' in refused[0] and 'not_run_reasons' in refused[0]
+    assert 5 not in phases_of(simenv, review) and 6 in phases_of(simenv, review)       # the second advance_phase gave way and the report says what was not run
+    reasons = review['summary']['extent']['could_not_run']
+    assert set(reasons) == {'power', 'thermal'} and 'stated no reason' in reasons['power']
+    snapshot = simenv.store.latest_report_revision(review['id'])['snapshot']
+    assert all(k['status'] == 'not_tested' for k in snapshot['sims']['kinds']) and any('did not run' in n for n in snapshot['not_tested'])
+
+
+async def test_a_stated_reason_for_a_chosen_check_lets_phase_4_end_without_a_refusal(simenv):
+    simenv.lab.rf = dict(NO_RADIO)
+    why = 'The board has no heat source; the only part that dissipates is the LDO at 20 mA, so nothing to simulate.'
+    script = [BRIEF, step('advance_phase'), *clear(), step('advance_phase'),
+              step('advance_phase', not_run_reasons={'power': 'too short', 'thermal': why}),          # power's reason is too short: refused, and told so
+              step('advance_phase', not_run_reasons={'power': 'The 3.3 V rail carries 20 mA, so the drop is far below any limit anyway.'}),
+              step('submit_summary', summary='Only the rules and layout were reviewed in this run.', top_actions=['Check the board.'])]
+    review = await simenv.review(script, goal=GOAL, extent=['layout', 'power', 'thermal'])
+    refused = [x for x in advance_texts(simenv, review) if 'checks_not_run' in x]
+    assert len(refused) == 1 and 'too short' in refused[0] and 'thermal' not in refused[0].split('not_run')[1][:40]
+    assert review['summary']['extent']['could_not_run']['thermal'] == why and 'rail carries 20 mA' in review['summary']['extent']['could_not_run']['power']
+    assert review['end_state'] == 'complete'
+
+
+async def test_a_changed_set_of_missing_checks_is_refused_again_but_never_more_than_three_times(simenv):
+    simenv.lab.rf = dict(NO_RADIO)
+    reason = 'It cannot be run on this board because nothing here sets its input.'
+    script = [BRIEF, step('advance_phase'), *clear(), step('advance_phase'),
+              step('advance_phase'),                                                       # refused: power, thermal, signal
+              step('advance_phase', not_run_reasons={'signal': reason}),                   # the set changed (power, thermal): refused again
+              step('advance_phase', not_run_reasons={'thermal': reason}),                  # changed again (power): refused a third time
+              step('advance_phase'),                                                       # the limit of three is used: it gives way
+              step('submit_summary', summary='Only the rules and layout were reviewed in this run.', top_actions=['Check the board.'])]
+    review = await simenv.review(script, goal=GOAL, extent=['layout', 'power', 'thermal', 'signal'])
+    refused = [x for x in advance_texts(simenv, review) if 'checks_not_run' in x]
+    assert len(refused) == 3 and 'power, thermal, signal' in refused[0] and 'power, thermal' in refused[1] and 'signal' not in refused[1].split('not_run')[1][:30] and 'not_run":["power"]' in refused[2].replace('\\"', '"')
+    assert review['summary']['extent']['could_not_run']['signal'] == reason and 'stated no reason' in review['summary']['extent']['could_not_run']['power']
+    assert not any(l['rule'] == 'loop' for l in review['summary']['limits'])
+
+
+async def test_next_step_refusals_do_not_count_toward_the_refused_calls_in_a_row_stop(simenv):
+    simenv.lab.rf = dict(NO_RADIO)
+    bad = step('open_investigation', kind='warp', question='Nothing here can be asked.', suspects=[{'title': 'x', 'why': 'y'}])
+    script = [BRIEF, step('advance_phase'), *clear(), step('advance_phase'), bad, bad, bad, bad, bad,           # five failures in a row
+              step('advance_phase'),                                                                              # a next-step refusal: would have been the sixth
+              step('advance_phase'),
+              step('submit_summary', summary='Only the rules and layout were reviewed in this run.', top_actions=['Check the board.'])]
+    review = await simenv.review(script, goal=GOAL, extent=['layout', 'power'])
+    assert not any(l['rule'] == 'loop' for l in review['summary']['limits']) and 6 in phases_of(simenv, review)
+
+
+def lookup_env(simenv, monkeypatch):
+    monkeypatch.setattr(ext, 'parts_ready', lambda: (True, ''))
+    simenv.lab.parts_ready = True
+    simenv.lab.rf = dict(NO_RADIO)
+
+
+async def test_datasheets_chosen_need_the_radio_and_the_regulator_looked_up_and_the_gate_asks_again_when_one_is_done(simenv, monkeypatch):
+    lookup_env(simenv, monkeypatch)
+    script = [BRIEF, step('advance_phase'),                                                    # refused: the radio and the regulator
+              step('lookup_part', mpn='nRF52840-QFAA'),
+              step('advance_phase'),                                                           # refused again, now only the regulator
+              step('advance_phase'),                                                           # same state: gives way
+              *clear(), step('advance_phase'), step('advance_phase'), step('advance_phase'),
+              step('submit_summary', summary='Only the rules and layout were reviewed in this run.', top_actions=['Check the board.'])]
+    review = await simenv.review(script, goal=GOAL, extent=['layout', 'power', 'datasheets'])
+    texts = advance_texts(simenv, review)
+    assert 'nRF52840-QFAA' in texts[0] and 'AP2112K-3.3' in texts[0] and 'U3' in texts[0] and 'U2' in texts[0]
+    assert 'AP2112K-3.3' in texts[1] and 'nRF52840' not in texts[1].split('next_steps')[1][:80]
+    assert sum('datasheets_unused' in x for x in texts) == 2 and 3 in phases_of(simenv, review)
+    assert any(l['rule'] == 'datasheets_gap' and 'AP2112K-3.3' in l['detail'] for l in review['summary']['limits'])
+
+
+async def test_a_part_the_suppliers_do_not_know_still_counts_as_tried(simenv, monkeypatch):
+    lookup_env(simenv, monkeypatch)
+    script = [BRIEF, step('lookup_part', mpn='nRF52840-QFAA'), step('lookup_part', mpn='AP2112K-3.3'), step('advance_phase'), *clear(), step('advance_phase'), step('advance_phase'), step('advance_phase'),
+              step('submit_summary', summary='Only the rules and layout were reviewed in this run.', top_actions=['Check the board.'])]
+    review = await simenv.review(script, goal=GOAL, extent=['layout', 'power', 'datasheets'])
+    assert not any('datasheets_unused' in x for x in advance_texts(simenv, review)) and 3 in phases_of(simenv, review)
+
+
+async def test_a_measurable_purpose_makes_the_agent_read_the_radio_datasheet_for_the_current(simenv, monkeypatch):
+    lookup_env(simenv, monkeypatch)
+    goal = {'purpose': 'BLE sensor that transmits at 8 dBm every second', 'focus': 'Check the supply.'}
+    script = [BRIEF, step('lookup_part', mpn='nRF52840-QFAA'), step('lookup_part', mpn='AP2112K-3.3'),
+              step('advance_phase'),                                                                       # refused: the radio's datasheet has not been read
+              step('read_datasheet', mpn='nRF52840-QFAA', question='Supply current while transmitting at 8 dBm'),
+              step('advance_phase'), *clear(), step('advance_phase'), step('advance_phase'), step('advance_phase'),
+              step('submit_summary', summary='Only the rules and layout were reviewed in this run.', top_actions=['Check the board.'])]
+    review = await simenv.review(script, goal=goal, extent=['layout', 'power', 'datasheets'])
+    refused = [x for x in advance_texts(simenv, review) if 'datasheets_unused' in x]
+    assert len(refused) == 1 and 'read_datasheet' in refused[0] and '8 dBm' in refused[0] and 'nRF52840-QFAA' in refused[0] and 'lookup_part' not in refused[0].split('next_steps')[1]
+    assert 3 in phases_of(simenv, review)
+
+
+async def test_without_a_measurable_purpose_the_lookups_alone_are_enough(simenv, monkeypatch):
+    lookup_env(simenv, monkeypatch)
+    from trustpcb.review.toolset import AllHandlers
+    assert AllHandlers.MEASURABLE.search('It draws 0.8 A from the 3.3 V rail') is None
+    assert AllHandlers.MEASURABLE.search('radio output of 8 dBm') and AllHandlers.MEASURABLE.search('it transmits 4 times a second')
 
 
 async def test_quick_reviews_record_a_chosen_simulation_as_not_run(simenv):

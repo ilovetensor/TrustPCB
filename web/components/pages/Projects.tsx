@@ -9,7 +9,7 @@ import { useAppEnv } from "../../lib/demo";
 import { useRuns } from "../../lib/runs";
 import { RunsList } from "../workspace/RunsList";
 
-const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Agent stopped", queued: "Queued", failed: "Failed", canceled: "Stopped", interrupted: "Interrupted", no_review: "No review yet" };
+const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Stopped early", queued: "Queued", failed: "Failed", canceled: "Stopped", interrupted: "Interrupted", no_review: "No review yet" };
 const RF: Record<string, string> = { pass: "RF in band", fail: "RF off target", not_tested: "RF not tested", "n/a": "No radio" };
 
 export function Projects() {

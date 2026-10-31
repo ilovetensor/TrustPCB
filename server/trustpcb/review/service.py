@@ -497,6 +497,13 @@ class ReviewRun:
             if session.coverage_waived:
                 summary['coverage_waived'] = session.coverage_waived
             summary['layout_review'] = {'reasons': dict(session.layout_reasons), 'waived': session.layout_waived}
+            if session.kind_reasons:        # a chosen check with no base run: the reason the agent stated, or the one the server recorded when it gave way
+                info = dict(summary.get('extent') or {})
+                info['could_not_run'] = {**(info.get('could_not_run') or {}), **session.kind_reasons}
+                info['method'] = ext.method_line(review.get('extent'), stored=review.get('extent') is not None, skipped=info['could_not_run'])
+                summary['extent'] = info
+            if session.datasheet_gaps:
+                summary['datasheet_gaps'] = list(session.datasheet_gaps)
             summary['refine'] = {'rounds_allowed': session.config.refine_rounds, 'rounds': list(session.refine.history), 'declined': list(session.refine.declined),
                                  'skipped': list(session.refine.skipped), 'open_when_ended': session.refine.active}
         summary['unreviewed_groups'] = unreviewed
