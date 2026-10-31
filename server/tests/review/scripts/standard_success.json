@@ -314,7 +314,7 @@
  {
   "tool": "submit_summary",
   "args": {
-   "summary": "The antenna is detuned by ground copper next to its feed. Clearing it improves the return loss by 10.2 dB in the confirmed runs. C13 is also far from the radio supply pin.",
+   "summary": "The antenna is detuned by ground copper next to its feed. Clearing it improves the simulated return loss by 10.2 dB in the confirmed runs. C13 is also far from the radio supply pin.",
    "top_actions": [
     "Clear the ground copper next to the antenna feed (F-004).",
     "Move C13 closer to the U3 supply pin (F-001)."

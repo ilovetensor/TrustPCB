@@ -226,6 +226,7 @@ class RefineMixin:
         inv.refining = False
         s.refine.active = False
         self.store_round(inv, record)
+        await self.restate_after_confirm(inv)
         await self.publish_investigation(inv, note=f'Refine round {record["round"]} ended: {result.replace("_", " ")}.')
         return record
 

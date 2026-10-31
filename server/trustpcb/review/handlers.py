@@ -14,6 +14,7 @@ from .findings import SEVERITIES, FindingRejected, check_wording
 from .lab import LabUnavailable
 from .machine import PHASE_NAMES
 from .number_check import allowed_from_text
+from . import roles as part_roles_check
 from .tools import NUM, ToolResult, arr, fail, obj, ok, page, text
 
 MAX_CLEAR_AREA_MM2 = 120.0       # clear_copper_region: the largest region a what-if may clear
@@ -134,8 +135,8 @@ class Handlers:
              'evidence_id': e.evidence_id, 'metrics': {k: v for k, v in e.metrics.items() if k != 'trust_reasons'},
              **({'source_ref': e.source_ref, 'parts': [{k: p.get(k) for k in ('ref', 'position', 'was', 'now')} for p in e.parts or []]} if e.kind == 'matching' else {}),
              'ops': e.ops} for e in st.experiments]}
-        self.store.update_suspect(st.id, status=st.status, data=data,
-                                  **({'conclusion': {'status': st.status, 'reason': st.reason}} if st.closed else {}))
+        conclusion = {'status': st.status, 'reason': st.reason, **({'screen_reason': st.screen_reason} if st.screen_reason else {}), **({'screen_status': st.screen_status} if st.screen_status else {})}
+        self.store.update_suspect(st.id, status=st.status, data=data, **({'conclusion': conclusion} if st.closed else {}))
 
     async def publish_suspect(self, st) -> None:
         self.persist_suspect(st)
@@ -590,6 +591,21 @@ class Handlers:
         unknown = [r for r in args.get('part_roles', {}) if not hasattr(s.board, 'footprint') or s.board.footprint(r) is None]
         if unknown:
             return fail('unknown_part', f'These parts are not on the board: {", ".join(unknown[:10])}.', parts=unknown[:20])
+        wrong = part_roles_check.conflicts(s.board, args.get('part_roles') or {})
+        corrected: list[dict] = []
+        if wrong:
+            if s.role_refusals < part_roles_check.MAX_ROLE_REFUSALS:
+                s.role_refusals += 1
+                left = part_roles_check.MAX_ROLE_REFUSALS - s.role_refusals
+                return fail('role_contradicts_symbol', 'The brief gives part roles that contradict the symbol values: ' + ' '.join(w['message'] for w in wrong)
+                            + (f' Send the brief again ({left} more try left, then the server uses the symbol roles).' if left else ' Send the brief again; the server will use the symbol roles otherwise.'),
+                            conflicts=[{k: w[k] for k in ('ref', 'role', 'value', 'suggested')} for w in wrong], tries_left=left)
+            roles_fixed = dict(args.get('part_roles') or {})
+            for w in wrong:
+                roles_fixed[w['ref']] = w['suggested']
+            args = {**args, 'part_roles': roles_fixed}
+            corrected = [{k: w[k] for k in ('ref', 'role', 'value', 'suggested')} for w in wrong]
+            s.add_limit('part_roles_corrected', 'The brief named roles that contradict the symbol values; the server used the roles the symbols say: ' + '; '.join(f'{w["ref"]} {w["role"]} -> {w["suggested"]}' for w in wrong), parts=[w['ref'] for w in wrong])
         bad_targets = []
         for risk in args.get('risks') or []:
             for target in risk.get('targets') or []:
@@ -626,9 +642,23 @@ class Handlers:
             pass
         if added:
             await self.publish_candidates()
-        return ok({'saved': True, 'zones': list(roles), 'new_candidates_from_roles': added, 'next': 'Call advance_phase to start the review of candidates.'})
+        return ok({'saved': True, 'zones': list(roles), 'new_candidates_from_roles': added, **({'roles_corrected': corrected} if corrected else {}),
+                   'next': 'Call advance_phase to start the review of candidates.'})
 
     # ---- review of candidates ---------------------------------------------------------------
+    @staticmethod
+    def group_statistics(items: list[dict]) -> dict:
+        """The analyzers' own totals for a rule group, so counts and ranges are quoted from them and not counted by eye: records are not objects, gap events are not signals."""
+        stats: dict = {}
+        first = items[0] if items else {}
+        for key in ('rule_totals', 'rule_summary'):
+            if first.get(key):
+                stats[key] = first[key]
+        classes = {c['class_summary'].get('pin_class'): {k: v for k, v in c['class_summary'].items() if k != 'capacitors'} for c in items if isinstance(c.get('class_summary'), dict)}
+        if classes:
+            stats['class_summary'] = list(classes.values())
+        return {'statistics': stats} if stats else {}
+
     def candidate_card(self, c: dict) -> dict:
         return {'id': c['id'], 'title': (c.get('title') or '')[:120], 'severity': c.get('severity_hint'),
                 'measurements': {k: v for k, v in list((c.get('measurements') or {}).items())[:4]}, 'targets': (c.get('targets') or [])[:3]}
@@ -651,7 +681,8 @@ class Handlers:
         listing = []
         for rule, items in groups.items():
             items.sort(key=lambda c: order.get(c.get('severity_hint'), 9))
-            listing.append({'rule': rule, 'count': len(items), 'worst': items[0].get('severity_hint'), 'examples': [self.candidate_card(c) for c in items[:3]]})
+            listing.append({'rule': rule, 'count': len(items), 'worst': items[0].get('severity_hint'), 'examples': [self.candidate_card(c) for c in items[:3]],
+                            **self.group_statistics(items)})
         listing.sort(key=lambda g: (order.get(g['worst'], 9), -g['count']))
         return ok({**page(listing, args.get('page', 1), 8), 'state': state, 'hint': 'Pass rule to list one group in full.'})
 

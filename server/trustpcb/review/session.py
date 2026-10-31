@@ -40,6 +40,7 @@ class ReviewSession:
         self.machine = machine or PhaseMachine(review.get('depth') or config.name, bool(self.rf.get('simulatable')), self.rf.get('reason', ''))
         self.ledger = Ledger(config)
         self.engine = FindingEngine(store, self.review_id, board, self.context, previous)
+        self.engine.target_db = ev.target_db(goal or {}, rf or {})
         self.poll_s = poll_s
         self.tools: dict[str, ToolDef] = {}
         # shared state of the run
@@ -60,6 +61,7 @@ class ReviewSession:
         self.layout_waived: dict | None = None
         self.refine = RefineState()                     # the bounded refine round after a confirm that missed the target
         self.coverage_refusals = 0
+        self.role_refusals = 0                          # refusals of the board brief for a part role that contradicts the symbol value
         self.partial_refusals = 0                       # refusals of advance_phase for a partial win the finding does not report yet
         self.coverage_waived: dict | None = None
         self.stop_reason: str | None = None

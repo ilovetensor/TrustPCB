@@ -23,7 +23,41 @@ MEASURED_TYPES = (CANDIDATE, MEASUREMENT)
 NOT_EVIDENCE_FOR_FINDINGS = (PLACEMENT,)   # a what-if on a ghost part is not a fact about the board
 
 
+STATISTIC_KEYS = ('rule_totals', 'rule_summary', 'net_summary', 'class_summary', 'measured_capacitors', 'corridor', 'mounting_holes_in_path', 'feed_length', 'radiating_length',
+                  'net_breakdown', 'stackup_assumptions', 'net_class', 'reference', 'reference_plane_missing', 'distinct_key', 'duplicate_of', 'net_pair')
+
+
 def candidate_values(candidate: dict) -> dict:
+    stats = {k: candidate[k] for k in STATISTIC_KEYS if candidate.get(k) is not None}
+    return {**({'statistics': stats} if stats else {}), **_candidate_core(candidate)}
+
+
+def _walk_numbers(node: Any, key: str = ''):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            yield from _walk_numbers(v, str(k))
+    elif isinstance(node, (list, tuple)):
+        for v in node[:60]:
+            yield from _walk_numbers(v, key)
+    elif isinstance(node, (int, float)) and not isinstance(node, bool):
+        yield key, node
+
+
+def statistic_quantities(stats: Any, code: str) -> list[Quantity]:
+    """Numbers of an analyzer's own statistics (class minimum and maximum, per-net totals) as quantities a text may quote, bound to the row."""
+    out = []
+    for key, value in _walk_numbers(stats):
+        unit = 'mm' if key.endswith('_mm') else ('%' if key.endswith('_pct') else ('ohm' if key.endswith('_ohm') else None))
+        if unit and (q := make_quantity(value, unit, source=code, name='stat_' + key)):
+            out.append(q)
+    return out
+
+
+def statistic_counts(stats: Any) -> set[int]:
+    return {int(v) for _, v in _walk_numbers(stats) if isinstance(v, int)} if stats else set()
+
+
+def _candidate_core(candidate: dict) -> dict:
     return {
         'kind': 'measured', 'candidate_id': candidate['id'], 'rule': candidate.get('rule'), 'title': candidate.get('title'),
         'source': candidate.get('source'), 'targets': list(candidate.get('targets', [])), 'severity_hint': candidate.get('severity_hint'),
@@ -273,9 +307,10 @@ def quantities_of(row: dict) -> list[Quantity]:
     note = ''
     if kind == 'simulated' and trust != 'ok':
         note = 'trust_failed'
+    code = row.get('code') or ''
     out: list[Quantity] = []
     for name, item in (values.get('measurements') or {}).items():
-        extra = {}
+        extra = {'source': code, 'name': name}
         if note:
             extra['note'] = note
         elif kind == 'simulated' and values.get('quality') == 'screen' and not name.startswith('delta_'):
@@ -285,12 +320,13 @@ def quantities_of(row: dict) -> list[Quantity]:
         numbers = [op['delta_mm'], abs(op['delta_mm'])] if isinstance(op.get('delta_mm'), (int, float)) else []
         numbers += [v for v in op.get('bbox') or [] if isinstance(v, (int, float))]
         for number in numbers:
-            out.extend(allowed_from_values({'value': number, 'unit': 'mm'}))
+            out.extend(allowed_from_values({'value': number, 'unit': 'mm'}, name='whatif_op'))    # an input of the test, not a result: no code binding
     for text_key in ('title',):
         if values.get(text_key):
-            out.extend(allowed_from_text(str(values[text_key]), **({'note': note} if note else {})))
+            out.extend(allowed_from_text(str(values[text_key]), source=code, name='title', **({'note': note} if note else {})))
     for detail in values.get('details') or []:
-        out.extend(allowed_from_text(str(detail)))
+        out.extend(allowed_from_text(str(detail), source=code, name='detail'))
+    out.extend(statistic_quantities(values.get('statistics'), code))
     return out
 
 

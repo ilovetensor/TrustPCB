@@ -1,7 +1,7 @@
 """Every number with a unit in agent-written text must come from evidence.
 
 `check_text(text, allowed)` returns the numbers that no allowed value explains. Counts of things
-("3 vias", "two layers") carry no unit and are exempt. Units convert inside a dimension, so
+("3 vias", "two layers") carry no unit and are exempt here; `claims.py` checks them against the distinct entities of the cited evidence. Units convert inside a dimension, so
 "2400 MHz" matches 2.4 GHz and "10 mil" matches 0.254 mm. A written number matches an allowed
 value when the two differ by no more than half a unit in the last digit that was written, which is
 what rounding means.
@@ -56,6 +56,9 @@ class Quantity:
     start: int = 0
     absolute: bool = True  # False for comparisons ("improved by 2 dB") that a screen run can still support
     note: str = ''         # why a value may not be quoted (screen run absolute, failed trust)
+    source: str = ''       # evidence code the value comes from ('' for setup facts such as the goal or a part value)
+    name: str = ''         # measurement name inside that evidence row ('distance', 's11_band_worst', ...)
+    end: int = 0           # where the written number ends in the text (the unit, if any, follows)
 
     @property
     def tolerance(self) -> float:
@@ -102,7 +105,7 @@ def extract(text: str) -> list[Quantity]:
         raw = number.group('n')
         cleaned = raw.replace('−', '-').replace(',', '')
         decimals = len(cleaned.split('.')[1]) if '.' in cleaned else 0
-        quantity = make_quantity(float(cleaned), unit, decimals, raw=text[number.start():number.end()] + ' ' + unit, start=number.start())
+        quantity = make_quantity(float(cleaned), unit, decimals, raw=text[number.start():number.end()] + ' ' + unit, start=number.start(), end=number.end())
         if quantity:
             out.append(quantity)
     return out
@@ -171,4 +174,32 @@ def allowed_from_values(values: Any, **extra: Any) -> list[Quantity]:
 
 def allowed_from_text(text: str, **extra: Any) -> list[Quantity]:
     """Numbers a tool wrote into its own output text (a candidate title, a part value)."""
-    return [Quantity(q.value, q.unit, q.dimension, q.base, q.decimals, q.raw, q.start, **extra) for q in extract(text or '')]
+    return [Quantity(q.value, q.unit, q.dimension, q.base, q.decimals, q.raw, q.start, **{'end': q.end, **extra}) for q in extract(text or '')]
+
+
+# ---- sentences and problems shared by the claim checks ------------------------------------------------------------------
+
+_SPLIT = re.compile(r'(?<=[.!?])(?<!e\.g\.)(?<!i\.e\.)\s+|\n+')
+
+
+def sentence_spans(text: str) -> list[tuple[int, int]]:
+    """(start, end) of each sentence of `text`. A full stop inside a number ("5.74 mm") does not end one."""
+    spans: list[tuple[int, int]] = []
+    position = 0
+    for match in _SPLIT.finditer(text or ''):
+        if text[position:match.start()].strip():
+            spans.append((position, match.start()))
+        position = match.end()
+    if (text or '')[position:].strip():
+        spans.append((position, len(text)))
+    return spans
+
+
+@dataclass
+class Problem:
+    """One claim the evidence does not support, with the message the agent gets and the sentence it is in."""
+    code: str
+    field: str
+    sentence: str
+    message: str
+    data: dict | None = None

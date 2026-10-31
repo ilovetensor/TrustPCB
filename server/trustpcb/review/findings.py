@@ -14,9 +14,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import claims, verdict
 from . import evidence as ev
 from .fingerprint import TargetIndex, fingerprint, rule_of
-from .number_check import Quantity, check_text, extract
+from .number_check import Problem, Quantity, check_text, extract
 
 MAX_GROUP_PARTS = 80          # a net can hold hundreds of pads: keep the stored geometry, and the events, small
 SEVERITIES = ('critical', 'high', 'medium', 'low', 'info')
@@ -24,6 +25,8 @@ MARK_TYPES = ('pin', 'object', 'path', 'region', 'link', 'sketch')
 TEXT_FIELDS = ('title', 'what', 'why_it_matters', 'recommendation')
 MAX_AUTO_MARKS = 10           # analyzer marks drawn automatically on a finding made from candidates
 SCREEN_ONLY = 'Result is from screen-quality simulation runs only; no confirm run supports it.'
+MAX_CLAIM_TRIES = 2           # refusals of one finding for an unsupported claim; the third time the server removes the sentence (as the summary and partial win gates do)
+DROPPABLE_FIELDS = ('what', 'why_it_matters', 'recommendation')
 
 _VERBS = (r'(?:moved|changed|edited|updated|fixed|removed|added|rerouted|re-routed|modified|widened|narrowed|deleted|replaced|'
           r'shortened|lengthened|resized|adjusted|cleared|applied|corrected|repaired|redesigned|reworked|swapped|trimmed)')
@@ -136,6 +139,38 @@ def check_numbers(texts: dict[str, str], allowed: list[Quantity], *, compare_onl
                                   reason=first.reason, all=[p.raw for p in problems])
 
 
+def expand_allowed(allowed: list[Quantity], texts: dict[str, str], universe: list[dict]) -> list[Quantity]:
+    """The pool plus the quantities of every row the texts cite, for texts (a suspect's reasoning, a summary) that are not tied to one finding's evidence."""
+    have = {q.source for q in allowed if q.source}
+    by_code = {r.get('code'): r for r in universe}
+    extra: list[Quantity] = []
+    for code in dict.fromkeys(c for text in texts.values() for c in claims.cited_codes(text)):
+        if code not in have and code in by_code and by_code[code].get('type') not in ev.NOT_EVIDENCE_FOR_FINDINGS:
+            extra.extend(ev.quantities_of(by_code[code]))
+    return list(allowed) + extra
+
+
+def claim_problems(texts: dict[str, str], *, scope_rows: list[dict], universe: list[dict], allowed: list[Quantity], board: Any = None,
+                   target_db: float | None = None, require_attached: bool = True) -> list[Problem]:
+    """Everything the text claims that the cited evidence or the confirm verdict does not support (see claims.py and verdict.py)."""
+    rounds = verdict.rounds_from_rows(universe)
+    found = verdict.problems(texts, rounds, target_db=target_db, rows=universe)
+    found += claims.check(texts, scope_rows=scope_rows, universe=universe, allowed=allowed, board=board, require_attached=require_attached)
+    return found
+
+
+def raise_first(problems: list[Problem], **extra: Any) -> None:
+    if problems:
+        first = problems[0]
+        raise FindingRejected(first.code, first.message, field=first.field, sentence=first.sentence, **{**(first.data or {}), **extra})
+
+
+def check_claims(texts: dict[str, str], *, scope_rows: list[dict], universe: list[dict], allowed: list[Quantity], board: Any = None,
+                 target_db: float | None = None, require_attached: bool = True) -> None:
+    """Raise FindingRejected for the first unsupported claim. For callers that have no retry state of their own."""
+    raise_first(claim_problems(texts, scope_rows=scope_rows, universe=universe, allowed=expand_allowed(allowed, texts, universe), board=board, target_db=target_db, require_attached=require_attached))
+
+
 @dataclass
 class Prepared:
     fields: dict
@@ -155,6 +190,8 @@ class FindingEngine:
         self.context = context
         self.index = TargetIndex(board)
         self.previous = previous or {}
+        self.target_db: float | None = None        # the tuning target, for messages that quote the confirm verdict
+        self.claim_tries: dict[str, int] = {}      # refusals per finding for unsupported claims (bounded: see MAX_CLAIM_TRIES)
 
     # ---- evidence ---------------------------------------------------------------------
     def evidence_rows(self) -> list[dict]:
@@ -314,13 +351,32 @@ class FindingEngine:
             if id(mark) in checked and isinstance(value, dict) and isinstance(value.get('value'), (int, float)):
                 texts[f'marks[{index}].value'] = f"{value['value']} {value.get('unit', '')}"
         check_numbers(texts, allowed)
+        notes = []
+        universe = self.evidence_rows()
+        problems = claim_problems(texts, scope_rows=rows, universe=universe, allowed=allowed, board=self.board, target_db=self.target_db)
+        if problems:
+            key = str((existing or {}).get('code') or ','.join(sorted(args.get('candidate_ids') or [])[:3] + sorted(args.get('evidence_ids') or [])[:3]) or merged['title'])[:120]
+            tries = self.claim_tries.get(key, 0)
+            if tries >= MAX_CLAIM_TRIES and all(p.field in DROPPABLE_FIELDS for p in problems):
+                # the retries are used up: the server removes the sentences the evidence does not support, as it completes the summary and the partial win by code
+                for p in problems:
+                    merged[p.field] = claims.drop_sentences(merged[p.field], [p.sentence])
+                    texts[p.field] = merged[p.field]
+                    notes.append(f'The server removed a sentence of {p.field} that the evidence does not support ({p.code}): "{p.sentence[:120]}"')
+                still = claim_problems(texts, scope_rows=rows, universe=universe, allowed=allowed, board=self.board, target_db=self.target_db)
+                raise_first(still, tries_left=0)
+            else:
+                self.claim_tries[key] = tries + 1
+                left = max(0, MAX_CLAIM_TRIES - tries)
+                first = problems[0]
+                raise FindingRejected(first.code, first.message + (f' You can retry {left} more time(s); after that the server removes the sentence.' if left else ''),
+                                      field=first.field, sentence=first.sentence, tries_left=left, others=len(problems) - 1, **(first.data or {}))
         # identity ------------------------------------------------------------------------
         rule = args.get('rule') or (rule_of(existing['fingerprint']) if existing else None)
         if not rule and candidate_ids:
             rule = known[candidate_ids[0]].get('rule')
         rule = re.sub(r'[^a-z0-9_:.-]+', '_', str(rule or 'open_review').lower())[:60]
         fp = existing['fingerprint'] if existing else fingerprint(rule, all_targets, self.index)
-        notes = []
         not_tested = list(args.get('not_tested') if args.get('not_tested') is not None else (existing or {}).get('not_tested') or [])
         line = SCREEN_ONLY
         if sim_rows and all((r['values'] or {}).get('quality') == 'screen' for r in sim_rows):

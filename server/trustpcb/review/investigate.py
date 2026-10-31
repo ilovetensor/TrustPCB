@@ -12,7 +12,9 @@ from . import change
 from . import evidence as ev
 from . import partial
 from .budgets import IMPROVEMENT_DB, PARTIAL_WIN_DB, REFINE_MATCHING, REFINE_SCREENS, Experiment
-from .findings import SCREEN_ONLY, FindingRejected, check_fixed_dip_claims, check_numbers, check_wording
+from . import restate
+from . import verdict as confirm_verdict
+from .findings import SCREEN_ONLY, FindingRejected, check_claims, check_fixed_dip_claims, check_numbers, check_wording
 from .handlers import OpError, validate_ops
 from .lab import BadMatchingRequest, LabUnavailable, scenario_hash, scenario_key
 from .tools import ToolResult, fail, ok
@@ -185,7 +187,8 @@ class InvestigationMixin:
             repairs_left = 'one repair allowed' if (not repair and inv.repairs < 2 and suspect.status == 'open') else 'no repair left'
             notices.append(f'This run failed its trust checks and cannot support a finding ({repairs_left}). Pass setup to retry with a changed setup.')
         if meets:
-            notices.append('The tuning target is met. Optimising further is not allowed: confirm the result and close the investigation.')
+            notices.append('This screen run reaches the target. Screen runs are only for comparing, so write "reaches the target on the screen run", never "met the target"; the confirm run decides and may '
+                           'disagree. Further design changes are not allowed now (material and setup checks still are): confirm the result and close the investigation.')
         elif exp.delta and ev.is_improvement(exp.delta) and kind == 'whatif':
             notices.append('This change improves the worst in-band S11 by at least 1 dB against the base. Matching can be tried on it too: tune_matching with this ref tests the combination.')
         for closed, status, why in closures:
@@ -397,7 +400,8 @@ class InvestigationMixin:
         if delta and ev.is_improvement(delta):
             notices.append('This matching change improves the worst in-band S11 by at least 1 dB against the base. Keep it for phase 5, where the exact parts are checked at confirm quality.')
         if meets:
-            notices.append('The tuning target is met. Optimising further is not allowed: confirm the result and close the investigation.')
+            notices.append('This screen run reaches the target. Screen runs are only for comparing, so write "reaches the target on the screen run", never "met the target"; the confirm run decides and may '
+                           'disagree. Further design changes are not allowed now (material and setup checks still are): confirm the result and close the investigation.')
         for closed, status, why in closures:
             notices.append(f'Suspect {closed.code} is now closed as {status}: {why}')
         if notices:
@@ -452,6 +456,15 @@ class InvestigationMixin:
             return fail('not_supported', f'A suspect can be {verdict.replace("_", " ")} only after at least one trusted experiment (a what-if or a matching experiment). Run one, or conclude it as inconclusive.')
         if verdict == 'confirmed' and not any(ev.is_improvement(e.delta) or ev.meets_target(e.metrics, s.goal, s.rf) for e in trusted_tests):
             return fail('not_supported', 'No trusted experiment shows a clear effect (at least 1 dB better worst in-band S11 than the base), so the suspect cannot be confirmed.')
+        if verdict == 'ruled_out':
+            points = list({e.hash: e for e in trusted_tests}.values())
+            helped = [e for e in points if ev.is_improvement(e.delta)]
+            if helped:
+                return fail('not_supported', f'{helped[0].ref} improved the worst in-band S11 by {ev.gain_db(helped[0].delta):.1f} dB, so {suspect.code} cannot be ruled out. Conclude it as confirmed, or as inconclusive with the reason.')
+            if len(points) < 2:
+                return fail('ruled_out_needs_two_points', f'{suspect.code} has {len(points)} trusted test point ({", ".join(e.ref for e in points)}). One point does not show a trend: one cut can move the dips '
+                            f'and the first series resonance and still say nothing about the next cut. Run a second point (a different amount, or the other direction), or conclude it as inconclusive and say only one point was tested.',
+                            points=len(points), suspect=suspect.code)
         rows = self._suspect_rows(suspect, args.get('evidence_ids') or [])
         allowed = [q for r in rows for q in ev.quantities_of(r)] + s.context()
         try:
@@ -459,6 +472,7 @@ class InvestigationMixin:
             check_wording(texts)
             check_fixed_dip_claims(texts, s.engine.evidence_rows(), rows)
             check_numbers(texts, allowed, compare_only=True)     # a screen number may appear here when the sentence says it is a screen run or a comparison
+            check_claims(texts, scope_rows=rows, universe=s.engine.evidence_rows(), allowed=allowed, board=s.board, target_db=s.engine.target_db, require_attached=False)
         except FindingRejected as exc:
             return fail(exc.code, exc.message, **exc.data)
         base = s.base_hash()
@@ -505,6 +519,7 @@ class InvestigationMixin:
             check_wording({'summary': args['summary']})
             check_fixed_dip_claims({'summary': args['summary']}, s.engine.evidence_rows(), rows)
             check_numbers({'summary': args['summary']}, allowed, compare_only=True)
+            check_claims({'summary': args['summary']}, scope_rows=rows, universe=s.engine.evidence_rows(), allowed=allowed, board=s.board, target_db=s.engine.target_db, require_attached=False)
         except FindingRejected as exc:
             return fail(exc.code, exc.message, **exc.data)
         for suspect in inv.suspects:
@@ -713,6 +728,8 @@ class InvestigationMixin:
         data['confirmation'] = confirmation
         if summary_row:
             data['confirmation_evidence'] = summary_row['code']
+            data['verdict'] = confirm_verdict.verdict_object(confirm_verdict.rounds_from_rows(s.engine.evidence_rows()), ev.target_db(s.goal, s.rf))
+        await self.restate_after_confirm(inv)
         if confirmation['outcome'] != 'held':
             notices.append(confirmation['statement'] + ' Say so in the finding; the server has already listed it there.')
         data['notices'] = notices + matching['notes'] + list(data.get('notices') or [])
@@ -736,6 +753,8 @@ class InvestigationMixin:
         held_free = free_gain is not None and free_gain >= IMPROVEMENT_DB
         agree, _ = ev.screen_confirm_agree(screen.metrics, final_metrics)
         meets = ev.meets_target(final_metrics, s.goal, s.rf)
+        if not meets:
+            inv.good_enough = False         # a screen run reached the target but the confirm run did not: the screen premise no longer holds
         if confirm_base is None:
             outcome, statement = 'unconfirmed', 'The base was not confirmed, so the gain over the base cannot be judged at confirm quality.'
         elif held_locked and agree:
@@ -815,6 +834,35 @@ class InvestigationMixin:
         confirmation['comparison_evidence'] = row['code']
         return confirmation, row
 
+    async def restate_after_confirm(self, inv) -> None:
+        """Make the investigation's conclusions follow the confirm result: the screen text stays as history, the confirm outcome becomes the conclusion
+        (restate.py). Does nothing while a confirm run has met the target or none has run."""
+        s = self.s
+        row = self.store.get_investigation(inv.id)
+        if row is None:
+            return
+        entry = restate.entry_from_rows(self.store, row, 0)
+        confirmations = [c for c in [inv.confirmation, *inv.refine_confirmations.values()] if c]
+        new = restate.restate_entry(entry, ev.target_db(s.goal, s.rf), confirmations)
+        if new is entry:
+            return
+        existing = row.get('outcome') or {}
+        if isinstance(existing, dict):
+            keep = ('summary', 'screen_summary', 'confirm_outcome', 'confirm_label')
+            self.store.update_investigation(inv.id, outcome={**existing, **{k: new['outcome'][k] for k in keep if k in new['outcome']}})
+        by_code = {x['code']: x for x in new['suspects']}
+        for st in inv.suspects:
+            changed = by_code.get(st.code)
+            if not changed or (changed.get('reason') == st.reason and changed.get('status') == st.status):
+                continue
+            if not st.closed:
+                continue
+            st.screen_reason = changed.get('screen_reason') or st.screen_reason
+            st.screen_status = changed.get('screen_status') or st.screen_status
+            st.reason, st.status = changed['reason'], changed['status']
+            await self.publish_suspect(st)
+        await self.publish_investigation(inv, note='Conclusions now follow the confirm result; the screen-phase text is kept as history.')
+
     # ---- the partial win gate ----------------------------------------------------------------
     async def partial_win_gate(self) -> ToolResult | None:
         """advance_phase out of phase 5 with a partial win (a confirm gain of 3 dB or more that still misses the target): the finding of that
@@ -893,6 +941,10 @@ class InvestigationMixin:
         try:
             check_wording(texts)
             check_numbers(texts, allowed)
+            check_claims(texts, scope_rows=s.engine.evidence_rows(), universe=s.engine.evidence_rows(), allowed=allowed, board=s.board, target_db=s.engine.target_db, require_attached=False)
+            lead = restate.simulated_problem(texts)
+            if lead:
+                raise FindingRejected('summary_must_say_simulated', lead)
             if unknown:
                 raise FindingRejected('unknown_finding', f'{unknown[0]} is not a finding in this review.')
             check_fixed_dip_claims(texts, s.engine.evidence_rows(), s.engine.evidence_rows())
