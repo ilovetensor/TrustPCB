@@ -6,12 +6,15 @@ import { listProjects } from "../../lib/api";
 import type { ProjectSummary } from "../../lib/types";
 import { Sparkline, SevBar, TopBar, Icon } from "../ui";
 import { useAppEnv } from "../../lib/demo";
+import { useRuns } from "../../lib/runs";
+import { RunsList } from "../workspace/RunsList";
 
 const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Agent stopped", queued: "Queued", failed: "Failed", canceled: "Stopped", interrupted: "Interrupted", no_review: "No review yet" };
 const RF: Record<string, string> = { pass: "RF in band", fail: "RF off target", not_tested: "RF not tested", "n/a": "No radio" };
 
 export function Projects() {
   const { demo } = useAppEnv();
+  const live = useRuns()?.runs ?? [];
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { listProjects().then(setProjects).catch((e) => setError(e instanceof Error ? e.message : "Could not load projects.")); }, []);
@@ -28,13 +31,17 @@ export function Projects() {
           <span className="grow" />
           {!demo && <Link className="btn primary" href="/upload"><Icon name="upload" size={14} /> Upload a board</Link>}
         </div>
+        <div className="pg-runs"><RunsList heading="Running now" /></div>
         <div className="pg-cols">
           <div className="tiles" aria-label="Projects">
             {projects?.map((p, i) => (
               <Link key={p.id} href={`/projects/${p.id}`} className="tile rise" style={{ animationDelay: `${i * 70}ms` }}>
                 <div className="tile-top">
                   <div><div className="tile-name">{p.name}</div><div className="tile-kind">{p.kind}</div></div>
-                  <span className={`tbl-state ${p.state}`}><i />{STATE[p.state]}</span>
+                  {(() => {
+                    const mine = live.filter((r) => r.project_id === p.id);
+                    return mine.length ? <span className="tbl-state running"><i />{mine.length > 1 ? `${mine.length} reviews running` : mine[0].state === "queued" ? "Queued" : "Running"}</span> : <span className={`tbl-state ${p.state}`}><i />{STATE[p.state]}</span>;
+                  })()}
                 </div>
                 <div className={`tile-rf ${p.rf === "fail" ? "fail" : ""}`}>{p.rf_note ?? RF[p.rf]}</div>
                 <div className="tile-row"><SevBar counts={p.counts} size="sm" /><Sparkline values={p.trend} /></div>

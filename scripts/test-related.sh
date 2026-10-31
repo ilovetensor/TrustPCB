@@ -9,7 +9,8 @@
 #   server/trustpcb/{api,storage,sessions,events}.py   tests/foundation
 #   server/trustpcb/intake/                     tests/pcb
 #   server/trustpcb/prompts/                    tests/review
-#   server/trustpcb/<package>/                  tests/<package>   (pcb, analyzers, review)
+#   server/trustpcb/settings_store.py           tests/parts
+#   server/trustpcb/<package>/                  tests/<package>   (pcb, analyzers, review, parts)
 # Everything after "--" goes to pytest unchanged. The web app has its own tests: npm --prefix web test.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,6 +29,7 @@ while [[ $# -gt 0 ]]; do
     server/trustpcb/runners/*) targets+=("tests/foundation" "tests/muse") ;;
     server/trustpcb/api.py|server/trustpcb/storage.py|server/trustpcb/sessions.py|server/trustpcb/events.py) targets+=("tests/foundation") ;;
     server/trustpcb/intake/*) targets+=("tests/pcb") ;;
+    server/trustpcb/settings_store.py) targets+=("tests/parts") ;;
     server/trustpcb/prompts/*) targets+=("tests/review") ;;
     server/trustpcb/*/*) package="${rel#server/trustpcb/}"; targets+=("tests/${package%%/*}") ;;
     web/*) echo "skipping $arg: web tests run with npm --prefix web test" >&2 ;;

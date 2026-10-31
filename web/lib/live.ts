@@ -29,7 +29,7 @@ export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-export async function apiSend<T>(method: "POST" | "PATCH", path: string, body?: unknown): Promise<T> {
+export async function apiSend<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const r = await fetch(`/api/${path}`, {
     method,
     headers: { "content-type": "application/json", accept: "application/json" },

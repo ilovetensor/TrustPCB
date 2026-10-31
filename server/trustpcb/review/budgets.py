@@ -8,11 +8,33 @@ Everything reads time from an injected clock so tests never wait.
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import time
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+logger = logging.getLogger('trustpcb')
+
 DEPTHS = ('quick', 'standard', 'deep')
+
+#: The most time a review may spend waiting for the solver without it counting against the wall-clock budget, and the longest one
+#: simulation may wait before it is dropped (TRUSTPCB_MAX_QUEUE_WAIT_MIN, minutes). This is the hard safety limit: waiting is free up to it.
+DEFAULT_MAX_QUEUE_WAIT_MIN = 240.0
+
+
+def max_queue_wait_s() -> float:
+    raw = os.environ.get('TRUSTPCB_MAX_QUEUE_WAIT_MIN', '').strip()
+    if not raw:
+        return DEFAULT_MAX_QUEUE_WAIT_MIN * 60
+    try:
+        minutes = float(raw)
+    except ValueError:
+        minutes = 0.0
+    if minutes <= 0:
+        logger.warning('TRUSTPCB_MAX_QUEUE_WAIT_MIN=%r is not a positive number of minutes, so the default of %g is used.', raw, DEFAULT_MAX_QUEUE_WAIT_MIN)
+        minutes = DEFAULT_MAX_QUEUE_WAIT_MIN
+    return minutes * 60
 
 # Rule 5: two experiments in a row that move the in-band result (worst and mean) less than this close the suspect.
 NO_PROGRESS_DB = 0.5
@@ -38,6 +60,8 @@ IMPROVEMENT_DB = 1.0             # a what-if or matching change counts as an imp
 PARTIAL_WIN_DB = 3.0             # a confirm-quality gain of at least this much in the band that still misses the target is a partial win (improved_short_of_target)
 SCREEN_CONFIRM_DB = 3.0          # screen and confirm must agree within these limits (in-band worst S11, then the first series resonance)
 SCREEN_CONFIRM_RES_REL = 0.06
+SIM_IMPROVEMENT_PCT = 10.0       # a board simulation (power, thermal, signal): a change that makes the primary metric this much better is an improvement
+SIM_NO_PROGRESS_PCT = 2.0        # and two experiments in a row that move it less than this close the suspect
 
 
 # ---- judging a change by the in-band result (a delta is evidence.delta: s11_db is the change in worst in-band S11) ----
@@ -48,11 +72,16 @@ def gain_db(d: dict | None) -> float:
 
 
 def is_improvement(d: dict | None) -> bool:
+    """A delta of a board simulation (power, thermal, signal) carries `gain_pct` and is judged in percent of the base; an antenna delta in dB."""
+    if d and 'gain_pct' in d:
+        return d['gain_pct'] >= SIM_IMPROVEMENT_PCT
     return gain_db(d) >= IMPROVEMENT_DB
 
 
 def rank_key(d: dict | None) -> tuple[float, float]:
     """Order candidates by in-band worst gain, then by mean gain."""
+    if d and 'gain_pct' in d:
+        return (round(d['gain_pct'], 2), 0.0)
     return (round(gain_db(d), 2), -((d or {}).get('band_mean_db') or 0.0))
 
 
@@ -60,6 +89,8 @@ def moved_little(d: dict | None, db: float, hz: float, *, frequency: bool = True
     """No-progress test: the in-band worst and mean moved under `db` and, for a change to the antenna, the first series resonance
     (else the deepest dip) under `hz`. A matching change moves the resonance of the whole network by design, so only the band counts for it."""
     d = d or {}
+    if 'gain_pct' in d:
+        return abs(d['gain_pct']) < SIM_NO_PROGRESS_PCT
     freq = d.get('series_res_hz', d.get('f_hz', 0.0)) if frequency else 0.0
     return abs(d.get('s11_db', 0.0)) < db and abs(d.get('band_mean_db', 0.0)) < db and abs(freq) < hz
 
@@ -94,6 +125,10 @@ class BudgetConfig:
     reserve_s: float | None = None                        # time before the hard deadline when only closing tools work
     full_investigation: bool = False                      # Standard: no closing without a result while budget allows and the method is incomplete
     refine_rounds: int = 0                                # bounded refine rounds after a confirm that missed the target (Standard 1, Deep 2, Quick none)
+    sim_runs: int = 0                                     # board simulations (power, thermal, signal) that actually run; a stored identical run is free
+    sim_s: float = 0.0                                    # seconds of board-simulation compute
+    sim_confirm_runs: int = 0                             # of those runs, how many may be confirm-quality (finer mesh)
+    sim_kinds: tuple = ()                                 # the board simulations this review may run
 
     @property
     def soft_wall_s(self) -> float:
@@ -117,16 +152,30 @@ CONFIGS: dict[str, BudgetConfig] = {
 }
 
 
-def config_for(depth: str, simulatable: bool = True) -> BudgetConfig:
-    """The budget of a depth. A board the RF lab cannot simulate (no radio, a chip antenna) gets no solver time,
-    investigations or confirm runs, so the progress panel does not show a solver limit that can never be used."""
+SIM_BUDGETS = {                  # per depth: runs, seconds, confirm runs, extra investigations per kind, extra phase 4 calls per kind, extra phase 5 calls per kind
+    'standard': (30, 600.0, 6, 1, 14, 3),
+    'deep': (60, 1200.0, 12, 2, 25, 5),
+}
+
+
+def config_for(depth: str, simulatable: bool = True, sim_kinds: tuple | list = ()) -> BudgetConfig:
+    """The budget of a depth. A board the RF lab cannot simulate (no radio, a chip antenna) gets no solver time, antenna investigations
+    or confirm runs, so the progress panel does not show a solver limit that can never be used. Each board simulation chosen at the
+    start (power, thermal, signal) adds an investigation, tool calls and a share of the simulation-run budget; Quick never simulates."""
     if depth not in CONFIGS:
         raise ValueError(f'Review depth must be one of {", ".join(DEPTHS)}')
     config = CONFIGS[depth]
-    if simulatable or not config.solver_s:
+    if not (simulatable or not config.solver_s):
+        config = replace(config, solver_s=0, investigations=0, confirm_runs=0, refine_rounds=0, full_investigation=False,
+                         phase_calls={**config.phase_calls, 4: 0, 5: 0}, experiments_per_investigation=0)
+    kinds = tuple(sim_kinds) if depth in SIM_BUDGETS else ()
+    if not kinds:
         return config
-    return replace(config, solver_s=0, investigations=0, experiments_per_investigation=0, confirm_runs=0, refine_rounds=0,
-                   full_investigation=False, phase_calls={**config.phase_calls, 4: 0, 5: 0})
+    runs, seconds, confirms, per_kind, calls4, calls5 = SIM_BUDGETS[depth]
+    base = CONFIGS[depth]
+    return replace(config, investigations=config.investigations + per_kind * len(kinds), experiments_per_investigation=base.experiments_per_investigation,
+                   full_investigation=base.full_investigation, sim_runs=runs, sim_s=seconds, sim_confirm_runs=confirms, sim_kinds=kinds,
+                   phase_calls={**config.phase_calls, 4: config.phase_calls.get(4, 0) + calls4 * len(kinds), 5: config.phase_calls.get(5, 0) + calls5 * len(kinds)})
 
 
 FOLLOWUP_LEVELS = ('answer', 'check', 'test')
@@ -142,14 +191,21 @@ def followup_config(level: str = 'test', *, input_tokens: int = FOLLOWUP_INPUT_T
     return BudgetConfig(
         name=f'followup_{level}', wall_s=20 * 60, solver_s=15 * 60 if test else 0, model_turns=40, investigations=1 if test else 0,
         experiments_per_investigation=3 if test else 0, confirm_runs=2 if test else 0, images=6, input_tokens=input_tokens, output_tokens=60_000,
-        phase_calls=dict(FOLLOWUP_CALLS), confirm_runs_per_investigation=2, reserve_s=60.0)
+        phase_calls=dict(FOLLOWUP_CALLS), confirm_runs_per_investigation=2, reserve_s=60.0,
+        sim_runs=10 if test else 0, sim_s=300.0 if test else 0.0, sim_confirm_runs=3 if test else 0)
 
 
 class BudgetTracker:
-    def __init__(self, config: BudgetConfig, clock: Clock | None = None):
+    def __init__(self, config: BudgetConfig, clock: Clock | None = None, wait_cap_s: float | None = None):
         self.config = config
         self.clock = clock or Clock()
         self.started = self.clock.now()
+        # Time spent waiting for the solver behind other reviews is not the review's own time: it is left out of the wall clock,
+        # up to a hard cap, after which it counts again so a review can never wait for ever.
+        self.wait_cap_s = max_queue_wait_s() if wait_cap_s is None else wait_cap_s
+        self.waited_s = 0.0
+        self._waiting = 0
+        self._wait_since: float | None = None
         self.solver_used = 0.0
         self.input_tokens = 0
         self.output_tokens = 0
@@ -164,10 +220,37 @@ class BudgetTracker:
         self.experiments = 0
         self.duplicates = 0
         self.refused = 0
+        self.sim_runs = 0                            # board simulations that really ran (not served from the cache)
+        self.sim_confirm_runs = 0
+        self.sim_used_s = 0.0
+        self.sim_cached = 0                          # board simulations answered from a stored identical run, at no cost
 
     # ---- time -------------------------------------------------------------------------
+    def begin_wait(self) -> None:
+        """A simulation of this review starts waiting for the solver."""
+        if self._waiting == 0:
+            self._wait_since = self.clock.now()
+        self._waiting += 1
+
+    def end_wait(self) -> None:
+        if self._waiting == 0:
+            return
+        self._waiting -= 1
+        if self._waiting == 0 and self._wait_since is not None:
+            self.waited_s += max(0.0, self.clock.now() - self._wait_since)
+            self._wait_since = None
+
+    @property
+    def waiting(self) -> bool:
+        return self._waiting > 0
+
+    def credited_wait(self) -> float:
+        """Seconds of waiting for the solver that are not charged to the wall clock (open wait included, capped)."""
+        open_s = max(0.0, self.clock.now() - self._wait_since) if self._wait_since is not None else 0.0
+        return min(self.wait_cap_s, self.waited_s + open_s)
+
     def elapsed(self) -> float:
-        return max(0.0, self.clock.now() - self.started)
+        return max(0.0, self.clock.now() - self.started - self.credited_wait())
 
     def wall_left(self) -> float:
         return max(0.0, self.config.wall_s - self.elapsed())
@@ -184,6 +267,29 @@ class BudgetTracker:
 
     def add_solver(self, seconds: float) -> None:
         self.solver_used += max(0.0, float(seconds or 0))
+
+    def sim_left(self) -> int:
+        return max(0, self.config.sim_runs - self.sim_runs)
+
+    def add_sim(self, seconds: float, *, cached: bool, confirm: bool) -> None:
+        if cached:
+            self.sim_cached += 1
+            return
+        self.sim_runs += 1
+        self.sim_used_s += max(0.0, float(seconds or 0))
+        if confirm:
+            self.sim_confirm_runs += 1
+
+    def sim_exhausted(self, confirm: bool = False) -> str | None:
+        """Why no further board simulation may run, or None."""
+        c = self.config
+        if self.sim_runs >= c.sim_runs:
+            return 'sim_runs'
+        if c.sim_s and self.sim_used_s >= c.sim_s:
+            return 'sim_time'
+        if confirm and self.sim_confirm_runs >= c.sim_confirm_runs:
+            return 'sim_confirm_runs'
+        return None
 
     def add_usage(self, payload: dict) -> None:
         """Token counts from a `usage` event; flat or nested under `usage`."""
@@ -242,6 +348,7 @@ class BudgetTracker:
         return {
             'phase': phase, 'depth': c.name,
             'wall_s': {'used': round(self.elapsed(), 1), 'limit': c.wall_s, 'left': round(self.wall_left(), 1)},
+            'solver_wait_s': {'used': round(self.credited_wait(), 1), 'cap': self.wait_cap_s, 'waiting': self.waiting},
             'solver_s': {'used': round(self.solver_used, 1), 'limit': c.solver_s, 'left': round(self.solver_left(), 1)},
             'turns': {'used': self.turns, 'limit': c.model_turns},
             'tool_calls': {str(k): v for k, v in self.calls.items()},
@@ -253,6 +360,8 @@ class BudgetTracker:
             'input_tokens': {'used': self.input_tokens, 'limit': c.input_tokens},
             'output_tokens': {'used': self.output_tokens, 'limit': c.output_tokens},
             'duplicates': self.duplicates, 'refused_calls': self.refused,
+            'sim_runs': {'used': self.sim_runs, 'limit': c.sim_runs, 'cached': self.sim_cached, 'confirm_used': self.sim_confirm_runs, 'confirm_limit': c.sim_confirm_runs,
+                         'seconds_used': round(self.sim_used_s, 1), 'seconds_limit': c.sim_s},
         }
 
 
@@ -279,6 +388,8 @@ class Experiment:
     source_ref: str | None = None      # matching: the run the parts were applied to
     parts: list | None = None          # matching: the changed parts [{ref, position, kind, value, was, now}]
     ops: list = field(default_factory=list)   # the what-if operations of the geometry this result stands on
+    sim_kind: str | None = None        # power | thermal | signal for a board simulation, None for the antenna
+    inputs: dict = field(default_factory=dict)   # board simulation: the input values this result was made with
 
 
 @dataclass
@@ -322,6 +433,7 @@ class InvestigationState:
     extra_experiments: int = 0                          # experiments a refine round adds to the investigation's allowance
     refine_suspects: list = field(default_factory=list)  # ids of the suspects created for refine rounds
     refine_confirmations: dict = field(default_factory=dict)   # 'refine1' -> the screen against confirm comparison of that round's candidate
+    sim_kind: str | None = None                         # power | thermal | signal when this investigates a board simulation, None for the antenna
 
 
 @dataclass
@@ -485,7 +597,7 @@ class Ledger:
         if not self.config.full_investigation:
             return []
         gaps = []
-        if inv.matching_runs == 0 and not inv.matching_unavailable:
+        if inv.matching_runs == 0 and not inv.matching_unavailable and not inv.sim_kind:       # matching is an antenna experiment
             gaps.append('no matching experiment yet (run tune_matching on a trusted run, for example the base, and pass the suspect it tests)')
         need = min(MIN_SUSPECTS_TESTED, len(inv.suspects))
         untested = [x for x in inv.suspects if not self.suspect_tested(x) and not x.closed]

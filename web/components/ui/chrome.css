@@ -91,12 +91,34 @@ body:has(.topbar) {
   }
   .topnav {
     flex-direction: row;
+    flex-wrap: wrap;
   }
   .navitem {
     width: auto;
+    white-space: nowrap;
   }
   .topbar-foot {
     margin: 0 0 0 auto;
     padding: 0;
   }
+}
+
+/* the agent mark: small, quiet, no border or background; the colour and shape come from the registry's asset */
+.agent-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--paper-3);
+  vertical-align: -2px;
+}
+.agent-mark img,
+.agent-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.agent-mark.working {
+  animation: blink 1.2s steps(2, jump-none) infinite;
 }

@@ -22,8 +22,10 @@ export function buildGoal({ purpose = "", band = "", target = "", focus = "", wi
   return goal;
 }
 
-// Depth note on the upload page. With no radio nothing is simulated, so only the time limit is kept.
-export function depthNote(note, depth, wireless) {
+// Depth note on the upload page. With no radio there is no antenna simulation, so only the time limit is kept.
+// `sims` says that power, heat or signal checks are chosen: those still run on a board with no radio.
+export function depthNote(note, depth, wireless, sims = false) {
   if (wireless !== false || depth === "quick") return note;
-  return `${note.split(". ")[0].replace(/\.$/, "")}. No radio found, so nothing is simulated.`;
+  const limit = note.split(". ")[0].replace(/\.$/, "");
+  return sims ? `${limit}. No radio found: the power, heat and signal checks you chose are simulated.` : `${limit}. No radio found, so nothing is simulated.`;
 }

@@ -44,7 +44,7 @@ class ReviewSession:
     mode = 'review'
 
     def __init__(self, *, store, lab: Lab, ctx, review: dict, board: Any, clock: Clock, config: BudgetConfig, goal: dict, rf: dict,
-                 previous: dict | None = None, machine: PhaseMachine | None = None, poll_s: float = 2.0):
+                 previous: dict | None = None, machine: PhaseMachine | None = None, poll_s: float = 2.0, extent: list | None = None, sims: dict | None = None):
         self.store, self.lab, self.ctx, self.board, self.clock = store, lab, ctx, board, clock
         self.review = review
         self.review_id = review['id']
@@ -54,7 +54,21 @@ class ReviewSession:
         self.previous = previous
         self.config = config
         self.budgets = BudgetTracker(config, clock)
-        self.machine = machine or PhaseMachine(review.get('depth') or config.name, bool(self.rf.get('simulatable')), self.rf.get('reason', ''))
+        # The extent chosen at the start: which checks may run. None is a review made before extents existed (the antenna when the board allowed it).
+        self.extent = None if extent is None else list(extent)
+        info = sims or {}
+        self.sim_info: dict[str, dict] = dict(info.get('available') or {})        # kind -> {label, available, reason} for the board simulations that can run
+        self.sim_kinds: list[str] = list(self.sim_info)
+        self.sim_unavailable: dict[str, str] = dict(info.get('unavailable') or {})     # chosen but cannot run: kind -> reason
+        self.antenna_on = bool(self.rf.get('simulatable')) and (self.extent is None or 'antenna' in self.extent)
+        self.datasheets_on = bool(self.extent and 'datasheets' in self.extent)
+        self.sim_inputs: dict[str, dict[str, dict]] = {}       # kind -> input name -> {value, unit, source, cite}: what the review set, with where each value came from
+        self.sim_standalone: dict[str, Any] = {}              # follow-up runs outside an investigation: kind -> the base run later what-ifs are compared with
+        self.sim_specs: dict[str, list[dict]] = {}             # kind -> what the simulator needs (its inputs_needed)
+        self.datasheet_facts: list[dict] = []                  # what the datasheets read in this run say: {dimension, base, status stated|passage, page, url, mpn}
+        self.datasheet_quantities: list = []                   # numbers read from datasheets in this run: the only values a 'datasheet' input may take
+        rf_reason, sim_reason = self.skip_reasons()
+        self.machine = machine or PhaseMachine(review.get('depth') or config.name, self.antenna_on, rf_reason, self.sim_kinds, sim_reason)
         self.ledger = Ledger(config)
         self.engine = FindingEngine(store, self.review_id, board, self.context, previous)
         self.engine.target_db = ev.target_db(goal or {}, rf or {})
@@ -95,6 +109,38 @@ class ReviewSession:
         self._text = ''
         self._ref_counter = 0
         self._counters = {'I': 0, 'S': 0}
+
+    def skip_reasons(self) -> tuple[str, str]:
+        """Why Investigate would have nothing to run: for the antenna, and for the board simulations that were chosen."""
+        chosen_antenna = self.extent is None or 'antenna' in self.extent
+        if chosen_antenna:
+            rf_reason = '' if self.rf.get('simulatable') else (self.rf.get('reason') or 'Nothing on this board can be simulated.')
+        else:
+            rf_reason = ''
+        wanted = [k for k in (self.extent or []) if k in ('power', 'thermal', 'signal')]
+        sim_reason = ' '.join(f'{self.sim_label(k)} could not run: {r}'.strip() for k, r in self.sim_unavailable.items())
+        if not chosen_antenna and not wanted:
+            rf_reason = 'No simulation was chosen at the start of this review (rules and layout only).'
+        return rf_reason, sim_reason
+
+    def sim_label(self, kind: str) -> str:
+        return (self.sim_info.get(kind) or {}).get('label') or {'power': 'Power delivery', 'thermal': 'Thermal', 'signal': 'Signal integrity'}.get(kind, kind)
+
+    def sim_effective_inputs(self, kind: str) -> dict:
+        """The inputs this review set for a simulation, as the nested dict the simulator reads (everything else it takes at its default)."""
+        from .siminputs import build_inputs
+        return build_inputs(self.sim_inputs.get(kind) or {})
+
+    def brief_roles(self) -> dict:
+        """The part roles of the board brief (empty until it is submitted): the simulators read them to classify parts."""
+        return dict((self.brief or {}).get('part_roles') or {})
+
+    def sim_scenario(self, kind: str, whatif: list, quality: str) -> dict:
+        """The identity of a board-simulation request: the ledger's cache and duplicate rules key on its hash."""
+        return {'sim': kind, 'version_id': self.version_id, 'inputs': self.sim_effective_inputs(kind), 'whatif': whatif, 'quality': quality}
+
+    def sim_base_hash(self, kind: str) -> str:
+        return scenario_hash(self.sim_scenario(kind, [], 'screen'))
 
     # ---- context for the checks -----------------------------------------------------------
     @property
@@ -159,6 +205,9 @@ class ReviewSession:
 
     def result_view(self, exp) -> dict:
         """What the agent is told about a stored experiment: in-band first, then the impedance, every dip, the first series resonance."""
+        if getattr(exp, 'sim_kind', None):
+            from .boardsim import sim_result_view
+            return sim_result_view(self, exp)
         item = self.refs.get(exp.ref)
         values = (item['evidence']['values'] if item else {}) or {}
         out = {'ref': exp.ref, 'label': exp.label, 'kind': exp.kind, 'quality': exp.quality, 'trust': values.get('trust'), 'measurements': values.get('measurements'),
@@ -216,16 +265,48 @@ class ReviewSession:
     async def emit(self, kind: str, payload: dict) -> None:
         await self.ctx.emit(kind, payload)
 
+    def solver_progress(self, ref: str, sc_hash: str):
+        """The progress callback for one simulation, and a function to call when the simulation is over.
+
+        A simulation that waits for the solver behind other reviews pauses this review's wall clock (`BudgetTracker.begin_wait`) and says so in
+        the stream and in the lists; it resumes when the run starts, and always when the call ends, whatever way it ends."""
+        state = {'waiting': False}
+
+        async def set_waiting(waiting: bool) -> None:
+            if waiting == state['waiting']:
+                return
+            state['waiting'] = waiting
+            (self.budgets.begin_wait if waiting else self.budgets.end_wait)()
+            self.ctx.set_solver_wait(waiting)
+            await self.emit_budget()
+
+        async def progress(update: dict) -> None:
+            await set_waiting(update.get('phase') == 'waiting')
+            await self.emit('sim_progress', {'ref': ref, 'hash': sc_hash, **update})
+
+        async def done() -> None:
+            await set_waiting(False)
+
+        return progress, done
+
     async def emit_budget(self) -> None:
         snapshot = self.budgets.snapshot(self.phase)
         self.store.update_review(self.review_id, budget=snapshot)
         await self.emit('budget', snapshot)
 
     # ---- gate (called by the registry) ------------------------------------------------------
+    SIM_TOOLS = frozenset({'get_sim_inputs', 'set_sim_input', 'run_board_sim', 'compare_sims'})
+    RF_TOOLS = frozenset({'run_simulation', 'view_result', 'tune_matching', 'compare_results'})
+
+    def extent_filter(self, names: list[str]) -> list[str]:
+        """The tools this review's extent allows: the board-simulation tools only with a board simulation, the part tools only with datasheets, the antenna tools only with the antenna."""
+        return [n for n in names if not (n in self.SIM_TOOLS and not self.sim_kinds) and not (n == 'lookup_part' and not self.datasheets_on)
+                and not (n in self.RF_TOOLS and not self.antenna_on and self.sim_kinds)]
+
     def allowed_names(self) -> list[str]:
         if self.finished:
             return [n for n, d in self.tools.items() if d.free]
-        names = [n for n, d in self.tools.items() if self.phase in d.phases]
+        names = self.extent_filter([n for n, d in self.tools.items() if self.phase in d.phases])
         if self.phase == 5 and not self.refine.active:
             names = [n for n in names if n not in REFINE_ONLY_TOOLS]      # simulations come back only while a refine round is open
         return names

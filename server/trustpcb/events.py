@@ -9,7 +9,7 @@ import json
 
 # Review and follow-up events, plus the runner and session events.
 REVIEW_EVENTS = frozenset({
-    'phase_changed', 'budget', 'thought', 'candidate_batch', 'brief_ready', 'finding_upserted', 'marks_changed',
+    'queued', 'phase_changed', 'budget', 'thought', 'candidate_batch', 'brief_ready', 'finding_upserted', 'marks_changed',
     'spotlight', 'investigation_updated', 'suspect_updated', 'sim_queued', 'sim_progress', 'sim_done', 'report_ready',
 })
 FOLLOWUP_EVENTS = frozenset({

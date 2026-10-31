@@ -2,7 +2,7 @@
 import { useAppEnv } from "../../lib/demo";
 import "./workspace.css";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FIXTURE_MODE, getBoardBundle, getEvidenceByCode, getSnapshot, listRevisions, type BoardBundle } from "../../lib/api";
 import { changeByCode, headlineOf, screenVsConfirm, testsOf, versionChangeOf, type ChangeState, type Headline, type StoryRound, type StoryTest, type VersionChange } from "../../lib/story.mjs";
@@ -22,7 +22,9 @@ import { ChatDock, type SelectedChip } from "./Chat";
 import { Experiments, type Band } from "./Experiments";
 import { FindingsPanel } from "./Findings";
 import { simulationsNote } from "../../lib/rf-note.mjs";
+import { restartReview } from "../../lib/runs";
 import { RunProgress } from "./RunProgress";
+import { RunsList } from "./RunsList";
 import { Sidebar, VIEWS, type NavEntry, type ViewId } from "./Sidebar";
 import { Trail } from "./Trail";
 
@@ -33,6 +35,8 @@ const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 export function Workspace({ reviewId }: { reviewId: string }) {
   const { demo } = useAppEnv();
   const sp = useSearchParams();
+  const router = useRouter();
+  const [restarting, setRestarting] = useState<string | null>(null);
   const at = Number(sp.get("at") ?? 0) || 0;
   const rv = useReview(reviewId, { startAt: at, autoplay: sp.get("play") !== "0" });
   const { state, meta } = rv;
@@ -151,7 +155,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     : ["What did you not test?", "What should I check first?"];
   const running = state.status === "running";
   const canStop = state.status === "running" || state.followup.running;
-  const status = FIXTURE_MODE ? "Replay" : rv.stream === "retrying" ? "Reconnecting" : rv.stream === "error" ? "Offline" : state.status === "running" ? "Running" : state.status === "idle" ? "Loading" : state.endState === "interrupted" ? "Interrupted" : state.status === "canceled" ? "Stopped" : cap(state.status);
+  const status = FIXTURE_MODE ? "Replay" : rv.stream === "retrying" ? "Reconnecting" : rv.stream === "error" ? "Offline" : state.status === "running" ? (state.queue ? "Queued" : "Running") : state.status === "idle" ? "Loading" : state.endState === "interrupted" ? "Interrupted" : state.status === "canceled" ? "Stopped" : cap(state.status);
   const liveFindings = state.findingOrder.filter((id) => { const f = state.findings[id]; return f && f.status !== "dismissed" && f.status !== "superseded"; }).length;
   const hasResult = !!(story.headline || story.change);
   const shown: ViewId = view === "result" && !hasResult ? "findings" : view;
@@ -163,13 +167,13 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     { id: "chat", dot: pendingApproval },
   ];
   const goCode = (code: string) => { const f = state.findingOrder.map((id) => state.findings[id]).find((x) => x?.code === code); if (f) selectFinding(f.id); };
-  const progress = running ? <RunProgress phase={state.phase} budget={state.budget} budgetAt={state.budgetAt} solving={simsWorking} refine={state.refine} canStop={canStop} onStop={() => { void rv.stop(); }} /> : null;
+  const progress = running ? <RunProgress phase={state.phase} runner={meta?.runner} budget={state.budget} budgetAt={state.budgetAt} solving={simsWorking} sims={Object.values(state.sims).filter((x) => x.status !== "done")} refine={state.refine} canStop={canStop} onStop={() => { void rv.stop(); }} /> : null;
 
   const body = (
     <>
       {shown === "findings" && (
         <FindingsPanel
-          changes={story.changes} state={state} evidence={evidence} selectedId={selectedId} onSelect={selectFinding}
+          reviewId={reviewId} changes={story.changes} state={state} evidence={evidence} selectedId={selectedId} onSelect={selectFinding}
           onAsk={demo ? undefined : askFinding}
           onSetStatus={(id, st, reason) => { void rv.setFindingStatus(id, st, reason); if (st === "dismissed") setSelectedId(null); }}
         />
@@ -180,7 +184,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
           {story.headline && <PartialWin h={story.headline} onFinding={goCode} />}
         </div>
       )}
-      {shown === "investigation" && <Trail state={state} onSelectFinding={selectFinding} story={story.rounds} tests={story.tests} />}
+      {shown === "investigation" && <Trail state={state} runner={meta?.runner} onSelectFinding={selectFinding} story={story.rounds} tests={story.tests} />}
       {shown === "sims" && (
         <div className="ws-scroll">
           <Experiments state={state} reviewId={reviewId} band={band} rfNote={rfNote} jobs={rfs.jobs} source={rfs.source} />
@@ -188,7 +192,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
       )}
       {shown === "chat" && (
         <ChatDock
-          state={state} selected={sel} suggest={suggest} error={rv.error}
+          state={state} runner={meta?.runner} selected={sel} suggest={suggest} error={rv.error}
           onClearSel={(id) => { if (picked === id) setPicked(null); else setSelectedId(null); }}
           onSend={(t) => { void rv.send(t, sel.map((s): Selected => ({ id: s.id, type: s.type }))); setSeed(undefined); }}
           onDecide={(id, ok) => { void rv.decide(id, ok); }} busy={rv.sending} seed={seed}
@@ -230,12 +234,27 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     <div className="stage"><div className="stage-bg" aria-hidden /><div className="stage-loading idx">{boardError ?? (!meta ? rv.error : null) ?? "Loading the board"}</div></div>
   );
 
-  const banner = state.endState === "interrupted"
-    ? "This review was interrupted because the app restarted while it was running. Nothing after that point was done. Start a new review of this version to get a full report."
+  const interrupted = state.endState === "interrupted";
+  const restart = async () => {
+    setRestarting("");
+    try { const next = await restartReview(reviewId); router.push(`/reviews/${next.id}`); } catch (e) { setRestarting(e instanceof Error ? e.message : "The review could not be restarted."); }
+  };
+  const banner = interrupted
+    ? "This review was interrupted because the app stopped while it was running. What it had stored is kept. Restart it to run the review again: simulations that already finished are reused, so they cost no solver time."
+    : state.status === "running" && state.queue ? state.queue.message
     : state.status === "failed"
     ? `The review failed${state.failure ? `: ${state.failure}` : "."}`
     : state.status === "canceled" ? "The review was stopped. The report lists what was not done." : rv.stream === "retrying" ? "Connection to the local service dropped. Reconnecting." : null;
-  const notice = banner ?? state.notices.slice(-1)[0]?.text ?? null;
+  const noticeText = banner ?? state.notices.slice(-1)[0]?.text ?? null;
+  const notice = noticeText && (interrupted && !demo ? (
+    <>
+      {noticeText}
+      <div className="ws-notice-act">
+        <button className="btn sm primary" onClick={() => { void restart(); }} disabled={restarting === ""}><Icon name="rotate" size={13} /> Restart review</button>
+      </div>
+      {restarting ? <div>{restarting}</div> : null}
+    </>
+  ) : noticeText);
 
   const projectName = meta?.project_name ?? "Loading";
   const summary = meta ? `${meta.version_label}, ${cap(meta.depth ?? "")} review`.replace(", review", "") : "";
@@ -248,11 +267,13 @@ export function Workspace({ reviewId }: { reviewId: string }) {
           <p>{meta?.version_label ? `${meta.version_label}, ` : ""}{status.toLowerCase()}</p>
           <div className="ws-narrow-links">
             <Link className="btn sm ghost" href={`/reviews/${reviewId}/rf`}><Icon name="wave" size={13} /> RF lab</Link>
+            <Link className="btn sm ghost" href={`/reviews/${reviewId}/sim`}><Icon name="flame" size={13} /> Simulation lab</Link>
             {revision > 0 && <Link className="btn sm ghost" href={`/reviews/${reviewId}/report`}><Icon name="file" size={13} /> Report r{revision}</Link>}
             <DemoNotice />
           </div>
         </header>
         {progress}
+        <RunsList exclude={reviewId} />
         <div className="ws-stage">{stage}{replay}</div>
         <div className="pills ws-tabs" role="tablist" aria-label="Review views" onKeyDown={tablistKeys()}>
           {nav.map((n) => (

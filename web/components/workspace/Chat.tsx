@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { useAppEnv } from "../../lib/demo";
 import type { ReviewState } from "../../lib/review-reducer.mjs";
 import { Icon } from "../ui";
+import { AgentMark } from "../ui/AgentMark";
 
 export interface SelectedChip { id: string; label: string; type: "finding" | "object" }
 
-export function ChatDock({ state, selected, onClearSel, onSend, onDecide, busy, seed, error, suggest }: {
-  state: ReviewState; selected: SelectedChip[]; onClearSel: (id: string) => void; onSend: (t: string) => void;
+export function ChatDock({ state, runner, selected, onClearSel, onSend, onDecide, busy, seed, error, suggest }: {
+  state: ReviewState; /** the runner that wrote this review and its answers */ runner?: string | null; selected: SelectedChip[]; onClearSel: (id: string) => void; onSend: (t: string) => void;
   onDecide: (id: string, ok: boolean) => void; busy: boolean; seed?: string; error?: string | null; suggest: string[];
 }) {
   const { demo, repoUrl } = useAppEnv();          // the read-only demo refuses chat: it shows the recorded conversation and no composer
@@ -31,14 +32,17 @@ export function ChatDock({ state, selected, onClearSel, onSend, onDecide, busy, 
         )}
         {f.messages.map((m) => (
           <div key={m.id} className={`msg ${m.role}${m.narration ? " narration" : ""}`}>
-            <span className="idx">{m.role === "user" ? "You" : m.narration ? "Working" : `Agent${f.level ? `, ${f.level}` : ""}`}</span>
+            <span className="idx am-row">
+              {m.role !== "user" && !m.error && <AgentMark runner={runner} kind={m.narration ? "wrote" : "answered"} />}
+              {m.role === "user" ? "You" : m.narration ? "Working" : `Agent${f.level ? `, ${f.level}` : ""}`}
+            </span>
             <p style={m.error ? { color: "var(--sev-high)" } : { whiteSpace: "pre-wrap" }}>{m.text}</p>
             {m.selected && m.selected.length > 0 && <div className="chat-chips">{m.selected.map((s) => (<span className="stamp" key={s}>{s}</span>))}</div>}
           </div>
         ))}
         {f.proposal && (
           <div className="proposal">
-            <span className="idx">Proposed test, needs your approval</span>
+            <span className="idx am-row"><AgentMark runner={runner} kind="wrote" />Proposed test, needs your approval</span>
             <p><b>{f.proposal.what}</b></p>
             <p className="dim">{f.proposal.why}{f.proposal.eta_s ? <>. About <span className="num">{Math.max(1, Math.round(f.proposal.eta_s / 60))}</span> min of solver time.</> : null}</p>
             {f.proposal.status === "pending" && f.proposal.request_id ? (
@@ -48,7 +52,7 @@ export function ChatDock({ state, selected, onClearSel, onSend, onDecide, busy, 
         )}
         {others.map((r) => (
           <div key={r.request_id} className="proposal">
-            <span className="idx">{r.kind === "permission" ? "Permission required" : "The agent asks"}</span>
+            <span className="idx am-row">{r.kind !== "permission" && <AgentMark runner={runner} kind="wrote" />}{r.kind === "permission" ? "Permission required" : "The agent asks"}</span>
             <p><b>{String(r.payload.title ?? r.payload.tool_name ?? r.payload.question ?? r.payload.message ?? r.kind)}</b></p>
             {r.payload.description || r.payload.why ? <p className="dim">{String(r.payload.description ?? r.payload.why)}</p> : null}
             {r.kind === "permission" ? (
@@ -88,7 +92,7 @@ export function ChatDock({ state, selected, onClearSel, onSend, onDecide, busy, 
             />
             <button className="btn primary" onClick={submit} disabled={locked || f.running || busy || !text.trim()}><Icon name="send" size={14} /> Send</button>
           </div>
-          <div className="idx chat-foot">{locked ? "Chat opens when the review finishes." : waiting ? <span className="blink">Waiting for your approval</span> : busy || f.running ? <span className="blink">Running</span> : "Answer, check or test. A test needs your approval."}</div>
+          <div className="idx chat-foot">{locked ? "Chat opens when the review finishes." : waiting ? <span className="am-row"><AgentMark runner={runner} kind="working" />Waiting for your approval</span> : busy || f.running ? <span className="am-row"><AgentMark runner={runner} kind="working" /><span className="blink">Running</span></span> : "Answer, check or test. A test needs your approval."}</div>
         </div>
       )}
     </div>

@@ -99,6 +99,11 @@ class Pad(_Base):
     ring: list[list[float]]
     type: str = "smd"
     uuid: str = ""
+    #: custom-shaped pads only: the whole copper shape as polygons, each ``[exterior, hole, hole ...]`` (``ring`` keeps the
+    #: exterior of the largest part for drawing). Not part of ``to_dict``; the RF model reads it.
+    polys: list[list[list[list[float]]]] | None = None
+
+    _exclude = ("polys",)
 
 
 @dataclass
@@ -563,8 +568,10 @@ class _Parser:
         edge_rings: list[list[tuple[float, float]]] = []
         ref_seen: dict[str, int] = {}
 
-        for node in findall(root, "footprint"):
-            self.parse_footprint(node, footprints, pads, graphics, texts, edge_polylines, edge_rings, ref_seen)
+        # KiCad 4 and 5 name a footprint ``module``; the contents read the same way
+        for node in root:
+            if node.__class__ is list and node and node[0] in ("footprint", "module"):
+                self.parse_footprint(node, footprints, pads, graphics, texts, edge_polylines, edge_rings, ref_seen)
         for node in root:
             if node.__class__ is list and node and node[0].startswith("gr_"):
                 self.parse_graphic(node, None, None, graphics, texts, edge_polylines, edge_rings)
@@ -758,6 +765,7 @@ class _Parser:
         net = self.net_of(pn)
         uuid = self.uid(pn)
         ring = self.pad_ring(pn, shape, px, py, w, h, pangle)
+        polys = self.custom_pad_polys(pn, px, py, w, h, pangle) if shape == "custom" else None
         if number == "":
             ident = f"pad:{ref}:~{index}"
         else:
@@ -765,7 +773,7 @@ class _Parser:
             ident = f"pad:{ref}:{number}" if used[number] == 1 else f"pad:{ref}:{number}#{used[number]}"
         if uuid:
             self.uuid_index[uuid] = ident
-        return Pad(ident, ref, number, net, px, py, w, h, pangle, shape, layers, drill, ring, ptype, uuid)
+        return Pad(ident, ref, number, net, px, py, w, h, pangle, shape, layers, drill, ring, ptype, uuid, polys)
 
     def pad_ring(self, pn: Node, shape: str, px: float, py: float, w: float, h: float, angle: float) -> list[list[float]]:
         if shape == "circle":
@@ -781,7 +789,8 @@ class _Parser:
                 return ring
         return geom.rect_ring(px, py, w, h, angle)
 
-    def custom_pad_ring(self, pn: Node, px: float, py: float, w: float, h: float, angle: float) -> list[list[float]] | None:
+    def custom_pad_geometry(self, pn: Node, w: float, h: float):
+        """The copper of a custom pad in pad-local coordinates as a shapely geometry (holes and arcs kept), or None."""
         try:
             from shapely.geometry import LineString, Point, Polygon, box
             from shapely.ops import unary_union
@@ -797,36 +806,74 @@ class _Parser:
                 continue
             tag = prim[0]
             width = num(prim, "width", 0.0) or 0.0
+            filled = self.is_filled(prim) if tag in ("gr_poly", "gr_rect", "gr_circle") else True
             try:
                 if tag == "gr_poly":
                     pts = self.read_pts(find(prim, "pts"))
                     if len(pts) >= 3:
                         poly = Polygon(pts)
-                        shapes.append(poly.buffer(width / 2) if width else poly)
+                        if not poly.is_valid:
+                            poly = poly.buffer(0)
+                        if filled:
+                            shapes.append(poly.buffer(width / 2) if width else poly)
+                        else:  # an outline only: a stroke along the boundary
+                            shapes.append(LineString(list(pts) + [pts[0]]).buffer(max(width, 0.001) / 2))
                 elif tag == "gr_line":
                     a, b = find(prim, "start"), find(prim, "end")
                     shapes.append(LineString([(float(a[1]), float(a[2])), (float(b[1]), float(b[2]))]).buffer(max(width, 0.001) / 2))
                 elif tag == "gr_circle":
                     c, e = find(prim, "center"), find(prim, "end")
                     r = math.hypot(float(e[1]) - float(c[1]), float(e[2]) - float(c[2]))
-                    shapes.append(Point(float(c[1]), float(c[2])).buffer(r + width / 2, 16))
+                    disc = Point(float(c[1]), float(c[2])).buffer(r + width / 2, 16)
+                    if not filled and r > width / 2:  # a ring
+                        disc = disc.difference(Point(float(c[1]), float(c[2])).buffer(r - width / 2, 16))
+                    shapes.append(disc)
                 elif tag == "gr_rect":
                     a, b = find(prim, "start"), find(prim, "end")
-                    shapes.append(box(float(a[1]), float(a[2]), float(b[1]), float(b[2])).buffer(width / 2))
+                    rect = box(min(float(a[1]), float(b[1])), min(float(a[2]), float(b[2])), max(float(a[1]), float(b[1])), max(float(a[2]), float(b[2])))
+                    if filled:
+                        shapes.append(rect.buffer(width / 2))
+                    else:
+                        shapes.append(LineString(list(rect.exterior.coords)).buffer(max(width, 0.001) / 2))
                 elif tag == "gr_arc":
                     s, m, e = find(prim, "start"), find(prim, "mid"), find(prim, "end")
-                    pts = geom.arc_points((float(s[1]), float(s[2])), (float(m[1]), float(m[2])), (float(e[1]), float(e[2])))
+                    if m is not None:
+                        pts = geom.arc_points((float(s[1]), float(s[2])), (float(m[1]), float(m[2])), (float(e[1]), float(e[2])))
+                    else:  # older files give centre, start and angle
+                        pts = [(float(s[1]), float(s[2])), (float(e[1]), float(e[2]))]
                     shapes.append(LineString(pts).buffer(max(width, 0.001) / 2))
             except (TypeError, ValueError, IndexError):
                 logger.debug("Skipping a malformed copper outline in the board", exc_info=True)
                 continue
         merged = unary_union(shapes)
-        if merged.is_empty:
+        return None if merged.is_empty else merged
+
+    def custom_pad_ring(self, pn: Node, px: float, py: float, w: float, h: float, angle: float) -> list[list[float]] | None:
+        merged = self.custom_pad_geometry(pn, w, h)
+        if merged is None:
             return None
         if merged.geom_type == "MultiPolygon":
             merged = max(merged.geoms, key=lambda g: g.area)
+        if merged.geom_type != "Polygon":
+            return None
         ring = [[x, y] for x, y in list(merged.exterior.coords)[:-1]]
         return [[px + rx, py + ry] for rx, ry in (geom.rotate(x, y, angle) for x, y in ring)]
+
+    def custom_pad_polys(self, pn: Node, px: float, py: float, w: float, h: float, angle: float):
+        """The whole custom pad copper in board coordinates: ``[[exterior, hole ...], ...]``, or None."""
+        merged = self.custom_pad_geometry(pn, w, h)
+        if merged is None:
+            return None
+        out = []
+        for poly in getattr(merged, "geoms", [merged]):
+            if poly.geom_type != "Polygon" or poly.is_empty:
+                continue
+            rings = []
+            for r in [poly.exterior, *poly.interiors]:
+                pts = [[x, y] for x, y in list(r.coords)[:-1]]
+                rings.append([[px + rx, py + ry] for rx, ry in (geom.rotate(x, y, angle) for x, y in pts)])
+            out.append(rings)
+        return out or None
 
     @staticmethod
     def courtyard_ring(lines, rings) -> list[list[float]] | None:
@@ -881,7 +928,8 @@ class _Parser:
         f = find(node, "fill")
         if f is not None:
             return len(f) > 1 and f[1] in ("yes", "solid", "true")
-        return False
+        # KiCad 5 and older write no fill entry on a polygon: it is always filled (the width is its outline stroke)
+        return bool(node) and node[0] in ("fp_poly", "gr_poly")
 
     def shape_geometry(self, node: Node, to_abs, polylines: list, rings: list) -> None:
         """Turn a ``gr_*``/``fp_*`` shape into absolute polylines (open) or rings (closed)."""
@@ -1101,9 +1149,30 @@ class _Parser:
 
     # ---- net classes from the project file
     def net_classes(self):
-        classes = self.project.get("net_settings", {}) if isinstance(self.project, dict) else {}
-        patterns = [(p.get("pattern", ""), p.get("netclass", "Default")) for p in classes.get("netclass_patterns", []) if isinstance(p, dict)]
-        assignments = classes.get("netclass_assignments") or {}
+        """A function net name -> class name.
+
+        Three layouts are read, the project file's assignments first:
+
+        * KiCad 7 and later: ``net_settings.netclass_assignments`` (net -> class or list) and ``netclass_patterns``;
+        * KiCad 6: each entry of ``net_settings.classes`` carries a ``nets`` list of its own nets;
+        * KiCad 5 and older boards: ``(net_class Name ... (add_net "X"))`` blocks in the board file.
+        """
+        settings = self.project.get("net_settings", {}) if isinstance(self.project, dict) else {}
+        settings = settings if isinstance(settings, dict) else {}
+        patterns = [(p.get("pattern", ""), p.get("netclass", "Default")) for p in settings.get("netclass_patterns", []) if isinstance(p, dict)]
+        assignments = settings.get("netclass_assignments") or {}
+        member: dict[str, str] = {}
+        for node in findall(self.root, "net_class"):  # oldest layout: the board file holds the classes
+            if len(node) < 2:
+                continue
+            for add in findall(node, "add_net"):
+                if len(add) > 1:
+                    member[str(add[1])] = str(node[1])
+        for c in settings.get("classes") or []:  # KiCad 6 layout: nets listed on the class (these win over the board file)
+            if isinstance(c, dict) and c.get("name") and isinstance(c.get("nets"), list):
+                for n in c["nets"]:
+                    if isinstance(n, str):
+                        member[n] = str(c["name"])
 
         def lookup(name: str) -> str:
             value = assignments.get(name) if isinstance(assignments, dict) else None
@@ -1111,10 +1180,12 @@ class _Parser:
                 return value
             if isinstance(value, list) and value:
                 return str(value[0])
+            if name in member and member[name] != "Default":
+                return member[name]
             for pat, cls in patterns:
                 if fnmatch.fnmatchcase(name, pat):
                     return cls
-            return "Default"
+            return member.get(name, "Default")
 
         return lookup
 

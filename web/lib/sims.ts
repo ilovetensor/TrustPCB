@@ -9,6 +9,7 @@
 import { apiGet } from "./live";
 import { decodePulseFrames } from "./pulse-codec.mjs";
 import type { CurrentData, FieldSlice, PatternData, PulseData, S11Data, ZinData } from "./rf-data";
+import { isBoardRow } from "./board-sim-model.mjs";
 import { acceptedFromCurve, acceptedOf, findDips, measurementsOfSummary } from "./sim-math.mjs";
 export { acceptedFromCurve, acceptedOf, acceptedPct, bestRun, boardYRange, describeFreq, describeOps, findDips, fixedDipsMhz, fmtPct, isFixedDip, measurementsOfSummary, pickStageJob, sameGeometry, zFromGamma } from "./sim-math.mjs";
 export type { Dip } from "./sim-math.mjs";
@@ -34,7 +35,8 @@ export interface SimSource {
 }
 
 const liveFileUrl = (job: SimJob, name: string) => `/api/sim/${encodeURIComponent(job.job_id)}/files/${name}`;
-export const listSims = (reviewId: string) => apiGet<SimJob[]>(`reviews/${reviewId}/sims`);
+// the list also carries power, heat and signal runs (lib/board-sims.ts); the RF lab shows only the solver jobs
+export const listSims = (reviewId: string) => apiGet<SimJob[]>(`reviews/${reviewId}/sims`).then((rows) => rows.filter((r) => !isBoardRow(r)));
 export const liveSource = (reviewId: string, jobs: SimJob[]): SimSource => ({ id: `review:${reviewId}`, jobs, fileUrl: liveFileUrl });
 
 /** Jobs a viewer can look at: finished with at least the tuning curve. */

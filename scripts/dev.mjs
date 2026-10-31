@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import net from 'node:net';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 if (existsSync(path.join(root, '.env'))) process.loadEnvFile(path.join(root, '.env'));
@@ -27,6 +27,19 @@ try {
   console.error(error.message);
   process.exit(1);
 }
+
+// One backend per data folder: the backend refuses to share a folder with a running one (its lock file holds the owner's pid), so say so here
+// before anything starts, in plain words, instead of letting the second backend fail after the web app is up.
+const dataDir = path.resolve(root, process.env.TRUSTPCB_DATA_DIR || '.trustpcb');
+try {
+  const owner = JSON.parse(readFileSync(path.join(dataDir, 'trustpcb.lock'), 'utf8'));
+  let alive = false;
+  try { process.kill(owner.pid, 0); alive = true; } catch (error) { alive = error.code === 'EPERM'; }
+  if (alive && owner.pid !== process.pid) {
+    console.error(`Another TrustPCB (process ${owner.pid}, started ${owner.started}) is already using the data folder ${dataDir}.\nStop it first, or start this one with TRUSTPCB_DATA_DIR set to a different folder.\nIf that process is not TrustPCB, delete ${path.join(dataDir, 'trustpcb.lock')}.`);
+    process.exit(1);
+  }
+} catch { /* no lock file, or an empty one: the folder is free */ }
 
 const env = {
   ...process.env,

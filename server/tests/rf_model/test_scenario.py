@@ -64,7 +64,7 @@ def test_job_files_and_y_flip(nrf_job, nrf_setup):
     assert max(ys) <= 0.01 and min(ys) < -40  # board y is negated
     assert sc["port"]["start"][1] == pytest.approx(-nrf_setup.port_xy[1])
     assert sc["port"]["start"][2] == 0 and sc["port"]["end"][2] == pytest.approx(1.565)
-    assert sc["threads"] <= 6
+    assert sc["threads"] == S.default_threads() <= 4
     assert meta["y_convention"]["scenario_y"] == "-board_y"
 
 
@@ -139,3 +139,23 @@ def test_whatif_models_still_meet_the_mesh_rule(nrf_board, nrf_setup, tmp_path, 
     S.build_job(nrf_board, nrf_setup, S.scenario_for(nrf_board, nrf_setup, "screen", ops), tmp_path, debug_png=False)
     rep = S.load_meta(tmp_path)["mesh"]
     assert rep["rule_ok"], rep["rule_reasons"]
+
+
+def test_default_threads_leave_cpus_free_and_can_be_set(monkeypatch):
+    monkeypatch.delenv("TRUSTPCB_EMS_THREADS", raising=False)
+    assert [S.default_threads(n) for n in (1, 2, 4, 8, 14, 64)] == [1, 1, 2, 4, 4, 4]
+    monkeypatch.setenv("TRUSTPCB_EMS_THREADS", "8")
+    assert S.default_threads(14) == 8 and S.default_threads(4) == 3 and S.default_threads(1) == 1   # never every CPU
+    monkeypatch.setenv("TRUSTPCB_EMS_THREADS", "nonsense")
+    assert S.default_threads(14) == 4
+
+
+def test_thread_count_is_not_part_of_the_cache_key(nrf_board, nrf_setup, tmp_path):
+    sc = S.scenario_for(nrf_board, nrf_setup, "screen")
+    a, b = tmp_path / "a", tmp_path / "b"
+    S.build_job(nrf_board, nrf_setup, sc, a, threads=1, debug_png=False)
+    S.build_job(nrf_board, nrf_setup, sc, b, threads=4, debug_png=False)
+    ja, jb = json.loads((a / "scenario.json").read_text()), json.loads((b / "scenario.json").read_text())
+    assert (ja["threads"], jb["threads"]) == (1, 4)
+    assert {k: v for k, v in ja.items() if k != "threads"} == {k: v for k, v in jb.items() if k != "threads"}   # the solver input differs only in threads
+    assert "threads" not in json.dumps(sc.to_dict()) and sc.hash() == S.scenario_for(nrf_board, nrf_setup, "screen").hash()

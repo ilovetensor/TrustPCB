@@ -53,6 +53,8 @@ def confirm_text(conf: dict, target_db: float | None = None, *, label: str = '')
     base, best = conf.get('base') or {}, conf.get('best') or {}
     target = f'the {target_db:g} dB target' if target_db is not None else 'the target'
     head = f'{label}Confirm run (simulated): {_outcome_phrase(conf)}.'
+    if conf.get('headline_text'):          # a board simulation (power, thermal, signal): its own numbers, written by code from the stored comparison
+        return f'{head} {conf["headline_text"]}'
     if base.get('band_worst_s11_db') is not None and best.get('band_worst_s11_db') is not None:
         gain = conf.get('best_gain_db')
         return (f'{head} Worst in-band S11 goes from {base["band_worst_s11_db"]} dB ({conf.get("base_evidence") or "base"}) to {best["band_worst_s11_db"]} dB ({best.get("evidence") or "best candidate"})'
@@ -172,4 +174,9 @@ def add_caveats(entry: dict) -> dict:
 
 def entries(store, review_id: str, target_db: float | None = None) -> list[dict]:
     """The investigations of a review as the report shows them: screen text kept as history, the confirm result as the conclusion."""
-    return [add_caveats(restate_entry(entry_from_rows(store, inv, index), target_db)) for index, inv in enumerate(store.list_investigations(review_id), start=1)]
+    out = []
+    for index, inv in enumerate(store.list_investigations(review_id), start=1):
+        entry = entry_from_rows(store, inv, index)
+        sim_kind = (entry['outcome'] or {}).get('sim_kind') if isinstance(entry.get('outcome'), dict) else None
+        out.append(add_caveats(restate_entry(entry, None if sim_kind else target_db)))
+    return out

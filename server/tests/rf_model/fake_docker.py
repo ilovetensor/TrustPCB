@@ -19,6 +19,8 @@ job = Path(vol)
 mode = os.environ.get("FAKE_DOCKER_MODE", "ok")
 (state / "last_cmd.json").write_text(json.dumps(args))
 (state / "running").write_text(name)
+with open(state / "started.log", "a") as log:        # the order in which jobs reached the solver (job folder name)
+    log.write(job.name + "\n")
 prog = job / "progress.jsonl"
 prog.write_text(json.dumps({"t": 0, "phase": "setup"}) + "\n")
 for i in range(1, 6):
@@ -26,7 +28,7 @@ for i in range(1, 6):
         sys.exit(137)
     with open(prog, "a") as f:
         f.write(json.dumps({"t": i, "phase": "solve", "timestep": i * 1000, "max_timesteps": 10000, "energy_db": -8.0 * i}) + "\n")
-    time.sleep(0.4 if mode != "hang" else 30)
+    time.sleep(float(os.environ.get("FAKE_DOCKER_STEP", "0.4")) if mode != "hang" else 30)
 if mode == "fail":
     (job / "result.json").write_text(json.dumps({"error": "boom", "trust": {"status": "fail", "reasons": ["worker error: boom"]}}))
     sys.exit(1)

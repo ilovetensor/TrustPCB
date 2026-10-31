@@ -10,7 +10,9 @@ request arrives:
       single non-zip file). May be sync or async. Raise ValueError for a bad upload (HTTP 422).
       Return None, or a dict of versions fields to store (status, stackup, detection, label).
       The temporary upload folder is deleted after the call, so copy what you keep.
-  trustpcb.review.service.start_review(*, store, manager, version_id, goal, depth) -> dict
+  trustpcb.review.service.start_review(*, store, manager, version_id, goal, depth, extent) -> dict
+  trustpcb.review.extent_api.extent_options(*, store, version_id) -> dict
+  trustpcb.review.service.restart_review(*, store, manager, review_id) -> dict
   trustpcb.review.sims.list_sims(*, store, review_id) -> list
   trustpcb.review.followup.start_thread(*, store, manager, review_id, body) -> dict
   trustpcb.review.followup.send_message(*, store, manager, thread_id, text, selected, request_id) -> dict
@@ -40,6 +42,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from pydantic import BaseModel, Field
 from python_multipart.multipart import MultipartParser, parse_options_header
 
+from . import settings_store
+from .datalock import DataFolderInUse, DataLock
 from .events import KEEPALIVE_SECONDS, POLL_SECONDS, sse_events
 from .sessions import SessionConflict, SessionManager
 from .storage import Store
@@ -105,6 +109,7 @@ class ProjectBody(BaseModel):
 class ReviewBody(BaseModel):
     goal: dict = Field(default_factory=dict)
     depth: str = Field(default='standard', max_length=40)
+    extent: list[str] | None = Field(default=None, max_length=12)       # the checks chosen at the start (layout, antenna, power, thermal, signal, datasheets); omitted means the default
 
 
 class ThreadBody(BaseModel):
@@ -120,6 +125,10 @@ class MessageBody(BaseModel):
 class ResponseBody(BaseModel):
     answers: dict[str, str] | None = None
     allow: bool | None = None
+
+
+class KeyBody(BaseModel):
+    value: str = Field(min_length=1, max_length=settings_store.MAX_VALUE_CHARS)
 
 
 class FindingPatch(BaseModel):
@@ -278,7 +287,8 @@ def install_real_lab(store):
         return None
     from .review.lab_real import RealLab
     lab = RealLab(store)
-    lab.queue.recover_interrupted()
+    if lab.queue.owns_data_dir():
+        lab.queue.recover_interrupted()
     service.CONFIG.lab = lab
     return lab
 
@@ -296,13 +306,28 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
 
     @asynccontextmanager
     async def lifespan(app):
-        store = Store(data_dir if data_dir is not None else default_data_dir())
-        store.recover_interrupted()
+        folder = data_dir if data_dir is not None else default_data_dir()
+        # One backend per data folder. The owner alone may mark unfinished work interrupted and stop leftover solver containers;
+        # a second backend on the same folder is refused, so it can never stop the first one's solver or touch its running reviews.
+        # The read-only demo only reads a finished folder, so it needs no lock and changes nothing.
+        lock = None
+        if not demo_readonly():
+            lock = DataLock(folder, port=BACKEND_PORT)
+            try:
+                lock.acquire()
+            except DataFolderInUse as exc:
+                logger.error('%s', exc)
+                raise
+        store = Store(folder)
+        if lock is not None:
+            store.recover_interrupted()
         manager = SessionManager(store, runner_factory=runner_factory)
         app.state.store = store
         app.state.manager = manager
+        app.state.lock = lock
+        settings_store.configure(folder)
         lab = install_real_lab(store)
-        if lab is not None:
+        if lab is not None and lock is not None:
             killed = await lab.queue.kill_orphans()
             if killed:
                 logger.warning('Stopped %d solver container(s) an earlier run left behind.', killed)
@@ -311,9 +336,13 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
             yield
         finally:
             check.cancel()
-            await manager.shutdown()
-            if lab is not None:
-                await uninstall_real_lab(lab)
+            try:
+                await manager.shutdown()        # runs end as interrupted (not stopped), without a report: the app stopping is not a user pressing Stop
+                if lab is not None:
+                    await uninstall_real_lab(lab)    # stops the running solver container; finished simulations stay cached
+            finally:
+                if lock is not None:
+                    lock.release()
 
     app = FastAPI(title='TrustPCB', lifespan=lifespan)
     app.state.token = launch_token
@@ -386,7 +415,23 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
             media_type='text/event-stream', headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
     def review_summary(review):
-        return {**review, 'counts': store().severity_counts(review['id']), 'chat_status': (store().get_chat(review['chat_id']) or {}).get('status')}
+        return {**review, 'counts': store().severity_counts(review['id']), 'chat_status': (store().get_chat(review['chat_id']) or {}).get('status'),
+                'live': manager().run_info(review['chat_id'])}
+
+    def live_runs() -> list[dict]:
+        """Every review that is running or waiting for a review slot right now, with where to open it."""
+        rows = []
+        for turn in list(manager().turns.values()):
+            review = store().get_review_by_chat(turn.chat_id)
+            if review is None:               # a follow-up thread, not a review
+                continue
+            info = manager().run_info(turn.chat_id) or {}
+            project, version = store().get_project(review['project_id']) or {}, store().get_version(review['version_id']) or {}
+            rows.append({'review_id': review['id'], 'project_id': review['project_id'], 'project_name': project.get('name'), 'version_id': review['version_id'],
+                         'version_label': version.get('label') or f"v{version.get('number', '')}", 'depth': review['depth'], 'extent': review.get('extent'), 'phase': review['phase'], 'started_at': review['created_at'],
+                         'state': info.get('state', 'running'), 'position': info.get('position'), 'waiting_for_solver': bool(info.get('waiting_for_solver'))})
+        rows.sort(key=lambda r: (r['state'] == 'queued', r['position'] or 0, r['started_at']))
+        return rows
 
     # ---- health, bootstrap ------------------------------------------------------------
 
@@ -403,9 +448,37 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
         except Exception as exc:  # an unusable default must not break the page
             logger.warning('The default runner profile cannot be used: %s', exc, exc_info=True)
             profile = {'name': None, 'error': str(exc)[:300]}
-        return {'projects': store().list_projects(), 'profile': profile,
+        return {'projects': store().list_projects(), 'profile': profile, 'max_reviews': manager().max_reviews,
                 'runners': {name: available(name) for name in profile_names()}, 'max_upload_bytes': MAX_UPLOAD_BYTES,
                 'kicad': await kicad_status(), 'demo_readonly': demo_readonly(), 'repo_url': os.getenv('TRUSTPCB_REPO_URL') or None}
+
+    # ---- optional service keys (write-only: a value is never returned) -----------------
+
+    def key_rows() -> list[dict]:
+        status = settings_store.secret_status()
+        return [{'name': name, 'service': info['service'], 'label': info['label'], 'get_url': info['url'], **status[name]}
+                for name, info in settings_store.KEYS.items()]
+
+    @app.get('/api/settings/keys')
+    async def key_settings():
+        if demo_readonly():                       # a public demo shows nothing about the owner's keys
+            return {'read_only': True, 'keys': [], 'parts_available': False}
+        from .parts import available
+        return {'read_only': False, 'keys': key_rows(), 'parts_available': available()}
+
+    @app.put('/api/settings/keys/{name}')
+    async def put_key(name: str, body: KeyBody):
+        if name not in settings_store.KEYS:
+            raise HTTPException(404, 'Unknown key name')
+        await asyncio.to_thread(settings_store.set_secret, name, body.value)
+        return {'keys': key_rows()}
+
+    @app.delete('/api/settings/keys/{name}')
+    async def delete_key(name: str):
+        if name not in settings_store.KEYS:
+            raise HTTPException(404, 'Unknown key name')
+        await asyncio.to_thread(settings_store.clear_secret, name)
+        return {'keys': key_rows()}
 
     # ---- projects and versions --------------------------------------------------------
 
@@ -415,7 +488,19 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
 
     @app.get('/api/projects')
     async def list_projects():
-        return [{**project, 'version_count': len(store().list_versions(project['id']))} for project in store().list_projects()]
+        running: dict[str, int] = {}
+        for run in live_runs():
+            running[run['project_id']] = running.get(run['project_id'], 0) + 1
+        return [{**project, 'version_count': len(store().list_versions(project['id'])), 'live_reviews': running.get(project['id'], 0)} for project in store().list_projects()]
+
+    @app.get('/api/runs')
+    async def runs():
+        """Reviews running or waiting for a slot, for the sidebar, the Projects page and the Project page. Cheap to poll."""
+        lab = getattr(importlib.import_module('trustpcb.review.service'), 'CONFIG').lab
+        queue = getattr(lab, 'queue', None)
+        solver = queue.snapshot() if queue is not None and hasattr(queue, 'snapshot') else None
+        return {'limit': manager().max_reviews, 'working': manager().working_reviews(), 'waiting': len(manager().waiting), 'runs': live_runs(),
+                'solver': solver and {'running_review': (solver['running'] or {}).get('review_id'), 'waiting': len(solver['waiting'])}}
 
     @app.get('/api/projects/{id}')
     async def get_project(id: str):
@@ -473,14 +558,27 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     async def get_version(id: str):
         version = found(store().get_version(id), 'Version')
         artifacts = store().list_artifacts('version', id)
-        return {**version, 'artifacts': [{key: item[key] for key in ('id', 'type', 'mime', 'size', 'meta')} | {'url': f"/api/artifacts/{item['id']}"} for item in artifacts],
+        sims_available = {}
+        if version.get('status') != 'failed':
+            try:
+                sims_available = await call_hook(hook('trustpcb.review.extent_api', 'sims_available'), store=store(), version_id=id)
+            except Exception:
+                logger.warning('Version %s: the board simulations could not be checked for the version page', id, exc_info=True)
+        return {**version, 'sims_available': sims_available, 'artifacts': [{key: item[key] for key in ('id', 'type', 'mime', 'size', 'meta')} | {'url': f"/api/artifacts/{item['id']}"} for item in artifacts],
                 'reviews': [review_summary(review) for review in store().list_reviews(version_id=id)]}
+
+    @app.get('/api/versions/{id}/extent')
+    async def review_extent_options(id: str):
+        """What this board offers at review start: each check with whether it is available (and why not) and the default choice."""
+        found(store().get_version(id), 'Version')
+        function = hook('trustpcb.review.extent_api', 'extent_options')
+        return await call_hook(function, store=store(), version_id=id)
 
     @app.post('/api/versions/{id}/reviews')
     async def start_review(id: str, body: ReviewBody):
         found(store().get_version(id), 'Version')
         function = hook('trustpcb.review.service', 'start_review')
-        return await call_hook(function, store=store(), manager=manager(), version_id=id, goal=body.goal, depth=body.depth)
+        return await call_hook(function, store=store(), manager=manager(), version_id=id, goal=body.goal, depth=body.depth, extent=body.extent)
 
     # ---- reviews ----------------------------------------------------------------------
 
@@ -495,6 +593,39 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
         review_row(id)
         function = hook('trustpcb.review.sims', 'list_sims')
         return await call_hook(function, store=store(), review_id=id)
+
+    @app.get('/api/reviews/{id}/sims/{run}')
+    async def sim_run(id: str, run: str):
+        """One board-simulation run of this review with its result, by run id. Read only."""
+        from .review.sims import RUN_HASH, board_run
+        review_row(id)
+        if not RUN_HASH.fullmatch(run):
+            raise HTTPException(404, 'Not a simulation run')
+        return found(board_run(store(), id, run), 'Simulation run')
+
+    @app.get('/api/reviews/{id}/sims/{run}/overlay/{oid}')
+    async def sim_overlay(id: str, run: str, oid: str):
+        """One overlay raster of a board-simulation run of this review: float32 little-endian [ny, nx], NaN where nothing exists. Read only."""
+        from .review.sims import board_run_folder, overlay_file
+        review_row(id)
+        folder = board_run_folder(store(), id, run)
+        path = overlay_file(folder, oid) if folder else None
+        if path is None:
+            raise HTTPException(404, 'Overlay is not available')
+        return FileResponse(path, media_type='application/octet-stream', headers={
+            'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=3600', 'Content-Security-Policy': "sandbox; default-src 'none'"})
+
+    @app.get('/api/reviews/{id}/sims/{run}/curve/{name}')
+    async def sim_curve(id: str, run: str, name: str):
+        """A curve file (JSON) that a board simulation stored next to its result."""
+        from .review.sims import board_run_folder, curve_file
+        review_row(id)
+        folder = board_run_folder(store(), id, run)
+        path = curve_file(folder, name) if folder else None
+        if path is None:
+            raise HTTPException(404, 'Curve is not available')
+        return FileResponse(path, media_type='application/json', headers={
+            'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=3600', 'Content-Security-Policy': "sandbox; default-src 'none'"})
 
     @app.get('/api/sim/{job_id}/files/{name}')
     async def sim_file(job_id: str, name: str):
@@ -522,6 +653,13 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     @app.post('/api/reviews/{id}/cancel')
     async def cancel_review(id: str):
         return await manager().cancel(review_row(id)['chat_id'])
+
+    @app.post('/api/reviews/{id}/restart')
+    async def restart_review(id: str):
+        """Run an interrupted review again: a new review of the same version, goal and depth, which reuses every stored simulation."""
+        review_row(id)
+        function = hook('trustpcb.review.service', 'restart_review')
+        return await call_hook(function, store=store(), manager=manager(), review_id=id)
 
     @app.post('/api/reviews/{id}/threads')
     async def start_thread(id: str, body: ThreadBody):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from . import evidence as ev
@@ -26,6 +27,100 @@ def job_folder(store, job: dict | None) -> Path | None:
         return path
     moved = (root / path.name).resolve()
     return moved if moved.is_relative_to(root) and moved.is_dir() and moved.name == path.name else None
+
+
+RUN_HASH = re.compile(r'^[0-9a-f]{20}$')
+FILE_NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,59}$')
+BOARD_MEDIA = {'.bin': 'application/octet-stream', '.json': 'application/json'}
+
+
+def board_run_folder(store, review_id: str, run: str) -> Path | None:
+    """The folder of one board-simulation run when it belongs to this review and lies directly inside the data folder's sims directory. Nothing else is ever served."""
+    if not RUN_HASH.fullmatch(run or ''):
+        return None
+    if not any(row['type'] == ev.BOARD_SIM and (row['values'] or {}).get('run_hash') == run for row in store.list_evidence(review_id)):
+        return None
+    root = (store.data_dir / 'sims').resolve()
+    path = (root / run).resolve()
+    return path if path.parent == root and path.is_dir() else None
+
+
+def _result_of(folder: Path | None) -> dict:
+    if folder is None:
+        return {}
+    try:
+        return json.loads((folder / 'result.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+
+
+def overlay_file(folder: Path, overlay_id: str) -> Path | None:
+    """The raster of one overlay named in the run's result.json: float32 little-endian [ny, nx]. The file name must be a plain name inside the run folder."""
+    for item in _result_of(folder).get('overlays') or []:
+        if isinstance(item, dict) and item.get('id') == overlay_id:
+            name = str(item.get('file') or '')
+            path = (folder / name).resolve()
+            if name == Path(name).name and name.endswith('.bin') and path.parent == folder.resolve() and path.is_file():
+                return path
+    return None
+
+
+def curve_file(folder: Path, name: str) -> Path | None:
+    """A curve the simulator stored next to its result as `<name>.json` (never result.json itself)."""
+    if not FILE_NAME.fullmatch(name or '') or name == 'result':
+        return None
+    path = (folder / f'{name}.json').resolve()
+    return path if path.parent == folder.resolve() and path.is_file() else None
+
+
+#: board simulations that are running now, by review: {ref: row}. In memory only; a run that finished has its evidence row, which replaces this one.
+LIVE_RUNS: dict[str, dict[str, dict]] = {}
+
+
+def live_started(review_id: str, ref: str, row: dict) -> None:
+    LIVE_RUNS.setdefault(review_id, {})[ref] = row
+
+
+def live_finished(review_id: str, ref: str) -> None:
+    LIVE_RUNS.get(review_id, {}).pop(ref, None)
+
+
+def board_items(store, review_id: str, rows: list[dict]) -> list[dict]:
+    """The board-simulation runs of a review (power, thermal, signal), oldest first. Each row has what the app lists (`run_id`, `sim_kind`, `status`, `label`, `ref`, `whatif`,
+    `base_run`, `progress`, `step`) and, once done, the `result` in the shape the app reads (simview.web_result), with the overlays' urls."""
+    from . import simview
+    items = []
+    for row in rows:
+        values = row['values'] or {}
+        if row['type'] != ev.BOARD_SIM or not values.get('sim_kind'):
+            continue
+        run = values.get('run_hash')
+        if values.get('comparison'):
+            items.append({'family': 'board', 'sim_kind': values['sim_kind'], 'kind': 'comparison', 'ref': values.get('ref'), 'label': values.get('label'), 'quality': values.get('quality'), 'trust': values.get('trust'),
+                          'measurements': values.get('measurements'), 'evidence': row['code'], 'outcome': values.get('outcome'), 'statement': values.get('statement'),
+                          'confirmation': values.get('confirmation'), 'defaults_used': values.get('defaults_used') or [], 'created_at': row.get('created_at')})
+            continue
+        folder = board_run_folder(store, review_id, run) if run else None
+        stored = _result_of(folder)
+        result = simview.web_result(stored) if stored else None
+        if result is not None:
+            for overlay in result['overlays']:
+                overlay['url'] = f'/api/reviews/{review_id}/sims/{run}/overlay/{overlay.get("id")}' if overlay_file(folder, overlay.get('id')) else None
+        items.append({'family': 'board', 'sim_kind': values['sim_kind'], 'run_id': run, 'run': run, 'status': 'done' if result is not None else 'failed', 'role': {'screen': 'whatif' if values.get('whatif_ops') else 'base'}.get(values.get('quality'), 'confirm'),
+                      'ref': values.get('ref'), 'label': values.get('label'), 'quality': values.get('quality'), 'trust': values.get('trust'), 'measurements': values.get('measurements'),
+                      'primary': values.get('primary'), 'defaults_used': values.get('defaults_used') or [], 'whatif': values.get('whatif_ops') or [], 'whatif_ops': values.get('whatif_ops') or [],
+                      'base_run': values.get('base_run'), 'progress': 1.0 if result is not None else None, 'step': 'done' if result is not None else None, 'inputs': values.get('inputs') or {},
+                      'evidence': row['code'], 'assumptions_evidence': values.get('assumption_evidence'), 'suspect': values.get('suspect'), 'compared_with': values.get('compared_with'),
+                      'solve_s': values.get('solve_s'), 'cached': values.get('cached'), 'result': result, 'created_at': row.get('created_at'), 'error': None})
+    for ref, live in LIVE_RUNS.get(review_id, {}).items():
+        items.append({'family': 'board', **live})
+    return items
+
+
+def board_run(store, review_id: str, run: str) -> dict | None:
+    """One board-simulation run of the review by its run id, the newest row when the same stored run was asked for more than once."""
+    found = [i for i in board_items(store, review_id, store.list_evidence(review_id)) if i.get('run_id') == run and i.get('kind') != 'comparison']
+    return found[-1] if found else None
 
 
 def _kind(row: dict | None, ops: list) -> str:
@@ -77,4 +172,4 @@ def list_sims(store, review_id: str) -> list[dict]:
                       'trust': values.get('trust'), 'measurements': values.get('measurements') or {}, 'solve_s': values.get('solve_s'), 'progress': 1.0,
                       'error': None, 'created_at': row.get('created_at'), 'files': []})
     items.sort(key=lambda i: i.get('created_at') or '')
-    return items
+    return items + board_items(store, review_id, store.list_evidence(review_id))

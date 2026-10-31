@@ -175,7 +175,21 @@ class Handlers:
                 'images': c.images, 'phase2_calls': c.phase_calls.get(2), 'phase3_calls': c.phase_calls.get(3), 'phase4_calls': c.phase_calls.get(4),
                 'phase5_calls': c.phase_calls.get(5), 'region_views': MIN_REGION_VIEWS.get(c.name, 2), 'layout_findings': MIN_LAYOUT_FINDINGS.get(c.name, 2),
                 'layout_reason_chars': MIN_LAYOUT_REASON, 'refine_rounds': c.refine_rounds, 'refine_screens': REFINE_SCREENS, 'refine_matching': REFINE_MATCHING, 'target_db': s.goal.get('target_s11_db', -10),
-                'band': f'{band[0] / 1e9:g} to {band[1] / 1e9:g} GHz' if band else 'not given', 'wall_minutes': round(c.wall_s / 60)}
+                'band': f'{band[0] / 1e9:g} to {band[1] / 1e9:g} GHz' if band else 'not given', 'wall_minutes': round(c.wall_s / 60),
+                'antenna': s.antenna_on, 'sim_kinds': list(s.sim_kinds), 'datasheets': s.datasheets_on, 'extent_text': self.extent_text(),
+                'sim_text': ', '.join(s.sim_label(k).lower() for k in s.sim_kinds), 'sim_runs': c.sim_runs, 'sim_confirm_runs': c.sim_confirm_runs,
+                'datasheet_line': ('From a datasheet when datasheets are on: `lookup_part`, then `read_datasheet` with `mpn` and `question`, then `set_sim_input` source `datasheet` with a cite (part and page). The value must appear in the text you read.'
+                                   if s.datasheets_on else 'Datasheets are not part of this review, so there is no datasheet value.')}
+
+    def extent_text(self) -> str:
+        s = self.s
+        from . import extent as ext
+        if s.extent is None:
+            return 'rules and layout' + (', antenna simulation' if s.antenna_on else '')
+        return ext.label_list(s.extent) or 'rules and layout'
+
+    def phase_text(self, phase: int) -> str:
+        return prompts.phase_brief(phase, **self.phase_vars())
 
     # ---- status and phases ----------------------------------------------------------------
     async def get_status(self, args: dict) -> ToolResult:
@@ -192,6 +206,10 @@ class Handlers:
                                                                  'suspects': [{'code': x.code, 'title': x.title, 'status': x.status} for x in open_inv.suspects]},
             'investigations_left': s.config.investigations - s.budgets.investigations,
         }
+        if s.extent is not None or s.sim_kinds:
+            data['extent'] = s.extent
+            data['simulations'] = {'chosen_and_available': s.sim_kinds, 'could_not_run': s.sim_unavailable, 'antenna': s.antenna_on, 'runs_left': s.budgets.sim_left(),
+                                   'confirm_runs_left': max(0, s.config.sim_confirm_runs - s.budgets.sim_confirm_runs), 'inputs_set': {k: sorted(v) for k, v in s.sim_inputs.items()}}
         if s.limits:
             data['limits_hit'] = [l['rule'] for l in s.limits]
         recheck = self.recheck_status()
@@ -235,7 +253,7 @@ class Handlers:
         await s.announce_phase(change)
         data = {'phase': change.phase, 'name': PHASE_NAMES[change.phase],
                 'skipped': [{'phase': p, 'name': PHASE_NAMES[p], 'reason': r} for p, r in change.skipped],
-                'brief': prompts.phase_brief(change.phase, **self.phase_vars())}
+                'brief': self.phase_text(change.phase)}
         if change.phase == 6 and (vc := self.version_change()):
             data['version_change'] = vc
             data['lead_the_summary_with'] = vc['text']
@@ -503,6 +521,8 @@ class Handlers:
         return ok({'schematic': info.path and info.path.rsplit('/', 1)[-1], 'parts': parts, 'dnp_parts_in_schematic': all_dnp, 'note': note})
 
     async def read_datasheet(self, args: dict) -> ToolResult:
+        if args.get('mpn'):         # a supplier datasheet by manufacturer part number (the datasheets extent)
+            return await self.read_part_datasheet(args)
         try:
             out = await self.s.lab.read_datasheet(version_id=self.s.version_id, name=args.get('name'), page=args.get('page', 1))
         except LabUnavailable as exc:
@@ -843,6 +863,7 @@ class Handlers:
         intent = classwidth.real_intent([s.candidates[c] for c in args.get('candidate_ids') or [] if c in s.candidates])
         if intent:     # the RF class width is the designer's 50 ohm intent: the finding states it with the width for the target (conditional on the assumed stackup)
             args = classwidth.carry(args, intent, self.store.get_finding_by_code(s.review_id, args['update']) if args.get('update') else None)
+            args = self.carry_field_solve(args, intent)
         try:
             out = s.engine.record(args, candidates=s.candidates, source='review')
         except FindingRejected as exc:
@@ -862,6 +883,24 @@ class Handlers:
         if finding['status'] == 'dismissed':
             data['dismissed'] = finding['dismissed_reason']
         return ok(data)
+
+    def carry_field_solve(self, args: dict, facts: list[dict]) -> dict:
+        """A signal run that solved the field of the net replaces the closed-form width advice with its own value: the finding gets a sentence that says so, with the run's code."""
+        from . import simtrust
+        nets = {f.get('net') for f in facts if f.get('net')}
+        for row in simtrust.signal_rows(self.store.list_evidence(self.s.review_id)):
+            for c in row['values'].get('cross_check') or []:
+                if c.get('net') in nets and 'A field solve of' not in str(args.get('what') or ''):
+                    solved, closed = c.get('field_solver_on_the_real_board_median_ohm'), c.get('analyzer_closed_form_ohm')
+                    if solved is None or closed is None:
+                        continue
+                    sentence = (f'A field solve of {c["net"]} ({row["code"]}) found a median of {solved:g} ohm on the real board, where the closed-form estimate ({closed:g} ohm) assumes a plane under the track and nothing else; '
+                                'the solved value is the one to use, and the width for the target above is an estimate that the solve does not support. The solved number is a quasi-static estimate on the assumed stackup.')
+                    out = dict(args)
+                    out['what'] = (str(args.get('what') or '').rstrip() + ' ' + sentence).strip()
+                    out['evidence_ids'] = list(dict.fromkeys(list(args.get('evidence_ids') or []) + [row['code']]))
+                    return out
+        return args
 
     async def show_on_board(self, args: dict) -> ToolResult:
         s = self.s

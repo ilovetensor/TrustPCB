@@ -360,3 +360,21 @@ a.tile:hover {
 .fbars b { display: block; height: 100%; border-radius: 4px; background: var(--paper-3); }
 .fbars .now b { background: var(--paper); }
 .fbars strong { min-width: 2ch; text-align: right; font-size: 15px; font-weight: 600; color: var(--paper); }
+
+.pg-runs:empty {
+  display: none;
+}
+.pg-runs {
+  max-width: 560px;
+  margin-bottom: 20px;
+}
+.pg-runs .navitem {
+  height: auto;
+  min-height: 40px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  background: var(--panel-2);
+}
+.pg-runs .navitem small {
+  text-align: right;
+}

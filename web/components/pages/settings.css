@@ -1,0 +1,119 @@
+/* Settings: black, soft rounded surfaces, no outlines */
+.se-main {
+  max-width: 760px;
+}
+.se-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 22px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  color: var(--paper-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.se-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--paper-3);
+}
+.se-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 22px;
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+}
+.se-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.se-card-head h2 {
+  margin: 0;
+  font: 600 17px/1.2 var(--font-ui);
+  letter-spacing: -0.01em;
+}
+.se-card-head .grow {
+  flex: 1;
+}
+.se-get {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--paper-2);
+}
+.se-get:hover {
+  color: var(--paper);
+}
+.se-why {
+  margin: -8px 0 0;
+  color: var(--paper-3);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.se-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.se-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--paper-2);
+}
+.se-state {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  color: var(--paper);
+  font-size: 12px;
+}
+.se-state.off {
+  background: var(--panel-2);
+  color: var(--paper-3);
+}
+.se-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.se-controls input {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 11px 13px;
+  background: var(--panel-3);
+  font-size: 14px;
+}
+.se-controls input:disabled {
+  opacity: 0.5;
+}
+.se-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--paper);
+}
+.se-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--paper-3);
+}
+@media (max-width: 600px) {
+  .se-card {
+    padding: 18px 16px;
+  }
+  .se-controls .btn {
+    flex: 1 1 auto;
+  }
+}

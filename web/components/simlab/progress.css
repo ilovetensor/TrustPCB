@@ -1,0 +1,19 @@
+/* Simulations in progress inside the running panel of a review. */
+.rp-sims { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.rp-sims li { display: flex; flex-direction: column; gap: 5px; }
+.rp-sim-name { font-size: 12.5px; line-height: 1.35; color: var(--paper-2); overflow-wrap: anywhere; }
+.rp-sim-name b { color: var(--paper); font-weight: 600; }
+.rp-sim-state { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--paper-3); }
+.rp-sim-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); animation: blink 1.4s ease-in-out infinite; flex: none; }
+.rp-sims li.wait .rp-sim-state { color: var(--paper-2); }
+@media (prefers-reduced-motion: reduce) { .rp-sim-state i { animation: none; } }
+
+/* A finding's evidence row links to its simulation. */
+.fc-lablink { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--panel-3); color: var(--paper); font: 500 11.5px/1 var(--font-ui); transition: background 0.15s; }
+.fc-lablink:hover { background: var(--hair-2); }
+
+/* The Simulations tab: the links to the two labs, and a kind chip on each run */
+.ex-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.ex-links .ex-link { margin-top: 0; }
+.ex-kind { color: var(--paper); }
+.ex-meas { display: block; }

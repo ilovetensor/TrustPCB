@@ -26,6 +26,7 @@ Shapes (all JSON-friendly dicts, lengths in mm, frequencies in Hz):
   compare_results -> {measurements?: {name: {value, unit}}, note}
   try_placement -> {ref, target, new_position, distances: [...], overlaps: [...], conflicts: [...], ghost: {...}, rough_length_change_mm}
   read_datasheet -> {names: [...]} without a name, otherwise {name, page, pages, text}
+  sim_status / sim_inputs / run_board_sim / part_lookup / part_datasheet -> see lab_sims.py (optional: a Lab without them has no board simulations)
   candidates are the Candidate dicts described in docs/ARCHITECTURE.md.
 """
 from __future__ import annotations
@@ -95,8 +96,13 @@ def scenario_key(scenario: dict) -> str:
 
 # ---- the PCB-only lab -----------------------------------------------------------------------
 
-class BaselineLab:
-    """Board, baseline candidates and board images from the PCB model. Everything else is unavailable."""
+def _board_sim_lab():
+    from .lab_sims import BoardSimLab
+    return BoardSimLab
+
+
+class BaselineLab(_board_sim_lab()):
+    """Board, baseline candidates and board images from the PCB model, and the board simulations when they are installed. The RF lab is unavailable."""
 
     def __init__(self, store):
         self.store = store

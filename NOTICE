@@ -93,3 +93,12 @@ License 1.1. The monospace text in the app uses the system's own font; no font f
 for it.
 
 Transitive dependencies keep their own licences; see the lock files.
+
+Agent logos
+-----------
+The interface marks text written by the agent with a small icon taken from one registry (web/lib/agents.mjs). A review on
+the Muse runner carries the Meta symbol; every other runner gets a plain neutral icon. web/public/brand/meta-logo.svg is
+the symbol from Simple Icons 13.21.0 (https://github.com/simple-icons/simple-icons, CC0-1.0 for the collection), tinted
+off-white. The Meta name and logo are trademarks of Meta Platforms, Inc., used here only to show that Meta's Muse model
+wrote the text. This does not imply endorsement. Meta's brand rules are at
+https://www.meta.com/brand/resources/meta/company-brand/ and call for approval, which has not been obtained.

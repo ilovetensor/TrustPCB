@@ -229,10 +229,10 @@ class Env:
         if current and current.task:
             await asyncio.wait_for(asyncio.shield(current.task), timeout=20)
 
-    async def review(self, script=None, depth='standard', goal=None, wait=True):
+    async def review(self, script=None, depth='standard', goal=None, wait=True, extent=None):
         if script is not None:
             self.use(script)
-        started = await service.start_review(store=self.store, manager=self.manager, version_id=self.version['id'], goal=goal or {'purpose': 'Battery Bluetooth sensor', 'band_hz': [2.4e9, 2.4835e9], 'target_s11_db': -10}, depth=depth)
+        started = await service.start_review(store=self.store, manager=self.manager, version_id=self.version['id'], goal=goal or {'purpose': 'Battery Bluetooth sensor', 'band_hz': [2.4e9, 2.4835e9], 'target_s11_db': -10}, depth=depth, extent=extent)
         if wait:
             await self.wait()
         return self.store.get_review(started['id'])

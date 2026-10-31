@@ -234,9 +234,13 @@ All settings are optional environment variables; see `.env.example` for the full
 | `MODEL_API_KEY` | Muse key for real reviews |
 | `TRUSTPCB_RUNNER` | `muse_api` or `scripted` |
 | `TRUSTPCB_MUSE_EFFORT` | `low`, `medium` (default), `high` or `xhigh` |
-| `TRUSTPCB_DATA_DIR` | Where projects, uploads and the database live (default `.trustpcb/`) |
+| `TRUSTPCB_DATA_DIR` | Where projects, uploads and the database live (default `.trustpcb/`). One backend per folder: a second one on the same folder refuses to start |
+| `TRUSTPCB_MAX_REVIEWS` | How many reviews work at once (default 3). More wait in a visible queue; the solver still runs one job at a time and shares it between reviews |
+| `TRUSTPCB_MAX_QUEUE_WAIT_MIN` | Hard limit on waiting for the solver, in minutes (default 240). Waiting up to it is not charged to a review's time limit |
+| `DIGIKEY_CLIENT_ID`, `DIGIKEY_CLIENT_SECRET`, `MOUSER_API_KEY` | Optional. Turn on part lookup and datasheet reading. Empty by default; the app works without them and parts tools say "not configured". You can paste them under Settings instead (stored in `secrets.json` in the data folder, mode 0600, never exported or copied by `seed-demo.sh`); an environment value wins. They are never sent to the model, the solver, KiCad or the browser |
 | `KICAD_CLI_PATH` | Path to `kicad-cli` if it is not found automatically |
 | `TRUSTPCB_EMS_IMAGE` | Solver image name (default `trustpcb-ems:dev`) |
+| `TRUSTPCB_EMS_THREADS`, `TRUSTPCB_EMS_CPUS` | Solver threads and the Docker `--cpus` limit (default: 4 threads, fewer on a small machine, and at least one CPU always left free; the limit equals the thread count). On the machine this was tuned on (Apple M4 Pro under Docker Desktop) speed peaks at 4 threads and falls beyond that. The thread count never changes the result, so it is not part of the cache key |
 | `TRUSTPCB_DEMO_READONLY` | `1` refuses every change and hides upload and start (read-only demo) |
 | `TRUSTPCB_REPO_URL` | Repository link shown in the read-only demo notice and used by the GitHub chip on the landing page |
 | `NEXT_PUBLIC_DISCORD_URL` | Discord invite for the "Join Discord" chip on the landing page; the chip is hidden while this is unset. Read when the web app starts or builds |

@@ -121,6 +121,27 @@
   font-size: 12.5px;
   color: var(--paper-2);
 }
+.rp-wait {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--paper-2);
+}
+.ws-runs .navitem {
+  height: auto;
+  min-height: 38px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.ws-runs .navitem small {
+  max-width: 46%;
+  text-align: right;
+  line-height: 1.3;
+}
+.ws-notice-act {
+  display: flex;
+  margin-top: 8px;
+}
 .rp .btn {
   align-self: stretch;
 }
@@ -1155,4 +1176,23 @@
 }
 .ws.narrow .stage-foot {
   bottom: 56px;
+}
+
+/* the agent mark sits before a label or a note, in line with its first row of text */
+.am-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tr-thought {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 0 8px;
+  align-items: start;
+}
+.tr-thought > .agent-mark {
+  margin-top: 3px;
+}
+.ib-why .am-row {
+  vertical-align: baseline;
 }

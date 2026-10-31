@@ -3,7 +3,9 @@ import "./pages.css";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { ApiError, createProject, FIXTURE_MODE, getProject, getVersion, startReview, uploadVersion, type Depth, type Goal, type VersionInfo } from "../../lib/api";
+import { ApiError, createProject, FIXTURE_MODE, getKeyStatus, getProject, getVersion, startReview, uploadVersion, type Depth, type Goal, type VersionInfo } from "../../lib/api";
+import { cleanExtent, defaultExtent, extentOptions, type ExtentId } from "../../lib/extent.mjs";
+import { ExtentPicker } from "./ExtentPicker";
 import { DemoNotice, Icon, Panel, TopBar } from "../ui";
 import { useAppEnv } from "../../lib/demo";
 import { buildGoal, depthNote } from "../../lib/goal.mjs";
@@ -40,6 +42,8 @@ function UploadInner() {
   const [error, setError] = useState<string | null>(null);
   const [busyProject, setBusyProject] = useState<string | null>(null);      // set when the server answers 409: another review of this board is running
   const [depth, setDepth] = useState<Depth>("quick");
+  const [extentPick, setExtentPick] = useState<ExtentId[] | null>(null);          // null: the board's own default until the user chooses
+  const [keys, setKeys] = useState<Record<string, { set: boolean }> | null>(null);
   const [purpose, setPurpose] = useState("");
   const [band, setBand] = useState("");
   const [target, setTarget] = useState("-10");
@@ -57,6 +61,8 @@ function UploadInner() {
     if (!existing) return;
     void getProject(existing).then((p) => { if (p) setExistingName(p.project.name); });
   }, [existing]);
+
+  useEffect(() => { void getKeyStatus().then(setKeys); }, []);
 
   const onFiles = (list: FileList | File[]) => {
     const files = [...list].filter((f) => f.size >= 0);
@@ -93,7 +99,7 @@ function UploadInner() {
     const goal: Goal = buildGoal({ purpose, band, target, focus, wireless: version.detection?.wireless });
     setBusyProject(null);
     try {
-      const r = await startReview(version.id, goal, depth);
+      const r = await startReview(version.id, goal, depth, extent);
       router.push(`/reviews/${r.id}`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) setBusyProject(version.project_id);
@@ -104,6 +110,11 @@ function UploadInner() {
 
   const d = version?.detection;
   const noRadio = !!d && !d.wireless;
+  // what the board can be checked for; `sims` is the server's own answer per simulation when the version carries one
+  const serverSims = (version as (VersionInfo & { sims_available?: Record<string, { available: boolean; reason?: string }> }) | null)?.sims_available ?? null;
+  const extentChoices = extentOptions({ detection: d ?? null, keys, server: serverSims, depth });
+  const extent = cleanExtent(extentPick ?? defaultExtent(extentChoices), extentChoices);
+  const simsOn = extent.some((x) => x === "power" || x === "thermal" || x === "signal");
   const st = version?.stackup;
   const uploading = progress !== null;
   const ready = !!picked && (!!picked.pcb || picked.zip);
@@ -183,7 +194,7 @@ function UploadInner() {
                   <dt>Status</dt><dd>{version.status}</dd>
                   <dt>Wireless</dt>
                   <dd>{d?.wireless ? `Yes (${d.confidence ?? "unknown"} confidence)${d.band ? `. ${d.band.label}` : ""}` : d ? "No radio part or antenna found" : "Not detected"}</dd>
-                  {d?.antenna && (<><dt>Antenna</dt><dd>{[d.antenna.type, d.antenna.shape].filter(Boolean).join(" ")}{d.antenna.length_mm ? `, ${d.antenna.length_mm} mm` : ""}{d.antenna.net ? ` on ${d.antenna.net}` : ""}{d.antenna.in_keepout ? ", inside a keep-out" : ""}</dd></>)}
+                  {d?.antenna && (<><dt>Antenna</dt><dd>{[...new Set([d.antenna.type, d.antenna.shape].filter(Boolean))].join(" ")}{d.antenna.length_mm ? `, ${d.antenna.length_mm} mm` : ""}{d.antenna.net ? ` on ${d.antenna.net}` : ""}{d.antenna.in_keepout ? ", inside a keep-out" : ""}</dd></>)}
                   {d?.parts && d.parts.length > 0 && (<><dt>Radio parts</dt><dd>{d.parts.map((p) => `${p.ref} ${p.value}`).join(", ")}</dd></>)}
                   {st && (<><dt>Stackup</dt><dd>{st.total_thickness_mm} mm, {st.copper_layers ?? "?"} copper layers, {st.source === "default" ? "default FR-4 assumed" : `from the ${st.source}`}</dd></>)}
                 </dl>
@@ -205,7 +216,7 @@ function UploadInner() {
             <div>
               <div className="field"><label className="idx" htmlFor="g1">What the board does</label><input id="g1" type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={noRadio ? "USB powered 3.3 V sensor" : "Battery Bluetooth sensor"} disabled={!version} /></div>
               {noRadio
-                ? <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }} data-testid="no-radio-note">No radio part or antenna was found, so there is no band or S11 target to set. The review covers the rules and the layout.</p>
+                ? <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }} data-testid="no-radio-note">No radio part or antenna was found, so there is no band or S11 target to set. The review covers the rules and the layout, and any power, heat or signal checks you pick below.</p>
                 : <>
                   <div className="field"><label className="idx" htmlFor="g2">Band to tune for</label><input id="g2" type="text" value={band} onChange={(e) => setBand(e.target.value)} placeholder="2.4 to 2.4835 GHz" disabled={!version} /></div>
                   <div className="field"><label className="idx" htmlFor="g4">S11 target (dB)</label><input id="g4" type="text" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} disabled={!version} /></div>
@@ -216,8 +227,9 @@ function UploadInner() {
                 <div className="seg" role="group" aria-label="Review depth" style={{ width: "100%" }}>
                   {DEPTHS.map((x) => (<button key={x.id} style={{ flex: 1 }} aria-pressed={depth === x.id} onClick={() => setDepth(x.id)}>{x.label}</button>))}
                 </div>
-                <span className="dim" style={{ fontSize: 12 }}>{depthNote(DEPTHS.find((x) => x.id === depth)!.note, depth, d?.wireless)}</span>
+                <span className="dim" style={{ fontSize: 12 }}>{depthNote(DEPTHS.find((x) => x.id === depth)!.note, depth, d?.wireless, simsOn)}</span>
               </div>
+              <ExtentPicker options={extentChoices} value={extent} onChange={setExtentPick} disabled={!version || starting} />
               <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }}>The agent does not stop to ask questions mid-review. Fields lock when it starts.</p>
               {error && <p className="chat-err" role="alert" style={{ margin: "0 0 12px" }} data-testid="start-error">{error}{busyProject && <> <Link href={`/projects/${busyProject}`} className="signal">Open the board</Link> to see or stop the running review.</>}</p>}
               <button className="btn primary big" style={{ width: "100%" }} disabled={!version || starting || version.status === "failed"} onClick={start} data-testid="start-review">

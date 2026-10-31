@@ -11,7 +11,7 @@ from .refine import RefineMixin
 from .tools import BOOL, NUM, ToolDef, arr, obj, text
 
 
-class AllHandlers(RefineMixin, InvestigationMixin, Handlers):
+class AllHandlers(RefineMixin, InvestigationMixin, Handlers):      # InvestigationMixin carries the board-simulation tools (boardsim.BoardSimMixin)
     pass
 
 
@@ -32,6 +32,10 @@ FINDING_PROPS = {
 }
 
 
+SIM_KIND = {'type': 'string', 'enum': ['power', 'thermal', 'signal']}
+SIM_OP = {'type': 'object', 'properties': {'op': text(1, 40)}, 'required': ['op'], 'additionalProperties': True}
+
+
 def define(name, description, schema, handler, *, phases=frozenset(), levels=frozenset(), free=False, closing=False, image=False, trail=None) -> ToolDef:
     return ToolDef(name, description, schema, handler, phases=phases, levels=levels, free=free, closing=closing, image=image, trail=trail)
 
@@ -50,8 +54,8 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
                '(no_connect markers, do-not-populate flags, pin names, board nets); read it before recommending a schematic or board change.',
                obj({'kind': {'type': 'string', 'enum': ['parts', 'part', 'nets', 'net', 'state']}, 'query': text(1, 80), 'refs': arr(text(1, 20), 1, 12), 'page': {'type': 'integer', 'minimum': 1, 'maximum': 200}}, ['kind']),
                h.read_schematic, phases=P({2, 3}), levels=ALL_LEVELS, trail=lambda a: f'Reading {a.get("kind")} data' + (f' ({a["query"]})' if a.get('query') else '')),
-        define('read_datasheet', 'List uploaded datasheets, or read one page of one as text.',
-               obj({'name': text(1, 120), 'page': {'type': 'integer', 'minimum': 1, 'maximum': 500}}), h.read_datasheet,
+        define('read_datasheet', 'List uploaded datasheets, or read one page of one as text. With mpn and question (when datasheets are part of this review) it reads the supplier datasheet of that part and answers the question with a citation.',
+               obj({'name': text(1, 120), 'page': {'type': 'integer', 'minimum': 1, 'maximum': 500}, 'mpn': text(2, 80), 'question': text(3, 300)}), h.read_datasheet,
                phases=P({2, 3}), levels=ALL_LEVELS, trail=lambda a: 'Reading a datasheet' + (f': {a["name"]}' if a.get('name') else '')),
         define('view_board', 'A rendered image of the board. Presets: view top, bottom or layer (give layer); around a target id (ref:U3, net:ANT_FEED, zone_role:radio, '
                'candidate:...) with margin_mm; or a region [x0,y0,x1,y1] in mm. annotate draws the candidate marks inside the window (numbered). '
@@ -87,8 +91,9 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
         define('show_on_board', 'Spotlight items on the live board. Pass target ids or a finding_code.',
                obj({'targets': arr(text(1, 80), 0, 20), 'finding_code': text(1, 12), 'label': text(1, 120)}), h.show_on_board,
                phases=P({3, 4}), levels=ALL_LEVELS, trail=lambda a: 'Showing ' + (a.get('label') or 'items') + ' on the board'),
-        define('open_investigation', 'Start an investigation: one question and 1 to 3 ranked suspects.',
-               obj({'question': text(10, 400), 'suspects': arr(SUSPECT_SCHEMA, 1, 3)}, ['question', 'suspects']), h.open_investigation,
+        define('open_investigation', 'Start an investigation: one question and 1 to 3 ranked suspects. kind is antenna (default) or, when chosen for this review, power, thermal or signal: '
+               'one investigation per kind, tested with run_board_sim.',
+               obj({'question': text(10, 400), 'suspects': arr(SUSPECT_SCHEMA, 1, 3), 'kind': {'type': 'string', 'enum': ['antenna', 'power', 'thermal', 'signal']}}, ['question', 'suspects']), h.open_investigation,
                phases=P({4}), levels=TEST, trail=lambda a: f'Opening an investigation: {a.get("question", "")[:100]}'),
         define('run_simulation', 'Run a base (no whatif_ops) or what-if scenario at screen quality for one suspect. Identical scenarios return the stored result. '
                'In a refine round (phase 5) it needs whatif_ops and a reason that cites confirm evidence by its code; the suspect is the round\'s own.',
@@ -97,6 +102,23 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
                                   'end_criteria_db': {'type': 'number', 'minimum': -80, 'maximum': -20}, 'mesh': {'type': 'string', 'enum': ['normal', 'fine']}})},
                    ['suspect_id']),
                h.run_simulation, phases=P({4, 5}), levels=TEST, trail=lambda a: 'Running a simulation: ' + (a.get('label') or ('base case' if not a.get('whatif_ops') else 'what-if'))),
+        define('get_sim_inputs', 'What a power, thermal or signal simulation needs: each input with its default, where the default comes from, and the value in use. Also the values the engineer\'s request states '
+               'and the what-if ops the simulation accepts. Read it before the first run.', obj({'kind': SIM_KIND}, ['kind']), h.get_sim_inputs,
+               phases=P({2, 3, 4}), levels=CHECK_UP, trail=lambda a: f'Reading the inputs of the {a.get("kind")} simulation'),
+        define('set_sim_input', 'Record one input of a board simulation with its source. user: the value must appear in the engineer\'s request. datasheet: needs cite (part and page) and the value must be in a datasheet read in this review. '
+               'default: go back to the simulator default. choice: which nets to look at (names). A value without a source is refused; an input nobody gave stays a labelled default.',
+               obj({'kind': SIM_KIND, 'name': text(1, 100), 'value': NUM, 'names': arr(text(1, 80), 0, 20), 'source': {'type': 'string', 'enum': ['user', 'datasheet', 'default', 'choice']}, 'cite': text(1, 300)}, ['kind', 'name', 'source']), h.set_sim_input,
+               phases=P({2, 3, 4}), levels=CHECK_UP, trail=lambda a: f'Setting {a.get("name")} of the {a.get("kind")} simulation ({a.get("source")})'),
+        define('run_board_sim', 'Run a power, thermal or signal simulation for one suspect: the base (no whatif) or one what-if, which lives only in the simulation. Identical requests return the stored result free. '
+               'quality confirm (base only) uses the finer mesh. inputs may only repeat values set with set_sim_input. Thermal: heat_from_power true adds the latest power run\'s copper loss until you pass false.',
+               obj({'kind': SIM_KIND, 'suspect_id': CODE, 'label': text(1, 120), 'whatif': arr(SIM_OP, 0, 3), 'inputs': {'type': 'object', 'additionalProperties': NUM}, 'reason': text(1, 600),
+                    'quality': {'type': 'string', 'enum': ['screen', 'confirm']}, 'heat_from_power': {'type': 'boolean'}}, ['kind']), h.run_board_sim,
+               phases=P({4}), levels=TEST, trail=lambda a: f'Running the {a.get("kind")} simulation: ' + (a.get('label') or ('base case' if not a.get('whatif') else 'what-if'))),
+        define('compare_sims', 'Numeric difference between two stored results of the same board simulation and quality (b minus a).', obj({'a': CODE, 'b': CODE}, ['a', 'b']), h.compare_sims,
+               phases=P({4, 5}), levels=TEST, trail=lambda a: f'Comparing {a.get("a")} with {a.get("b")}'),
+        define('lookup_part', 'Look up a part at DigiKey and Mouser by manufacturer part number (mpn), or by value and footprint. Gives the maker, description, parameters and datasheet link; never guesses a part. '
+               'Only when datasheets are part of this review.', obj({'mpn': text(2, 80), 'value': text(1, 40), 'footprint': text(1, 80), 'maker': text(1, 60)}), h.lookup_part,
+               phases=P({2, 3, 4}), levels=CHECK_UP, trail=lambda a: 'Looking up ' + (a.get('mpn') or a.get('value') or 'a part')),
         define('view_result', 'View a chart or field image of a stored result. kind: s11, smith, pattern, field or current.',
                obj({'ref': CODE, 'kind': {'type': 'string', 'enum': ['s11', 'smith', 'pattern', 'field', 'current']}}, ['ref', 'kind']), h.view_result,
                phases=P({4, 5}), levels=TEST, image=True, trail=lambda a: f'Viewing the {a.get("kind")} of {a.get("ref")}'),

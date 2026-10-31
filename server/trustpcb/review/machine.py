@@ -22,10 +22,14 @@ class PhaseChange:
 
 
 class PhaseMachine:
-    def __init__(self, depth: str, rf_simulatable: bool, rf_reason: str = ''):
+    def __init__(self, depth: str, rf_simulatable: bool, rf_reason: str = '', sim_kinds: tuple | list = (), sim_reason: str = ''):
+        """`rf_simulatable` is whether the antenna simulation may run in this review (chosen and possible). `sim_kinds` are the board
+        simulations (power, thermal, signal) chosen at the start and available. Investigate runs when either exists."""
         self.depth = depth
         self.rf_simulatable = rf_simulatable
         self.rf_reason = rf_reason
+        self.sim_kinds = tuple(sim_kinds)
+        self.sim_reason = sim_reason
         self.phase = 2
         self.history: list[PhaseChange] = []
         self.improved = False      # set when an investigation closes with an improvement
@@ -38,14 +42,19 @@ class PhaseMachine:
         if phase == 4:
             if self.depth == 'quick':
                 return 'Quick reviews stop after phase 3.'
-            if not self.rf_simulatable:
-                return self.rf_reason or 'Nothing on this board can be simulated.'
+            if not self.rf_simulatable and not self.sim_kinds:
+                return self.skip_reason_no_simulation()
         if phase == 5:
             if self.depth == 'quick':
                 return 'Quick reviews stop after phase 3.'
             if not self.improved:
                 return 'No investigation found an improvement to confirm.'
         return None
+
+    def skip_reason_no_simulation(self) -> str:
+        """Why Investigate has nothing to run: the antenna's reason when it was chosen and cannot run, the reason a chosen board simulation cannot run, or that none was chosen."""
+        reasons = [r for r in (self.rf_reason, self.sim_reason) if r]
+        return ' '.join(dict.fromkeys(reasons)) or 'Nothing on this board can be simulated.'
 
     def next_phase(self, frm: int | None = None) -> tuple[int, list]:
         """The phase that follows `frm` and the phases skipped on the way."""

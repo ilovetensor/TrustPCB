@@ -1,0 +1,26 @@
+/* The extent picker on the start form: soft tiles told apart by tone, no outlines. */
+.ex-pick { display: flex; flex-direction: column; gap: 10px; margin: 0 0 16px; }
+.ex-pick-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ex-pick-head .seg button { height: 30px; }
+.ex-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ex-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 12px 11px; text-align: left; background: var(--panel-2); border: 0; border-radius: var(--r-md); color: var(--paper); transition: background 0.15s, opacity 0.15s; min-width: 0; }
+button.ex-tile { cursor: pointer; }
+button.ex-tile:hover:not([disabled]) { background: var(--panel-3); }
+button.ex-tile:focus-visible { outline: 2px solid var(--paper-3); outline-offset: 2px; }
+.ex-tile.on { background: var(--panel-3); }
+.ex-tile.off { opacity: 0.62; }
+.ex-tile-top { display: flex; align-items: center; gap: 9px; width: 100%; }
+.ex-tile-top b { font: 600 13.5px/1.2 var(--font-ui); letter-spacing: -0.005em; }
+.ex-ic { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--panel-3); color: var(--paper-2); flex: none; transition: background 0.15s, color 0.15s; }
+.ex-tile.on .ex-ic { background: var(--paper); color: var(--stage); }
+.ex-state { display: inline-flex; align-items: center; gap: 4px; font: 500 11.5px/1 var(--font-ui); color: var(--paper-3); }
+.ex-state.on { color: var(--paper); }
+.ex-line { font-size: 12.5px; line-height: 1.4; color: var(--paper-2); min-height: 2.8em; }
+.ex-tile.off .ex-line { color: var(--paper-3); }
+.ex-link { color: var(--paper); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--paper-4); }
+.ex-link:hover { text-decoration-color: var(--paper); }
+.ex-cost { font-size: 11.5px; color: var(--paper-3); min-height: 1em; }
+.ex-sum { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--paper-2); }
+.ex-sum::first-letter { text-transform: uppercase; }
+@media (max-width: 480px) { .ex-tiles { grid-template-columns: 1fr; } .ex-line { min-height: 0; } }
+@media (prefers-reduced-motion: reduce) { .ex-tile, .ex-ic { transition: none; } }

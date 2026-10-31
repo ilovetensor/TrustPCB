@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Investigation, ReviewState, Sim, Suspect } from "../../lib/review-reducer.mjs";
 import { acceptedOf, fmtPct } from "../../lib/sims";
 import { OUTCOME_TEXT, type StoryRound, type StoryTest } from "../../lib/story.mjs";
+import { AgentMark } from "../ui/AgentMark";
 
 const VERDICT: Record<string, { text: string; cls: string }> = {
   ruled_out: { text: "Ruled out", cls: "ruled_out" },
@@ -33,7 +34,7 @@ function TestLine({ s }: { s: Test }) {
   );
 }
 
-function SuspectCard({ s, sims }: { s: Suspect; sims: Test[] }) {
+function SuspectCard({ s, sims, runner }: { s: Suspect; sims: Test[]; runner?: string | null }) {
   const v = VERDICT[s.status] ?? { text: s.status.replace(/_/g, " "), cls: s.status };
   const mine = sims.filter((x) => x.suspect && x.suspect === s.code);
   return (
@@ -48,7 +49,7 @@ function SuspectCard({ s, sims }: { s: Suspect; sims: Test[] }) {
         <span className="idx">What was tested</span>
         {mine.length ? <ul className="ib-tests">{mine.map((m) => (<TestLine key={m.id} s={m} />))}</ul> : <span className="dim ib-none">{s.status === "not_tested" ? "No run: the investigation closed before this was tested." : "No simulation run yet."}</span>}
       </div>
-      {s.conclusion && <p className="ib-why"><span className="idx">Why</span> {s.conclusion}</p>}
+      {s.conclusion && <p className="ib-why"><span className="idx am-row"><AgentMark runner={runner} kind="wrote" />Why</span> {s.conclusion}</p>}
     </li>
   );
 }
@@ -78,7 +79,7 @@ function ScreenConfirm({ rounds }: { rounds: StoryRound[] }) {
 }
 
 /** The investigation as a board: each suspect with what was tested and its verdict, then what screen predicted against what the confirm run gave, then what was checked and cleared. */
-export function InvestigationBoard({ state, story, tests = [] }: { state: ReviewState; story: StoryRound[]; tests?: StoryTest[] }) {
+export function InvestigationBoard({ state, runner, story, tests = [] }: { state: ReviewState; runner?: string | null; story: StoryRound[]; tests?: StoryTest[] }) {
   const [showCleared, setShowCleared] = useState(false);
   const live = Object.values(state.sims) as (Sim & { suspect?: string })[];
   // runs seen in the event stream, plus the stored evidence rows (which also hold the matching calculations); a run is listed once
@@ -100,7 +101,7 @@ export function InvestigationBoard({ state, story, tests = [] }: { state: Review
             <header><span className="idx">Investigation {inv.code}</span>{inv.outcome && <span className="stamp">{sentence(String(inv.outcome))}</span>}</header>
             <p className="ib-q">{inv.question}</p>
             <p className="idx ib-tally">{tally.confirmed} confirmed, {tally.ruled_out} ruled out, {tally.inconclusive} inconclusive, {tally.other} other</p>
-            <ul className="ib-list">{inv.suspects.map((s) => (<SuspectCard key={s.id} s={s} sims={sims} />))}</ul>
+            <ul className="ib-list">{inv.suspects.map((s) => (<SuspectCard key={s.id} s={s} sims={sims} runner={runner} />))}</ul>
             {story.filter((r) => r.investigation === inv.code).length > 0 && <ScreenConfirm rounds={story.filter((r) => r.investigation === inv.code)} />}
           </section>
         );

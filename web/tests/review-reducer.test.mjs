@@ -92,6 +92,23 @@ test("spotlight resolves its finding by code", () => {
   assert.equal(s.spotlight.findingId, "hex1");
 });
 
+test("a simulation waiting for the shared solver stays queued, says its place, and runs when it gets the solver", () => {
+  let s = replayAll([
+    ev(1, "sim_queued", { ref: "S-9", hash: "h", label: "Power, widen 3V3", kind: "power", quality: "screen" }),
+    ev(2, "sim_progress", { ref: "S-9", hash: "h", phase: "waiting", position: 2, ahead: 2 }),
+  ]);
+  assert.equal(s.sims["S-9"].status, "queued");
+  assert.deepEqual(s.sims["S-9"].waiting, { position: 2, ahead: 2 });
+  assert.equal(s.sims["S-9"].kind, "power");
+  assert.equal(s.trail[0].state, "queued");
+  s = reviewReducer(s, ev(3, "sim_progress", { ref: "S-9", hash: "h", phase: "started" }));
+  assert.equal(s.sims["S-9"].status, "running");
+  assert.equal(s.sims["S-9"].waiting, null);
+  s = reviewReducer(s, ev(4, "sim_progress", { ref: "S-9", hash: "h", fraction: 0.4, phase: "solving" }));
+  assert.equal(s.sims["S-9"].pct, 0.4);
+  assert.equal(s.trail[0].state, "running");
+});
+
 test("simulation lifecycle fills the experiment strip from the backend's field names", () => {
   const s = replayAll([
     ev(1, "sim_queued", { ref: "S-1", hash: "h", label: "Base", kind: "base", quality: "screen", suspect: "X-1" }),

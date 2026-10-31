@@ -2,6 +2,9 @@
 // Pure and deterministic so a live stream, a replay and a page reload agree.
 // Payload shapes follow what the backend emits (server/trustpcb/review/*.py).
 
+/** power, thermal or signal for a power, heat or signal simulation (the antenna solver has none). */
+const boardKind = (k) => (k === "power" || k === "thermal" || k === "signal" ? k : null);
+
 export const PHASES = [
   { id: 0, key: "intake", label: "Intake", short: "INTAKE", actor: "code" },
   { id: 1, key: "baseline", label: "Baseline", short: "BASELINE", actor: "code" },
@@ -24,6 +27,8 @@ export function initialReviewState(mode = "review") {
     budget: null,
     /** when the budget numbers were true, from the event's own timestamp (ms), so a clock can count on from there */
     budgetAt: null,
+    /** a review waiting for a free review slot (TRUSTPCB_MAX_REVIEWS): its place and the server's words; null once it works */
+    queue: null,
     trail: [],
     findings: {},
     findingOrder: [],
@@ -135,7 +140,7 @@ export function reviewReducer(state, event) {
     case "phase_changed": {
       // A refine round keeps the phase at 5 (events stay forward-only) and says so in `substep`.
       const refine = p.substep === "refine" ? { round: p.round ?? 1, rounds: p.rounds ?? null, investigation: p.investigation ?? null } : null;
-      next = { ...next, status: "running", phase: p.phase, refine };
+      next = { ...next, status: "running", phase: p.phase, refine, queue: null };
       const label = refine ? `Refine round ${refine.round}${refine.rounds ? ` of ${refine.rounds}` : ""}` : p.label ?? PHASES[p.phase]?.label ?? p.name ?? "";
       next = upsertTrail(next, { id: `phase-${p.phase}-${event.sequence}`, kind: "phase", phase: p.phase, substep: refine ? "refine" : undefined, round: refine?.round, text: label, at, seq: event.sequence });
       for (const s of p.skipped ?? []) {
@@ -144,6 +149,11 @@ export function reviewReducer(state, event) {
         next = { ...next, skipped: [...next.skipped.filter((x) => x.phase !== s.phase), { phase: s.phase, name: s.name ?? PHASES[s.phase]?.label ?? "", reason: reason ?? "" }] };
       }
       return next;
+    }
+    case "queued": {
+      if (thread) return next;
+      const queue = { position: p.position ?? null, ahead: p.ahead ?? null, working: p.working ?? null, limit: p.limit ?? null, message: p.message ?? "Waiting for a free review slot." };
+      return upsertTrail({ ...next, status: "running", queue }, { id: "queue-wait", kind: "result", text: queue.message, at, seq: event.sequence });
     }
     case "budget":
       return { ...next, budget: { ...(next.budget ?? {}), ...p }, budgetAt: Number.isFinite(Date.parse(at)) ? Date.parse(at) : next.budgetAt };
@@ -245,7 +255,7 @@ export function reviewReducer(state, event) {
       return upsertTrail(next, { id: `sus-${p.suspect_id}-${event.sequence}`, kind: "suspect", status: p.status, text: p.title ?? p.code, detail: p.reason, at, seq: event.sequence });
     }
     case "sim_queued": {
-      const sim = { id: p.ref, label: p.label, kind: p.kind, quality: p.quality, suspect: p.suspect, hash: p.hash, change: null, status: "queued", pct: 0, step: "queued" };
+      const sim = { id: p.ref, label: p.label, kind: p.kind, simKind: boardKind(p.sim_kind) ?? boardKind(p.kind), quality: p.quality, suspect: p.suspect, hash: p.hash, change: null, status: "queued", pct: 0, step: "queued" };
       next = { ...next, sims: { ...next.sims, [p.ref]: sim } };
       return upsertTrail(next, { id: `sim-${p.ref}`, kind: "sim", simId: p.ref, text: p.label, state: "queued", pct: 0, at, seq: event.sequence });
     }
@@ -253,15 +263,17 @@ export function reviewReducer(state, event) {
       const sim = next.sims[p.ref];
       if (!sim) return next;
       const pct = typeof p.fraction === "number" ? p.fraction : sim.pct;
-      next = { ...next, sims: { ...next.sims, [p.ref]: { ...sim, status: "running", pct, step: p.phase ?? p.step ?? sim.step } } };
-      return upsertTrail(next, { id: `sim-${p.ref}`, kind: "sim", simId: p.ref, text: sim.label, state: "running", pct, at, seq: event.sequence });
+      // the solver is shared: a job that has not got it yet reports phase "waiting" with its place in the line, and stays queued
+      const waiting = p.phase === "waiting" ? { position: p.position ?? null, ahead: p.ahead ?? null } : null;
+      next = { ...next, sims: { ...next.sims, [p.ref]: { ...sim, status: waiting ? "queued" : "running", waiting, pct, step: p.phase ?? p.step ?? sim.step } } };
+      return upsertTrail(next, { id: `sim-${p.ref}`, kind: "sim", simId: p.ref, text: sim.label, state: waiting ? "queued" : "running", pct, at, seq: event.sequence });
     }
     case "sim_done": {
       const sim = next.sims[p.ref] ?? { id: p.ref, label: p.label ?? p.ref, kind: p.kind };
       const trust = p.trust?.status ?? (p.ok ? "ok" : "failed");
-      const done = { ...sim, suspect: p.suspect ?? sim.suspect, hash: p.hash ?? sim.hash, quality: p.quality ?? sim.quality, status: "done", pct: 1, measurements: p.measurements ?? {}, delta: p.delta ?? null, curve: p.curve ?? null, trust, ok: !!p.ok, meetsTarget: p.meets_target, evidence: p.evidence, solveS: p.solve_s };
+      const done = { ...sim, simKind: boardKind(p.sim_kind) ?? sim.simKind ?? boardKind(p.kind) ?? boardKind(sim.kind), suspect: p.suspect ?? sim.suspect, hash: p.hash ?? sim.hash, quality: p.quality ?? sim.quality, status: "done", pct: 1, measurements: p.measurements ?? {}, delta: p.delta ?? null, curve: p.curve ?? null, trust, ok: !!p.ok, meetsTarget: p.meets_target, evidence: p.evidence, solveS: p.solve_s };
       next = { ...next, sims: { ...next.sims, [p.ref]: done } };
-      const exp = { id: p.ref, label: done.label, kind: done.kind, quality: p.quality, suspect: done.suspect, hash: done.hash, solveS: p.solve_s, measurements: done.measurements, delta: done.delta, curve: done.curve, trust, ok: done.ok, meetsTarget: p.meets_target, evidence: p.evidence };
+      const exp = { id: p.ref, label: done.label, kind: done.kind, simKind: done.simKind, quality: p.quality, suspect: done.suspect, hash: done.hash, solveS: p.solve_s, measurements: done.measurements, delta: done.delta, curve: done.curve, trust, ok: done.ok, meetsTarget: p.meets_target, evidence: p.evidence };
       next = { ...next, experiments: [...next.experiments.filter((e) => e.id !== exp.id), exp] };
       return upsertTrail(next, { id: `sim-${p.ref}`, kind: "sim", simId: p.ref, text: done.label, state: "done", pct: 1, summary: done.measurements, at, seq: event.sequence });
     }

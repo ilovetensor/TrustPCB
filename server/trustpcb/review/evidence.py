@@ -18,7 +18,8 @@ FIXED_DIP_HZ = 12e6            # a dip that moves less than this between two run
 # evidence types
 CANDIDATE, MEASUREMENT, SIMULATION, CONFIRM, COMPARISON, CALCULATION, PLACEMENT, REFERENCE = (
     'candidate', 'measurement', 'simulation', 'confirm', 'comparison', 'calculation', 'placement', 'reference')
-SIMULATED_TYPES = (SIMULATION, CONFIRM, COMPARISON, CALCULATION)
+BOARD_SIM, SIM_ASSUMPTIONS = 'board_sim', 'sim_assumptions'     # a power, thermal or signal run (metrics), and the inputs and assumptions it used
+SIMULATED_TYPES = (SIMULATION, CONFIRM, COMPARISON, CALCULATION, BOARD_SIM)
 MEASURED_TYPES = (CANDIDATE, MEASUREMENT)
 NOT_EVIDENCE_FOR_FINDINGS = (PLACEMENT,)   # a what-if on a ghost part is not a fact about the board
 

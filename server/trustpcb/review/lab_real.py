@@ -20,11 +20,13 @@ import hashlib
 import json
 import re
 import shutil
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from .budgets import max_queue_wait_s
 from .lab import BadMatchingRequest, BaselineLab, LabUnavailable, Progress
 
 DOCKER_CHECK_SECONDS = 30.0
@@ -45,6 +47,10 @@ def _kind_of(code: str, simulatable: bool) -> str:
     return {'not_wireless': 'none', 'no_antenna': 'none', 'chip_antenna': 'chip', 'module': 'module'}.get(code, 'printed')
 
 
+class QueueWaitExceeded(Exception):
+    """A simulation waited longer than the hard limit for the solver."""
+
+
 class RealLab(BaselineLab):
     def __init__(self, store, *, queue=None, image: str | None = None):
         super().__init__(store)
@@ -52,6 +58,9 @@ class RealLab(BaselineLab):
         self.queue = queue or SimQueue(store, image=image)
         self.image = getattr(self.queue, 'image', image)
         self._setups: dict[tuple, Any] = {}
+        self._build_locks: dict[str, asyncio.Lock] = {}       # per job folder: one review builds it, an identical request waits and then shares the run
+        self._derive_lock = threading.Lock()                  # sibling job folders are made one at a time
+        self.max_queue_wait_s = max_queue_wait_s()            # the hard limit on waiting for the solver
         self._docker: tuple[float, str | None] | None = None
         self._pdf_text: dict[tuple, str] = {}
 
@@ -169,31 +178,41 @@ class RealLab(BaselineLab):
         job_dir = self.store.scenario_dir(job_hash)
         if reused:
             notes.append(reused)
-        if self.queue.cached_summary(job_hash) is None:
-            try:
-                await asyncio.to_thread(validate_ops, list(sc.whatif_ops), board, setup)
-                await asyncio.to_thread(build_job, board, setup, sc, job_dir)
-            except WhatIfError as exc:
-                return {'status': 'failed', 'job_id': None, 'cached': False, 'solve_s': 0, 'error': exc.message, 'error_code': exc.code, 'rejected': True,
-                        'note': 'The change was refused before any solver time was spent.'}
-            except (ValueError, KeyError, ArithmeticError) as exc:
-                return {'status': 'failed', 'job_id': None, 'cached': False, 'solve_s': 0, 'error': f'The model could not be built: {str(exc)[:240]}'}
-            if overrides:
-                self._apply_overrides(job_dir, overrides)
+        def feed_to(callback):
+            async def feed(update: dict) -> None:
+                if callback is None:
+                    return
+                fraction = update.get('fraction')
+                payload = {k: v for k, v in update.items() if k in ('job_id', 'phase', 'step', 'timestep', 'max_timesteps', 'energy_db', 'status', 'position', 'ahead', 'waited_s', 'shared')}
+                if fraction is not None:
+                    payload['fraction'] = fraction
+                    payload['progress'] = fraction
+                await callback(payload)
+            return feed
 
-        async def feed(update: dict) -> None:
-            if on_progress is None:
-                return
-            fraction = update.get('fraction')
-            payload = {k: v for k, v in update.items() if k in ('job_id', 'phase', 'step', 'timestep', 'max_timesteps', 'energy_db', 'status')}
-            if fraction is not None:
-                payload['fraction'] = fraction
-                payload['progress'] = fraction
-            await on_progress(payload)
-
-        handle = await self.queue.submit(job_hash, job_dir, review_id=review_id, investigation_id=investigation_id, on_progress=feed, scenario={**sc.to_dict(), 'review_scenario_hash': scenario_hash})
+        # Two reviews can want the identical scenario at the same moment. The job folder is built once, and never while a run of it is
+        # queued or running (the container reads it): the second request finds the run in flight and attaches to it in the queue.
+        async with self._build_locks.setdefault(job_hash, asyncio.Lock()):
+            if self.queue.cached_summary(job_hash) is None and not self.queue.in_flight(job_hash):
+                try:
+                    await asyncio.to_thread(validate_ops, list(sc.whatif_ops), board, setup)
+                    await asyncio.to_thread(build_job, board, setup, sc, job_dir)
+                except WhatIfError as exc:
+                    return {'status': 'failed', 'job_id': None, 'cached': False, 'solve_s': 0, 'error': exc.message, 'error_code': exc.code, 'rejected': True,
+                            'note': 'The change was refused before any solver time was spent.'}
+                except (ValueError, KeyError, ArithmeticError) as exc:
+                    return {'status': 'failed', 'job_id': None, 'cached': False, 'solve_s': 0, 'error': f'The model could not be built: {str(exc)[:240]}'}
+                if overrides:
+                    self._apply_overrides(job_dir, overrides)
+            handle = await self.queue.submit(job_hash, job_dir, review_id=review_id, investigation_id=investigation_id, on_progress=feed_to(on_progress),
+                                             scenario={**sc.to_dict(), 'review_scenario_hash': scenario_hash})
         try:
-            out = await (asyncio.wait_for(handle.wait(), timeout=max_seconds) if max_seconds and max_seconds > 0 else handle.wait())
+            out = await self._result(handle, max_seconds)
+        except QueueWaitExceeded:
+            await self.queue.cancel(handle.job_id)
+            minutes = round(self.max_queue_wait_s / 60)
+            return {'status': 'timeout', 'job_id': handle.job_id, 'cached': False, 'solve_s': 0, 'waited_out': True,
+                    'error': f'The solver stayed busy with other reviews for more than {minutes} minutes, so this run was dropped before it started. No solver time was used.'}
         except asyncio.TimeoutError:
             await self.queue.cancel(handle.job_id)
             return {'status': 'timeout', 'job_id': handle.job_id, 'cached': False, 'solve_s': round(float(max_seconds), 1), 'error': 'The time left in this review ran out, so the solver was stopped.'}
@@ -201,6 +220,21 @@ class RealLab(BaselineLab):
             await asyncio.shield(self.queue.cancel(handle.job_id))
             raise
         return await asyncio.to_thread(self._assemble, out, job_dir, sc.quality, notes)
+
+    async def _result(self, handle, max_seconds):
+        """The run's answer. Waiting for the solver is bounded only by the hard limit TRUSTPCB_MAX_QUEUE_WAIT_MIN; `max_seconds` (the time the
+        review has left) counts from the moment the run starts, so a queue of other reviews never uses up a review's own budget."""
+        if not handle.started.is_set():
+            starter, finished = asyncio.ensure_future(handle.started.wait()), asyncio.ensure_future(handle.wait())
+            try:
+                await asyncio.wait({starter, finished}, timeout=self.max_queue_wait_s, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                starter.cancel()
+                if not finished.done():
+                    finished.cancel()
+            if not handle.started.is_set() and not finished.done():
+                raise QueueWaitExceeded()
+        return await (asyncio.wait_for(handle.wait(), timeout=max_seconds) if max_seconds and max_seconds > 0 else handle.wait())
 
     # ---- reusing a run of the same geometry ---------------------------------------------------------------
 
@@ -259,7 +293,9 @@ class RealLab(BaselineLab):
             derived = f'{job_hash}-{wanted}'
             if self.queue.cached_summary(derived) is not None:
                 return derived, 'The solver output of an earlier version with the same geometry was reused; only the matching parts differ, so no solver time was spent.'
-            self._derive_job(source, self.store.scenario_dir(derived), setup, version_id, meta)
+            with self._derive_lock:         # two reviews deriving the same sibling folder take turns; the second finds it finished
+                if self.queue.cached_summary(derived) is None:
+                    self._derive_job(source, self.store.scenario_dir(derived), setup, version_id, meta)
             return derived, 'The solver output of an earlier version with the same geometry was reused; only the matching parts differ, so no solver time was spent.'
         return job_hash, None
 

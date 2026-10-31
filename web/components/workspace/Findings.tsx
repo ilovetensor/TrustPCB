@@ -1,10 +1,12 @@
 "use client";
+import Link from "next/link";
 import { useAppEnv } from "../../lib/demo";
 import { tabProps, tablistKeys } from "../../lib/hooks";
 import { useEffect, useRef, useState } from "react";
 import { SEVERITY_ORDER, sortFindings, type ReviewState } from "../../lib/review-reducer.mjs";
 import { findingLabel, findingNumber } from "../../lib/review-view";
 import type { Evidence, Finding, Severity } from "../../lib/types";
+import { evidenceLink } from "../../lib/board-sim-model.mjs";
 import { ClassStamp, Icon, SevGlyph } from "../ui";
 import type { ChangeState } from "../../lib/story.mjs";
 import type { Mark } from "../../lib/types";
@@ -20,8 +22,8 @@ const CHANGE_LABEL: Record<ChangeState, string> = { fixed: "fixed", improved: "i
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 type Changes = Record<string, { change: ChangeState; note: string | null; changes: string[] }>;
 
-export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, onSetStatus, changes = {} }: {
-  changes?: Changes;
+export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, onSetStatus, changes = {}, reviewId }: {
+  changes?: Changes; /** the review these findings belong to: evidence from a simulation links to its lab */ reviewId?: string;
   state: ReviewState; evidence: Record<string, Evidence>; selectedId: string | null; onSelect: (id: string | null) => void; /** left out in the read-only demo */ onAsk?: (id: string) => void;
   onSetStatus: (id: string, status: "dismissed" | "open", reason?: string) => void;
 }) {
@@ -53,7 +55,7 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
           <p className="empty">{all.length === 0 ? (state.status === "running" || state.status === "idle" ? "No findings yet. Each one appears here, with its numbered balloon on the board, the moment the agent records it." : "This review recorded no findings.") : "No findings at this level."}</p>
         )}
         {list.map((f) => (
-          <FindingCard key={f.id} f={f} change={changes[f.code ?? ""]} ev={(f.evidence ?? f.evidence_ids ?? []).map((i) => evidence[i]).filter(Boolean)} evCodes={f.evidence ?? []} sel={selectedId === f.id} onSelect={() => onSelect(selectedId === f.id ? null : f.id)} onAsk={onAsk ? () => onAsk(f.id) : undefined} onDismiss={(reason) => onSetStatus(f.id, "dismissed", reason)} setRef={(el) => { refs.current[f.id] = el; }} />
+          <FindingCard key={f.id} reviewId={reviewId} f={f} change={changes[f.code ?? ""]} ev={(f.evidence ?? f.evidence_ids ?? []).map((i) => evidence[i]).filter(Boolean)} evCodes={f.evidence ?? []} sel={selectedId === f.id} onSelect={() => onSelect(selectedId === f.id ? null : f.id)} onAsk={onAsk ? () => onAsk(f.id) : undefined} onDismiss={(reason) => onSetStatus(f.id, "dismissed", reason)} setRef={(el) => { refs.current[f.id] = el; }} />
         ))}
         {gone.length > 0 && (
           <div className="fp-gone">
@@ -72,7 +74,7 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
   );
 }
 
-function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }: { f: Finding; change?: Changes[string]; ev: Evidence[]; evCodes: string[]; sel: boolean; onSelect: () => void; onAsk?: () => void; onDismiss: (reason: string) => void; setRef: (el: HTMLElement | null) => void }) {
+function FindingCard({ f, reviewId, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }: { reviewId?: string; f: Finding; change?: Changes[string]; ev: Evidence[]; evCodes: string[]; sel: boolean; onSelect: () => void; onAsk?: () => void; onDismiss: (reason: string) => void; setRef: (el: HTMLElement | null) => void }) {
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
   const { demo } = useAppEnv();         // a read-only demo refuses every change: no dismissing and no follow-up questions
@@ -108,6 +110,7 @@ function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, 
                     <span className="idx">{e.code ?? e.id}</span><span className="num dim">{l.tool}</span>
                     {l.text && <span className="fc-evt">{l.text}</span>}
                     {l.vals && <span className="num fc-vals">{l.vals}</span>}
+                    {reviewId && (() => { const k = evidenceLink(reviewId, e); return k ? <Link href={k.href} className="fc-lablink"><Icon name={k.href.includes("/sim") ? "flame" : "wave"} size={11} /> {k.label}</Link> : null; })()}
                   </div>
                 );
               })}
