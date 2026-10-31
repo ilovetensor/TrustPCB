@@ -34,12 +34,21 @@ def board_from_dict(d: dict[str, Any]) -> Board:
     return board
 
 
+def attach_project(board: Board, version_dir: str | Path) -> Board:
+    """Give a board rebuilt from ``board.json`` its project settings (net classes, design rules) when the project file is there."""
+    from .project import read_project_file
+
+    if not getattr(board, "project", None):
+        board.project = read_project_file(version_dir)
+    return board
+
+
 def load_board(version_dir: str | Path) -> Board:
     """``artifacts/board.json`` if present (it carries refilled zones), else parse the project files."""
     version_dir = Path(version_dir)
     cached = version_dir / "artifacts" / "board.json"
     if cached.is_file():
-        return board_from_dict(json.loads(cached.read_text(encoding="utf-8")))
+        return attach_project(board_from_dict(json.loads(cached.read_text(encoding="utf-8"))), version_dir)
     project = version_dir / "project" if (version_dir / "project").is_dir() else version_dir
     info = detect_mod.find_project(project)
     if not info["pcb"]:

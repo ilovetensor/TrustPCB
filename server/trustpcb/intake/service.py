@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..analyzers import run_for_version
+from ..analyzers import drc_summary, run_for_version
 from ..pcb.baseline import run_baseline
 from ..pcb.model import parse_board
 from . import detect, stackup, upload
@@ -53,6 +53,8 @@ async def ingest(*, store, version: dict, upload_path, filename: str) -> dict[st
     except (ValueError, IndexError, KeyError, TypeError, RecursionError) as exc:
         raise ValueError(f'{Path(result.pcb).name} is not a KiCad board TrustPCB can read ({type(exc).__name__}: {str(exc)[:160]}). Upload a .kicad_pcb file saved by KiCad 9 or newer.') from exc
     baseline = await run_baseline(version_dir)
+    # KiCad repeats violation records: add distinct positions, net pairs and vias beside the record counts
+    await asyncio.to_thread(drc_summary.annotate_version, version_dir)
     await asyncio.to_thread(run_for_version, version_dir)
     found = detect.detect(board, result.sch)
     _record_artifacts(store, version['id'], version_dir / 'artifacts')

@@ -3,16 +3,29 @@
 RF nets are named for an antenna or RF function (or listed in the brief). Nets joined through a
 series part (a two-pad capacitor, inductor, resistor or ferrite whose pads are on two different
 signal nets) are one path. A candidate is emitted for a path with any width change, layer jump or
-open stub.
+stub.
+
+The path length is split into the feed and the radiating element. A trace antenna's feed point
+(``intake.detect``) is followed along the antenna net while the track width stays the feed's width; the
+tracks from the first width change on are the radiating element. Everything else on the path is feed.
+``feed_length`` + ``radiating_length`` = ``path_length``, and ``net_breakdown`` gives the split per net with the
+lengths by width, so a net that mixes feed and element (an antenna net with a 0.3 mm feed and a 1.0 mm
+meander) is not read as one long antenna.
+
+Stubs are open-ended track branches and the pads of parts that are not fitted (do-not-populate): a
+shunt part left off a line leaves its pad hanging on the line as an open stub. ``stubs`` counts both;
+``open_end_stubs`` and ``dnp_stubs`` give the parts.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
+from ..intake.detect import detect
 from ..pcb.model import Board
 from .base import AnalyzerContext, Emitter, mark, meas, point_target
-from .classify import is_ground, is_power, is_rf_net, part_kind
+from .classify import is_dnp, is_ground, is_power, is_rf_net, part_kind
 from .topology import get_topology
 
 RULE = "rf_path"
@@ -68,8 +81,61 @@ def rf_groups(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
     return [groups[k] for k in sorted(groups)]
 
 
+def _key(p) -> tuple[float, float]:
+    return (round(p[0], 3), round(p[1], 3))
+
+
+def feed_split(board: Board, ctx: AnalyzerContext) -> dict[str, Any]:
+    """Which tracks of a trace antenna are feed and which are the radiating element.
+
+    ``{net, radiating: set of track ids, feed: set of track ids, feed_width, basis}``. Empty sets when the
+    board has no trace antenna with a known feed point, or when the antenna net has one width throughout (the
+    feed cannot be told from the element then, and ``basis`` says so).
+    """
+    cached = ctx.cache.get("rf_feed_split")
+    if cached is not None and cached[0] is board:
+        return cached[1]
+    out: dict[str, Any] = {"net": None, "radiating": set(), "feed": set(), "feed_width": None, "basis": "no trace antenna with a known feed point was detected"}
+    try:
+        ant = detect(board).antenna or {}
+    except Exception:  # detection is best effort
+        ant = {}
+    feed_pt = ant.get("feed_point")
+    ids = set(ant.get("track_ids") or [])
+    tracks = {t.id: t for t in board.tracks if t.id in ids}
+    if ant.get("type") == "trace" and feed_pt and tracks:
+        out["net"] = ant.get("net")
+        ends = {tid: (_key(t.start), _key(t.end)) for tid, t in tracks.items()}
+        seeds = sorted(tracks, key=lambda tid: min(math.dist(tracks[tid].start, feed_pt), math.dist(tracks[tid].end, feed_pt)))
+        near = [tid for tid in seeds if min(math.dist(tracks[tid].start, feed_pt), math.dist(tracks[tid].end, feed_pt)) <= 0.6]
+        if near:
+            width = round(tracks[near[0]].width, 4)
+            feed = {tid for tid in near if round(tracks[tid].width, 4) == width}
+            todo = list(feed)
+            while todo:
+                cur = todo.pop()
+                for tid in tracks:
+                    if tid in feed or round(tracks[tid].width, 4) != width:
+                        continue
+                    if set(ends[cur]) & set(ends[tid]):
+                        feed.add(tid)
+                        todo.append(tid)
+            rest = set(tracks) - feed
+            out["feed_width"] = width
+            if rest:
+                out["feed"], out["radiating"] = feed, rest
+                out["basis"] = f"tracks from the feed point {list(feed_pt)} while the width stays {width:g} mm are feed; the tracks after the width change are the radiating element"
+            else:
+                out["basis"] = f"the antenna net is {width:g} mm wide throughout, so the feed cannot be told from the radiating element"
+        else:
+            out["basis"] = "no antenna track starts at the feed point"
+    ctx.cache["rf_feed_split"] = (board, out)
+    return out
+
+
 def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
     topo = get_topology(board, ctx)
+    split = feed_split(board, ctx)
     em = Emitter(RULE)
     for g in rf_groups(board, ctx):
         nets = set(g["nets"])
@@ -103,13 +169,53 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
                     stubs.append(r)
                     break
         layers = sorted({r.layer for r in runs})
-        if not (changes or vias or stubs):
+        # pads of parts that are not fitted hang on the line as open stubs
+        dnp_stubs = []
+        for f in sorted(board.footprints, key=lambda f: f.ref):
+            if not is_dnp(f) or f.ref not in set(g["shunt"]) | set(g["series"]):
+                continue
+            for pad in board.pads_of(f.ref):
+                if pad.net in nets:
+                    dnp_stubs.append({"ref": f.ref, "pad": pad.id, "net": pad.net, "value": f.value, "role": "series" if f.ref in g["series"] else "shunt"})
+        # feed and radiating length, per net
+        breakdown = []
+        rad_ids = split["radiating"]
+        for net in g["nets"]:
+            net_runs = [r for r in runs if r.net == net]
+            if not net_runs:
+                continue
+            by_width: dict[float, float] = {}
+            feed_len = rad_len = 0.0
+            for r in net_runs:
+                for sg in r.segs:
+                    by_width[round(sg.width, 4)] = by_width.get(round(sg.width, 4), 0.0) + sg.length
+                    if sg.parent in rad_ids:
+                        rad_len += sg.length
+                    else:
+                        feed_len += sg.length
+            breakdown.append(
+                {
+                    "net": net,
+                    "length_mm": round(feed_len + rad_len, 2),
+                    "feed_mm": round(feed_len, 2),
+                    "radiating_mm": round(rad_len, 2),
+                    "by_width": [{"width_mm": w, "length_mm": round(by_width[w], 2)} for w in sorted(by_width)],
+                }
+            )
+        feed_total = sum(b["feed_mm"] for b in breakdown)
+        rad_total = sum(b["radiating_mm"] for b in breakdown)
+        stub_count = len(stubs) + len(dnp_stubs)
+        if not (changes or vias or stub_count):
             continue
         m: dict[str, Any] = {
             "path_length": meas(length, "mm", 2),
+            "feed_length": meas(feed_total, "mm", 2),
+            "radiating_length": meas(rad_total, "mm", 2),
             "width_changes": meas(len(changes), "count"),
             "layer_jumps": meas(len(vias), "count"),
-            "stubs": meas(len(stubs), "count"),
+            "stubs": meas(stub_count, "count"),
+            "open_end_stubs": meas(len(stubs), "count"),
+            "dnp_stubs": meas(len(dnp_stubs), "count"),
             "series_parts": meas(len(g["series"]), "count"),
             "shunt_parts": meas(len(g["shunt"]), "count"),
         }
@@ -124,21 +230,30 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
         stub_tracks = sorted({t for r in stubs for t in r.tracks})
         if stub_tracks:
             marks.append(mark("object", stub_tracks, label="stub"))
+        if dnp_stubs:
+            marks.append(mark("object", [d["pad"] for d in dnp_stubs], label="pad of a part that is not fitted (open stub)"))
         details = []
         if g["series"]:
             details.append("series parts: " + ", ".join(g["series"]))
         if g["shunt"]:
             details.append("shunt parts: " + ", ".join(g["shunt"]))
+        if dnp_stubs:
+            details.append("not fitted, pads are open stubs: " + ", ".join(sorted({d["ref"] for d in dnp_stubs})))
+        if rad_total:
+            details.append(f"feed {feed_total:.2f} mm, radiating element {rad_total:.2f} mm ({split['basis']})")
         first = runs[0].vertices()[0]
         em.add(
             f"RF path {' / '.join(g['nets'])}",
             m,
             seg_tracks + vias,
             marks,
-            "medium" if vias or stubs else "low",
+            "medium" if vias or stub_count else "low",
             position=first,
             details=details,
             nets=g["nets"],
             layers=layers,
+            net_breakdown=breakdown,
+            feed_radiating_basis=split["basis"],
+            dnp_stub_pads=dnp_stubs,
         )
     return em.items

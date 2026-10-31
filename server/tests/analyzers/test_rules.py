@@ -265,8 +265,8 @@ def test_noise_proximity_with_roles_and_heuristics(builder):
     assert c["targets"] == ["ref:U1", "ref:U2"]
     assert math.isclose(val(c, "distance"), 8 - 2.0, abs_tol=0.01)
     assert c["marks"][0]["type"] == "link" and c["marks"][0]["value"]["unit"] == "mm"
-    # roles from a brief override the heuristics
-    ctx = AnalyzerContext(part_roles={"U1": "digital", "U3": "rf", "U2": "analog"})
+    # roles from a brief override the heuristics (when the symbol value does not say otherwise)
+    ctx = AnalyzerContext(part_roles={"U1": "regulator", "U3": "rf", "U2": "analog"})
     out = noise_proximity.analyze(b.build(), ctx)
     assert out == []  # U3 (rf) is 20+ mm from U2
 
@@ -286,7 +286,11 @@ def test_zones_hull_roles_registered_and_overlap(builder):
     assert sw["marks"][0]["resolved"][0]["kind"] == "polygon"
     assert board.zone_roles["switching"] == ["ref:L1", "ref:U1"]
     # a brief puts both into one role: no overlap between different roles, one hull
-    out = zones.analyze(builder_with_roles(b), AnalyzerContext(part_roles={"U1": "power", "L1": "power", "U2": "power"}))
+    b2 = builder()
+    b2.part("U1", "TPS62160", 10, 10, [("1", "SW", 0, 0), ("2", "GND", 1, 0), ("3", "VIN", 2, 0)])
+    b2.part("L1", "2.2uH", 14, 10, [("1", "SW", 0, 0), ("2", "VOUT", 1, 0)], lib="L_0603")
+    b2.part("U2", "XR9000", 30, 30, [("1", "SDA", 0, 0), ("2", "GND", 1, 0), ("3", "3V3", 2, 0)])  # a value the symbol rules do not know
+    out = zones.analyze(builder_with_roles(b2), AnalyzerContext(part_roles={"U1": "power", "L1": "power", "U2": "power"}))
     assert [c["title"] for c in out] == ["Zone power 1", "Zone power 2"]
 
 

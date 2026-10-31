@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import shutil
 
 from trustpcb.analyzers import ANALYZER_NAMES, AnalyzerContext, run_all, run_for_version
+
+from .conftest import NRF_PCB
 
 
 def _by_rule(result):
@@ -49,13 +52,16 @@ def test_patch_board(patch_board):
     assert abs(feed["deviation_pct"]) < 10  # the 3.05 mm feed is a 50 ohm line
     # the feed ends in the patch pour: not an open stub
     rf = next(c for c in r["candidates"] if c["rule"] == "rf_path")
-    assert rf["measurements"]["stubs"]["value"] == 0
+    assert rf["measurements"]["open_end_stubs"]["value"] == 0
+    assert rf["measurements"]["dnp_stubs"]["value"] == 1  # C2 (DNP_SHUNT) is not fitted: its pad hangs on the line
 
 
 def test_run_for_version_writes_file(tmp_path, nrf_board):
     art = tmp_path / "artifacts"
     art.mkdir()
     (art / "board.json").write_text(json.dumps(nrf_board.to_dict()))
+    (tmp_path / "project").mkdir()  # the project file carries the net classes the netclass_width rule reads
+    shutil.copy(NRF_PCB.with_suffix(".kicad_pro"), tmp_path / "project" / NRF_PCB.with_suffix(".kicad_pro").name)
     res = run_for_version(tmp_path, AnalyzerContext(target_ohms=50.0))
     data = json.loads((art / "analyzers.json").read_text())
     assert set(data) >= {"candidates", "overlays", "status", "seconds", "registrations"}
