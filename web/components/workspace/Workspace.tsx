@@ -1,4 +1,5 @@
 "use client";
+import { useAppEnv } from "../../lib/demo";
 import "./workspace.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -14,7 +15,7 @@ import { useReviewSims } from "../../lib/use-stage-rf";
 import type { BBox, Evidence, Geometry } from "../../lib/types";
 import type { FocusRequest, Ghost, Insets } from "../board2d/Board2D";
 import { BoardStage, describePick } from "../stage/BoardStage";
-import { FixtureBadge, Icon, Logo, Panel } from "../ui";
+import { DemoNotice, FixtureBadge, Icon, Logo, Panel } from "../ui";
 import { BudgetInstrument } from "./Budget";
 import { ChatDock, type SelectedChip } from "./Chat";
 import { ExperimentStrip, type Band } from "./Experiments";
@@ -68,6 +69,7 @@ function useStageLayout(root: React.RefObject<HTMLElement | null>, narrow: boole
 }
 
 export function Workspace({ reviewId }: { reviewId: string }) {
+  const { demo } = useAppEnv();
   const sp = useSearchParams();
   const at = Number(sp.get("at") ?? 0) || 0;
   const rv = useReview(reviewId, { startAt: at, autoplay: sp.get("play") !== "0" });
@@ -193,7 +195,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     : ["What did you not test?", "What should I check first?"];
   const running = state.status === "running" || state.status === "idle";
   const canStop = state.status === "running" || state.followup.running;
-  const connection = FIXTURE_MODE ? "REPLAY" : rv.stream === "retrying" ? "RECONNECTING" : rv.stream === "error" ? "OFFLINE" : state.status === "running" ? "LIVE" : state.status === "idle" ? "LOADING" : state.status.toUpperCase();
+  const connection = FIXTURE_MODE ? "REPLAY" : rv.stream === "retrying" ? "RECONNECTING" : rv.stream === "error" ? "OFFLINE" : state.status === "running" ? "LIVE" : state.status === "idle" ? "LOADING" : state.endState === "interrupted" ? "INTERRUPTED" : state.status.toUpperCase();
 
   const brand = (
     <Panel className="ws-brand" idx={meta ? `R-${meta.id.replace(/^r-/i, "").slice(0, 6).toUpperCase()}` : "R-----"} delay={0}>
@@ -204,6 +206,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
           <span className="idx">{meta?.version_label ?? ""} / {meta?.depth?.toUpperCase() ?? ""} / {connection}</span>
         </div>
         <FixtureBadge label="Fixture replay" />
+        <DemoNotice />
       </div>
     </Panel>
   );
@@ -225,9 +228,9 @@ export function Workspace({ reviewId }: { reviewId: string }) {
   const findings = (
     <Panel className="ws-find" idx="FINDINGS" title="Findings" delay={320} bodyClass="fill" actions={(
       <span className="ws-find-act">
-        <button className="btn sm" onClick={() => setChatOpen((o) => !o)} disabled={running && !pendingApproval} title={running ? "Chat opens when the review ends" : undefined} aria-pressed={chatOpen}>
+        {!demo && <button className="btn sm" onClick={() => setChatOpen((o) => !o)} disabled={running && !pendingApproval} title={running ? "Chat opens when the review ends" : undefined} aria-pressed={chatOpen}>
           <Icon name="chat" size={12} /> {pendingApproval ? "Approve" : "Ask"}{pendingApproval && <i className="ws-dot" />}
-        </button>
+        </button>}
         {revision ? <Link href={`/reviews/${reviewId}/report`} className="btn sm primary">Report r{revision}</Link> : null}
       </span>
     )}>
@@ -272,7 +275,9 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     <div className="stage"><div className="stage-bg" aria-hidden /><div className="stage-loading mono idx">{(boardError ?? (!meta ? rv.error : null))?.toUpperCase() ?? "LOADING BOARD"}</div></div>
   );
 
-  const banner = state.status === "failed"
+  const banner = state.endState === "interrupted"
+    ? "This review was interrupted because the app restarted while it was running. Nothing after that point was done. Start a new review of this version to get a full report."
+    : state.status === "failed"
     ? `The review failed${state.failure ? `: ${state.failure}` : "."}`
     : state.status === "canceled" ? "The review was stopped. The report lists what was not done." : rv.stream === "retrying" ? "Connection to the local service dropped. Reconnecting." : null;
 
@@ -300,7 +305,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
       <div className="ws-stage">{stage}</div>
       {brand}{phase}{budget}{trail}{findings}{strip}
       {replay}
-      {chatOpen && chat}
+      {chatOpen && !demo && chat}
       {banner && <div className="ws-notice stamp sig">{banner}</div>}
       {!banner && state.notices.slice(-1).map((n) => (<div key={n.id} className="ws-notice stamp sig">{n.text}</div>))}
     </main>

@@ -13,7 +13,8 @@ import { PatchBoard3D } from "../rf/PatchBoard3D";
 import { PulsePlane3D } from "../rf/WaveField3D";
 import { WaveField3D } from "../rf/WaveField3D";
 import { TuningGraph } from "../rf/charts";
-import { ClassStamp, FixtureBadge, Icon, Logo, SevBar } from "../ui";
+import { ClassStamp, DemoNotice, FixtureBadge, Icon, Logo, SevBar } from "../ui";
+import { useAppEnv } from "../../lib/demo";
 import { PowerPair } from "../rf/PowerPair";
 import { acceptedPct } from "../../lib/sims";
 import dynamic from "next/dynamic";
@@ -117,6 +118,7 @@ function HowItWorks() {
 }
 
 export function Landing() {
+  const { demo } = useAppEnv();
   const calm = useReducedMotion();
   const [rf, setRf] = useState<RfBundle | null>(null);
   const nrf = useNrfHero();
@@ -172,7 +174,8 @@ export function Landing() {
           </nav>
           <span style={{ flex: 1 }} />
           <FixtureBadge />
-          <Link className="btn sm" href="/upload"><Icon name="upload" size={12} /> Upload</Link>
+          <DemoNotice />
+          {!demo && <Link className="btn sm" href="/upload"><Icon name="upload" size={12} /> Upload</Link>}
         </header>
         <div className="ld-copy">
           <span className="idx rise" style={{ animationDelay: "100ms" }}>TPCB / INSPECTION BENCH / REV 0.1</span>
@@ -181,10 +184,10 @@ export function Landing() {
             <span className="rise l2" style={{ animationDelay: "380ms" }}>TrustPCB tests <em>your board.</em></span>
           </h1>
           <p className="rise" style={{ animationDelay: "560ms" }}>
-            Upload a KiCad board. Get it marked up like a senior engineer went over the drawing: real simulations, measured numbers, and tested fixes. Nothing is edited. Nothing is guessed.
+            Upload a KiCad board. Get it marked up like a senior engineer went over the drawing: layout measurements, real simulations, and tested fixes. Nothing is edited. Nothing is guessed.
           </p>
           <div className="ld-cta rise" style={{ animationDelay: "720ms" }}>
-            <Link className="btn primary big" href="/upload"><Icon name="upload" size={15} /> Upload a board</Link>
+            {!demo && <Link className="btn primary big" href="/upload"><Icon name="upload" size={15} /> Upload a board</Link>}
             {sampleHref && <Link className="btn big" href={sampleHref}>{FIXTURE_MODE ? "Watch a sample review" : "Open your latest review"} <Icon name="arrow" size={14} /></Link>}
           </div>
           <div className="ld-labels rise" style={{ animationDelay: "880ms" }}>

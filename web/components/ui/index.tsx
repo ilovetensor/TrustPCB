@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import type { EvidenceClass, Severity } from "../../lib/types";
 import { DATA_SOURCE } from "../../lib/api";
+import { useAppEnv } from "../../lib/demo";
 import { Icon } from "./icons";
 
 export { Icon };
@@ -82,6 +83,21 @@ export function FixtureBadge({ label = "Fixture", title = "Dev fixture data. Not
   return <span className="stamp fixture" title={title} style={style}>{label}</span>;
 }
 
+/** "Read-only demo": shown when the backend runs with TRUSTPCB_DEMO_READONLY=1. Says what is switched off and links to the repository. */
+export function DemoNotice({ block = false }: { block?: boolean }) {
+  const { demo, repoUrl } = useAppEnv();
+  if (!demo) return null;
+  const title = "Uploading, starting reviews and every other change are switched off. Everything shown here was produced by a real review.";
+  const repo = repoUrl ? <a href={repoUrl} target="_blank" rel="noreferrer" className="signal">Repository</a> : null;
+  if (!block) return <span className="stamp" role="note" data-testid="demo-notice" title={title}>Read-only demo{repo && <> <span aria-hidden>·</span> {repo}</>}</span>;
+  return (
+    <p className="warn" role="note" data-testid="demo-notice-block">
+      <span className="signal mono">!</span>
+      <span><b>Read-only demo.</b> Uploading and starting reviews are switched off here. {repoUrl ? <>The code is in the <a href={repoUrl} target="_blank" rel="noreferrer" className="signal">repository</a>: run it on your own board.</> : "Run TrustPCB on your own machine to review your own board."}</span>
+    </p>
+  );
+}
+
 export function Meter({ value, signal, style }: { value: number; signal?: boolean; style?: CSSProperties }) {
   return (
     <div className={`meter ${signal ? "sig" : ""}`} style={style} role="progressbar" aria-valuenow={Math.round(value * 100)} aria-valuemin={0} aria-valuemax={100}>
@@ -105,17 +121,19 @@ export function SevBar({ counts, size = "md" }: { counts: Record<Severity, numbe
 }
 
 export function TopBar({ children, right, current }: { children?: ReactNode; right?: ReactNode; current?: string }) {
+  const { demo } = useAppEnv();
   return (
     <header className="topbar">
       <Link href="/" aria-label="TrustPCB home"><Logo /></Link>
       <nav className="topnav" aria-label="Main">
         <Link href="/projects" aria-current={current === "projects" ? "page" : undefined}>Projects</Link>
-        <Link href="/upload" aria-current={current === "upload" ? "page" : undefined}>Upload</Link>
+        {!demo && <Link href="/upload" aria-current={current === "upload" ? "page" : undefined}>Upload</Link>}
         <Link href="/compare" aria-current={current === "compare" ? "page" : undefined}>Compare</Link>
       </nav>
       <span style={{ flex: 1 }} />
       {children}
       {right}
+      <DemoNotice />
       <FixtureBadge />
     </header>
   );

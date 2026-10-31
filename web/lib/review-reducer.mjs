@@ -268,7 +268,7 @@ export function reviewReducer(state, event) {
       }
       return {
         ...next, followup: fu, status: TERMINAL_STATUS[event.type],
-        endState: event.type === "canceled" ? "canceled" : p.end_state ?? (event.type === "failed" ? "pipeline_failed" : "complete"),
+        endState: event.type === "canceled" ? "canceled" : p.interrupted ? "interrupted" : p.end_state ?? (event.type === "failed" ? "pipeline_failed" : "complete"),
         failure: event.type === "failed" ? p.message ?? null : null,
       };
     }

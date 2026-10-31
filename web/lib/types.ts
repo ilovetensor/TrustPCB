@@ -110,7 +110,7 @@ export interface ProjectSummary {
   rf: "pass" | "fail" | "not_tested" | "n/a";
   /** The stored as-built result in words, when the latest review has a confirmed one. */
   rf_note?: string;
-  state: "complete" | "complete_with_limits" | "running" | "agent_stopped" | "queued" | "failed" | "canceled" | "no_review";
+  state: "complete" | "complete_with_limits" | "running" | "agent_stopped" | "queued" | "failed" | "canceled" | "interrupted" | "no_review";
   trend: number[];
   fixture?: boolean;
 }

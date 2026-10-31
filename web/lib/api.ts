@@ -70,6 +70,7 @@ export function reviewState(r: { status?: string; end_state?: string | null } | 
   if (!r) return "no_review";
   if (r.status === "queued") return "queued";
   if (r.status === "running") return "running";
+  if (r.status === "interrupted") return "interrupted";
   return STATE_OF[r.end_state ?? ""] ?? (r.status === "failed" ? "failed" : r.status === "canceled" ? "canceled" : "complete");
 }
 const ZERO: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };

@@ -420,7 +420,7 @@ class Handlers:
                          else 'Record a finding again where its issue remains. One you do not record again is reported as fixed when the review ends.')}
         vc = self.version_change()
         if vc:
-            data['version_change'] = {k: vc[k] for k in ('from_version', 'to_version', 'from', 'to', 'gain_db', 'direction', 'held', 'applied', 'target_met', 'text')}
+            data['version_change'] = {k: vc[k] for k in ('from_version', 'to_version', 'from', 'to', 'gain_db', 'direction', 'consistent', 'same_solver_run', 'independent_check', 'held', 'applied', 'target_met', 'text')}
         return data
 
     def version_change(self) -> dict | None:

@@ -50,7 +50,7 @@ function SuspectCard({ s, sims }: { s: Suspect; sims: Test[] }) {
   );
 }
 
-/** "Screen predicted X. Confirm measured Y." for each confirmation round. */
+/** "Screen predicted X. Confirm run gave Y." for each confirmation round (both are simulations). */
 function ScreenConfirm({ rounds }: { rounds: StoryRound[] }) {
   return (
     <div className="ib-story">
@@ -61,7 +61,7 @@ function ScreenConfirm({ rounds }: { rounds: StoryRound[] }) {
             const over = x.screen != null && x.confirm != null && x.screen < x.confirm - 0.5;
             return (
               <p key={x.label} className="ib-pc">
-                <b>{x.label}.</b> Screen predicted <span className="mono">{db(x.screen)}</span> in the band{x.screenRef ? <span className="idx"> {x.screenRef}</span> : null}. Confirm measured <span className="mono ib-meas">{db(x.confirm)}</span>{x.confirmRef ? <span className="idx"> {x.confirmRef}</span> : null}.
+                <b>{x.label}.</b> Screen predicted <span className="mono">{db(x.screen)}</span> in the band{x.screenRef ? <span className="idx"> {x.screenRef}</span> : null}. Confirm run gave <span className="mono ib-meas">{db(x.confirm)}</span>{x.confirmRef ? <span className="idx"> {x.confirmRef}</span> : null}.
                 {over && <span className="dim"> The screen was too optimistic by {(x.confirm! - x.screen!).toFixed(1)} dB.</span>}
               </p>
             );
@@ -74,7 +74,7 @@ function ScreenConfirm({ rounds }: { rounds: StoryRound[] }) {
   );
 }
 
-/** The investigation as a board: each suspect with what was tested and its verdict, then what screen predicted against what confirm measured, then what was checked and cleared. */
+/** The investigation as a board: each suspect with what was tested and its verdict, then what screen predicted against what the confirm run gave, then what was checked and cleared. */
 export function InvestigationBoard({ state, story, tests = [] }: { state: ReviewState; story: StoryRound[]; tests?: StoryTest[] }) {
   const [showCleared, setShowCleared] = useState(false);
   const live = Object.values(state.sims) as (Sim & { suspect?: string })[];

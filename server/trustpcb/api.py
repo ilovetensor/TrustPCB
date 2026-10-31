@@ -24,6 +24,7 @@ import hmac
 import importlib
 import importlib.util
 import inspect
+import logging
 import mimetypes
 import os
 import re
@@ -43,6 +44,7 @@ from .events import KEEPALIVE_SECONDS, POLL_SECONDS, sse_events
 from .sessions import SessionConflict, SessionManager
 from .storage import Store
 
+logger = logging.getLogger('trustpcb')
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAX_UPLOAD_BYTES = int(float(os.getenv('TRUSTPCB_MAX_UPLOAD_MB', '512')) * 1024 * 1024)
 MAX_UPLOAD_FILES = 5000
@@ -55,6 +57,39 @@ ALLOWED_ORIGINS = {
     f'http://127.0.0.1:{BACKEND_PORT}', f'http://localhost:{BACKEND_PORT}', f'http://[::1]:{BACKEND_PORT}',
 }
 FINDING_STATUS_CHANGES = {'dismissed', 'open'}
+MUTATING_METHODS = {'POST', 'PATCH', 'PUT', 'DELETE'}
+DEMO_READONLY_MESSAGE = ('This is a read-only demo: uploading, starting reviews and every other change are switched off. '
+                         'Run TrustPCB on your own machine to review your own board (see the repository README).')
+
+
+_kicad_ok: tuple[str, str] | None = None      # (KICAD_CLI_PATH it was found with, version)
+
+
+async def kicad_status() -> dict:
+    """Is a usable kicad-cli installed? Reported in /api/bootstrap and logged at start-up; a missing KiCad never stops the app."""
+    global _kicad_ok
+    configured = os.getenv('KICAD_CLI_PATH', '')
+    if _kicad_ok and _kicad_ok[0] == configured:
+        return {'available': True, 'version': _kicad_ok[1], 'reason': None}
+    from .pcb import kicad_cli
+    try:
+        found = '.'.join(str(part) for part in await kicad_cli.version())
+        _kicad_ok = (configured, found)
+        return {'available': True, 'version': found, 'reason': None}
+    except Exception as exc:  # missing, wrong version, not runnable
+        return {'available': False, 'version': None, 'reason': str(exc)[:300]}
+
+
+async def warn_if_kicad_missing() -> None:
+    status = await kicad_status()
+    if not status['available']:
+        logger.warning('kicad-cli is not available (%s). Uploads still work, but KiCad checks, statistics and the 3D model are skipped. '
+                       'Set KICAD_CLI_PATH or install KiCad 9 or newer.', status['reason'])
+
+
+def demo_readonly() -> bool:
+    """TRUSTPCB_DEMO_READONLY=1 turns the backend into a viewer of a finished data directory: every POST, PATCH, PUT and DELETE is refused with 403."""
+    return os.getenv('TRUSTPCB_DEMO_READONLY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 class ProjectBody(BaseModel):
@@ -261,9 +296,15 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
         app.state.store = store
         app.state.manager = manager
         lab = install_real_lab(store)
+        if lab is not None:
+            killed = await lab.queue.kill_orphans()
+            if killed:
+                logger.warning('Stopped %d solver container(s) an earlier run left behind.', killed)
+        check = asyncio.create_task(warn_if_kicad_missing())
         try:
             yield
         finally:
+            check.cancel()
             await manager.shutdown()
             if lab is not None:
                 await uninstall_real_lab(lab)
@@ -280,6 +321,8 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
             return JSONResponse({'detail': 'Origin is not allowed'}, status_code=403)
         if request.url.path not in {'/health', '/api/health'} and not hmac.compare_digest(request.headers.get(TOKEN_HEADER, ''), launch_token):
             return JSONResponse({'detail': 'Authorization required'}, status_code=401)
+        if request.method in MUTATING_METHODS and demo_readonly():
+            return JSONResponse({'detail': DEMO_READONLY_MESSAGE, 'code': 'demo_readonly'}, status_code=403)
         return await call_next(request)
 
     @app.exception_handler(RequestValidationError)
@@ -360,7 +403,8 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
         except Exception as exc:  # an unusable default must not break the page
             profile = {'name': None, 'error': str(exc)[:300]}
         return {'projects': store().list_projects(), 'profile': profile,
-                'runners': {name: available(name) for name in PROFILES}, 'max_upload_bytes': MAX_UPLOAD_BYTES}
+                'runners': {name: available(name) for name in PROFILES}, 'max_upload_bytes': MAX_UPLOAD_BYTES,
+                'kicad': await kicad_status(), 'demo_readonly': demo_readonly(), 'repo_url': os.getenv('TRUSTPCB_REPO_URL') or None}
 
     # ---- projects and versions --------------------------------------------------------
 

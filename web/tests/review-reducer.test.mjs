@@ -164,6 +164,9 @@ test("the review chat ignores text deltas and user_message (the agent's words ar
 test("failed and canceled end the review with a reason", () => {
   assert.equal(replayAll([ev(1, "failed", { message: "boom" })]).failure, "boom");
   assert.equal(replayAll([ev(1, "canceled", {})]).status, "canceled");
+  const restarted = replayAll([ev(1, "failed", { message: "Backend restarted; this run was interrupted.", interrupted: true })]);
+  assert.equal(restarted.endState, "interrupted", "a restart mid-review is shown as interrupted, not as a failure or a finished review");
+  assert.equal(replayAll([ev(1, "failed", { message: "boom" })]).endState, "pipeline_failed");
 });
 
 test("a finding changed by the user without a payload finding keeps its card", () => {

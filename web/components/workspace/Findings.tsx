@@ -1,4 +1,5 @@
 "use client";
+import { useAppEnv } from "../../lib/demo";
 import { useEffect, useRef, useState } from "react";
 import { SEVERITY_ORDER, sortFindings, type ReviewState } from "../../lib/review-reducer.mjs";
 import { findingLabel, findingNumber } from "../../lib/review-view";
@@ -76,6 +77,7 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
 function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }: { f: Finding; change?: Changes[string]; ev: Evidence[]; evCodes: string[]; sel: boolean; onSelect: () => void; onAsk: () => void; onDismiss: (reason: string) => void; setRef: (el: HTMLElement | null) => void }) {
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
+  const { demo } = useAppEnv();         // a read-only demo refuses every change: no dismissing and no follow-up questions
   return (
     <article ref={setRef} className={`fc ${sel ? "sel" : ""}`} data-sev={f.severity}>
       <button className="fc-head" onClick={onSelect} aria-expanded={sel}>
@@ -112,7 +114,7 @@ function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, 
           )}
           {f.assumptions?.length > 0 && <List k="ASSUMPTIONS" items={f.assumptions} />}
           {f.not_tested?.length > 0 && <List k="NOT TESTED" items={f.not_tested} />}
-          {asking ? (
+          {demo ? null : asking ? (
             <div className="fc-dismiss">
               <label className="idx" htmlFor={`dr-${f.id}`}>WHY DISMISS IT?</label>
               <input id={`dr-${f.id}`} type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Known and accepted, false positive, ..." autoFocus

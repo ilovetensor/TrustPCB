@@ -3,8 +3,12 @@
 Two things live here.
 
 `version_change` is the headline of a recheck: the as-built result across the band in the previous version against this one (worst S11, accepted
-power worst and mean), the prediction the previous review made for the fix, and whether the measured result holds that prediction within 1 dB.
+power worst and mean), the prediction the previous review made for the fix, and whether this version's result is consistent with that prediction within 1 dB.
 Every number is read from stored confirm evidence. Nothing is computed by a model.
+
+Honesty rule: when the antenna copper is unchanged, this version's number is the SAME solver run finalised with this version's matching parts. It is
+not an independent result, and it is simulated, never measured. Such a result is `consistent` (or not) with the prediction. Only when the geometry
+differs and a separate confirm run was done is the prediction said to have `held`.
 
 Candidate fingerprints let findings keep their identity when the agent groups the same results differently. A finding's fingerprint depends on which
 results it covers, so a regrouped finding looks new; the results themselves (rule, nets, parts) do not change, and those match across versions.
@@ -19,7 +23,7 @@ from . import partial
 from .fingerprint import TargetIndex, fingerprint
 from .number_check import Quantity, allowed_from_text, extract, make_quantity
 
-HOLD_DB = 1.0          # a prediction held when the measured worst in-band S11 is within this many dB of it
+HOLD_DB = 1.0          # a result is consistent with a prediction (or the prediction held) when the worst in-band S11 is within this many dB of it
 SAME_DB = 0.5          # the solver repeats to about this much, so a smaller change is no change (contracts: S11 depth repeats to +-0.5 dB)
 OVERLAP = 0.5          # share of a finding's results that must reappear for the finding to count as the same issue
 S11_KEYS = ('as_built_band_worst_s11', 's11_band_worst')
@@ -112,6 +116,19 @@ def as_built(rows: list[dict]) -> dict | None:
             'accepted_power_mean_pct': _num(m, POWER_MEAN_KEYS), 'evidence': row['code'], 'basis': (values.get('metrics') or {}).get('basis') or 'as_built'}
 
 
+def solver_run(store, rows: list[dict]) -> str | None:
+    """The solver output the confirmed base of a review was finalised from: the geometry key of its simulation job.
+
+    A job's hash is the geometry key, then (when its matching parts were finalised again) a dash and a signature of those parts. Two versions with
+    the same antenna copper therefore share the part before the dash: one solver output, post-processed with each version's own parts.
+    None when it cannot be told (no job recorded).
+    """
+    row = next((r for r in rows if r['type'] == ev.CONFIRM and (r['values'] or {}).get('label') == 'confirm base' and ((r['values'] or {}).get('trust') or {}).get('status') == 'ok'), None)
+    job_id = ((row or {}).get('values') or {}).get('job_id')
+    job = store.get_sim_job(job_id) if job_id else None
+    return str(job['scenario_hash']).split('-')[0] if job and job.get('scenario_hash') else None
+
+
 def _same_value(a: Any, b: Any) -> bool:
     """Two part values written as text ("0.3 pF", "0.3pF (fitted)") are the same part value."""
     clean = lambda x: re.sub(r'\s*\(fitted\)', '', str(x or '')).strip()
@@ -175,10 +192,14 @@ def version_change(store, newer_review_id: str, older_review_id: str) -> dict | 
     direction = 'improved' if gain >= SAME_DB else 'worse' if gain <= -SAME_DB else 'unchanged'
     prediction = prediction_of(store, older_review_id)
     applied = _applied(prediction, rows_new)
-    difference = held = None
+    difference = consistent = held = None
+    run_new, run_old = solver_run(store, rows_new), solver_run(store, rows_old)
+    # same_solver_run: True when both bases come from one solver output (the copper is unchanged), False when two separate runs, None when it cannot be told.
+    same_run = None if not (run_new and run_old) else run_new == run_old
     if prediction:
         difference = round(to['band_worst_s11_db'] - prediction['band_worst_s11_db'], 2)
-        held = None if applied is False else abs(difference) <= HOLD_DB
+        consistent = None if applied is False else abs(difference) <= HOLD_DB
+        held = consistent if (same_run is False and consistent is not None) else None       # only an independent confirm run can say the prediction held
     base_ids = {r['id'] for r in rows_new if r['code'] == to['evidence']}
     antenna = next((f['code'] for f in store.list_findings(newer_review_id) if f['status'] != 'superseded' and base_ids & set(f.get('evidence_ids') or [])), None)
     out = {
@@ -187,7 +208,8 @@ def version_change(store, newer_review_id: str, older_review_id: str) -> dict | 
         'from': frm, 'to': to, 'gain_db': gain, 'direction': direction,
         'accepted_power_gain_worst_pct': None if None in (frm['accepted_power_worst_pct'], to['accepted_power_worst_pct']) else round(to['accepted_power_worst_pct'] - frm['accepted_power_worst_pct'], 1),
         'accepted_power_gain_mean_pct': None if None in (frm['accepted_power_mean_pct'], to['accepted_power_mean_pct']) else round(to['accepted_power_mean_pct'] - frm['accepted_power_mean_pct'], 1),
-        'prediction_from_previous': prediction, 'applied': applied, 'held': held, 'difference_db': difference, 'hold_tolerance_db': HOLD_DB,
+        'prediction_from_previous': prediction, 'applied': applied, 'same_solver_run': same_run, 'independent_check': same_run is False, 'consistent': consistent, 'held': held,
+        'difference_db': difference, 'hold_tolerance_db': HOLD_DB,
         'target_db': target, 'target_met': to['band_worst_s11_db'] <= target, 'band_hz': rf.get('band_hz') or goal.get('band_hz'),
     }
     out['text'] = lead_text(out)
@@ -216,10 +238,17 @@ def lead_text(vc: dict) -> str:
         text += f' Version {a} predicted {p["band_worst_s11_db"]:g} dB for these parts: {p["parts_text"]}.'
         if vc.get('applied') is False:
             text += f' Those parts are not what version {b} has, so the prediction was not tested.'
-        elif vc.get('held'):
-            text += f' The measured {to["band_worst_s11_db"]:g} dB is within {vc["hold_tolerance_db"]:g} dB of it, so the prediction held.'
+        elif vc.get('independent_check'):
+            if vc.get('held'):
+                text += f' A separate confirm run of version {b} gives {to["band_worst_s11_db"]:g} dB, within {vc["hold_tolerance_db"]:g} dB of it, so the prediction held.'
+            else:
+                text += f' A separate confirm run of version {b} gives {to["band_worst_s11_db"]:g} dB, not within {vc["hold_tolerance_db"]:g} dB of it, so the prediction did not hold.'
+        elif vc.get('consistent'):
+            text += (f' Consistent with the prediction: same solver run, recalculated with version {b}\'s parts ({to["band_worst_s11_db"]:g} dB against {p["band_worst_s11_db"]:g} dB predicted,'
+                     f' within {vc["hold_tolerance_db"]:g} dB). It is not an independent result, and it is simulated, not a lab measurement.')
         else:
-            text += f' The measured {to["band_worst_s11_db"]:g} dB is not within {vc["hold_tolerance_db"]:g} dB of it, so the prediction did not hold.'
+            text += (f' Not consistent with the prediction ({to["band_worst_s11_db"]:g} dB against {p["band_worst_s11_db"]:g} dB predicted, more than {vc["hold_tolerance_db"]:g} dB apart),'
+                     f' although it is the same solver run recalculated with version {b}\'s parts. Check that the fitted parts are the recommended ones. It is simulated, not a lab measurement.')
     text += (f' The tuning target of {vc["target_db"]:g} dB is met.' if vc['target_met'] else f' The tuning target of {vc["target_db"]:g} dB is not met.')
     return text
 
@@ -261,7 +290,8 @@ _LEAD_SENTENCES = 6
 _LEAD_CHARS = 1100
 _WORDS = {'improved': re.compile(r'improv|gain|better|rose|up from|recover', re.I), 'worse': re.compile(r'worse|worsen|lost|loss|degrad|regress|fell|dropped|down from', re.I),
           'unchanged': re.compile(r'unchanged|did not change|no change|same', re.I)}
-_HELD = re.compile(r'\b(?:held|hold|holds|predict\w*)\b', re.I)
+_HELD = re.compile(r'\b(?:held|hold|holds|consistent|predict\w*)\b', re.I)
+_SAYS_HELD = re.compile(r'\b(?:prediction|predicted)\b[^.]{0,60}\b(?:held|confirmed|verified)\b|\b(?:held|confirmed|verified)\b[^.]{0,40}\bprediction\b', re.I)
 _TARGET_MET = re.compile(r'target\b[^.]{0,40}\bis\s+met\b|\bmeets?\s+the\s+(?:tuning\s+)?target|\btarget\s+(?:was\s+)?met\b', re.I)
 _DENIES_GAIN = re.compile(r'not a partial win|no improvement|did not improve|not improved', re.I)
 
@@ -287,7 +317,12 @@ def lead_problem(summary: str, vc: dict | None) -> str | None:
     if vc['direction'] == 'improved' and _DENIES_GAIN.search(lead):
         missing.append('not deny the improvement; it is a gain against the previous version even though the target is missed')
     if vc.get('prediction_from_previous') and vc.get('applied') is not False and not _HELD.search(lead):
-        missing.append(f'say whether the prediction from version {a} held')
+        missing.append(f'say whether the result is consistent with the prediction from version {a}' + ('' if vc.get('independent_check') else
+                       ' (it is the same solver run recalculated with the new parts, not an independent check)'))
+    if re.search(r'\bmeasured\b(?:[^.]|\.\d){0,80}\bdB\b|\bdB\b(?:[^.]|\.\d){0,80}\bmeasured\b', lead, re.I):
+        missing.append('not call a simulated S11 "measured" (say "simulated" or "calculated"; only KiCad checks and analyzers measure)')
+    if vc.get('prediction_from_previous') and vc.get('applied') is not False and not vc.get('independent_check') and _SAYS_HELD.search(lead):
+        missing.append('not say the prediction "held" or was confirmed (this is the same solver run with the new parts: say it is consistent with the prediction)')
     if vc['target_met'] and not _TARGET_MET.search(lead):
         missing.append('say the target is met')
     if not vc['target_met'] and not partial.NOT_MET.search(lead):

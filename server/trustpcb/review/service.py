@@ -64,7 +64,7 @@ async def start_review(*, store, manager, version_id: str, goal: dict, depth: st
         raise ValueError('This upload failed and cannot be reviewed')
     if manager.active_for_project(version['project_id']):
         from ..sessions import SessionConflict
-        raise SessionConflict('A run is already active in this project')
+        raise SessionConflict('Another review of this board is still running. Wait for it to finish, or stop it, then start this one.')
     try:
         profile = resolve_profile()
     except RuntimeError as exc:
@@ -133,12 +133,12 @@ def previous_result_text(store, previous: dict) -> str:
     built = change.as_built(store.list_evidence(review_id))
     if not built:
         return f'Version {n} has no confirmed antenna result, so there is no earlier antenna number to compare with.'
-    text = (f'Version {n} measured at confirm quality, as built: worst S11 across the band {built["band_worst_s11_db"]:g} dB'
+    text = (f'Version {n} simulated at confirm quality, as built: worst S11 across the band {built["band_worst_s11_db"]:g} dB'
             + (f', accepted power {built["accepted_power_worst_pct"]:g} % at the worst point and {built["accepted_power_mean_pct"]:g} % on average (a mismatch figure only)'
                if built.get('accepted_power_worst_pct') is not None and built.get('accepted_power_mean_pct') is not None else '') + '.')
     prediction = change.prediction_of(store, review_id)
     if prediction:
-        text += f' Its review predicted {prediction["band_worst_s11_db"]:g} dB at worst in band for these parts: {prediction["parts_text"]}. Check whether this version holds that.'
+        text += f' Its review predicted {prediction["band_worst_s11_db"]:g} dB at worst in band for these parts: {prediction["parts_text"]}. Check whether this version is consistent with that. If the antenna copper is unchanged, this version reuses the same solver run with its own parts: that is consistent or not, never an independent confirmation, and never "measured".'
     return text
 
 

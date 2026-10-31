@@ -3,8 +3,9 @@ import "./pages.css";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { createProject, FIXTURE_MODE, getProject, getVersion, startReview, uploadVersion, type Depth, type Goal, type VersionInfo } from "../../lib/api";
-import { Icon, Panel, TopBar } from "../ui";
+import { ApiError, createProject, FIXTURE_MODE, getProject, getVersion, startReview, uploadVersion, type Depth, type Goal, type VersionInfo } from "../../lib/api";
+import { DemoNotice, Icon, Panel, TopBar } from "../ui";
+import { useAppEnv } from "../../lib/demo";
 
 const DEPTHS: { id: Depth; label: string; note: string }[] = [
   { id: "quick", label: "Quick", note: "About 6 min. KiCad checks and an open review. No simulation." },
@@ -32,6 +33,7 @@ function parseBand(text: string): [number, number] | undefined {
 }
 
 function UploadInner() {
+  const { demo } = useAppEnv();
   const router = useRouter();
   const sp = useSearchParams();
   const existingVersion = sp.get("version");
@@ -43,6 +45,7 @@ function UploadInner() {
   const [progress, setProgress] = useState<number | null>(null);
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busyProject, setBusyProject] = useState<string | null>(null);      // set when the server answers 409: another review of this board is running
   const [depth, setDepth] = useState<Depth>("quick");
   const [purpose, setPurpose] = useState("");
   const [band, setBand] = useState("");
@@ -101,10 +104,12 @@ function UploadInner() {
     const t = parseFloat(target);
     if (Number.isFinite(t)) goal.target_s11_db = t;
     if (focus.trim()) goal.focus = focus.trim();
+    setBusyProject(null);
     try {
       const r = await startReview(version.id, goal, depth);
       router.push(`/reviews/${r.id}`);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409) setBusyProject(version.project_id);
       setError(e instanceof Error ? e.message : "The review did not start.");
       setStarting(false);
     }
@@ -114,6 +119,19 @@ function UploadInner() {
   const st = version?.stackup;
   const uploading = progress !== null;
   const ready = !!picked && (!!picked.pcb || picked.zip);
+
+  if (demo) {
+    return (
+      <div className="pg">
+        <TopBar current="upload" />
+        <main className="pg-main">
+          <div className="pg-head"><div><h1 className="serif">Uploads are off in this demo.</h1><p className="pg-sub">Everything here is a finished review you can read, not a service you can feed.</p></div></div>
+          <DemoNotice block />
+          <p><Link href="/projects" className="btn">Browse the finished reviews <Icon name="arrow" size={14} /></Link></p>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="pg">
@@ -213,7 +231,7 @@ function UploadInner() {
                 <span className="dim" style={{ fontSize: 12 }}>{DEPTHS.find((x) => x.id === depth)!.note}</span>
               </div>
               <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }}>The agent does not stop to ask questions mid-review. Fields lock when it starts.</p>
-              {error && <p className="chat-err" role="alert" style={{ margin: "0 0 12px" }}>{error}</p>}
+              {error && <p className="chat-err" role="alert" style={{ margin: "0 0 12px" }} data-testid="start-error">{error}{busyProject && <> <Link href={`/projects/${busyProject}`} className="signal">Open the board</Link> to see or stop the running review.</>}</p>}
               <button className="btn primary big" style={{ width: "100%" }} disabled={!version || starting || version.status === "failed"} onClick={start} data-testid="start-review">
                 {starting ? "Starting" : "Start review"} <Icon name="arrow" size={14} />
               </button>

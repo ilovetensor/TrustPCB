@@ -5,10 +5,11 @@ import { useEffect, useState } from "react";
 import { getProject, getVersionRf, type ProjectDetail, type VersionRf } from "../../lib/api";
 import type { Severity } from "../../lib/types";
 import { Icon, Panel, SevBar, TopBar } from "../ui";
+import { useAppEnv } from "../../lib/demo";
 import { PowerBar } from "../rf/PowerPair";
 
 const total = (c: Record<Severity, number>) => c.critical + c.high + c.medium + c.low + c.info;
-const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Agent stopped", queued: "Queued", failed: "Failed", canceled: "Stopped", no_review: "No review yet" };
+const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Agent stopped", queued: "Queued", failed: "Failed", canceled: "Stopped", interrupted: "Interrupted", no_review: "No review yet" };
 
 function RfStatus({ r, loading }: { r: VersionRf | null | undefined; loading: boolean }) {
   if (loading) return <span className="dim">reading</span>;
@@ -18,6 +19,7 @@ function RfStatus({ r, loading }: { r: VersionRf | null | undefined; loading: bo
 }
 
 export function Project({ id }: { id: string }) {
+  const { demo } = useAppEnv();
   const [data, setData] = useState<ProjectDetail | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { getProject(id).then(setData).catch((e) => { setError(e instanceof Error ? e.message : "Could not load the project."); setData(null); }); }, [id]);
@@ -49,16 +51,16 @@ export function Project({ id }: { id: string }) {
           </div>
           <span className="grow" />
           {pair && <Link className="btn" href={`/compare?from=${pair[0].id}&to=${pair[1].id}`}><Icon name="compare" size={13} /> Compare versions</Link>}
-          <Link className="btn primary" href={`/upload?project=${project.id}`}><Icon name="upload" size={13} /> Upload new version</Link>
+          {!demo && <Link className="btn primary" href={`/upload?project=${project.id}`}><Icon name="upload" size={13} /> Upload new version</Link>}
         </div>
 
         <Panel idx="VERSIONS" title="Timeline" delay={0}>
           <div className="timeline">
             {versions.map((v, i) => (
-              <Link key={v.id} href={v.review_id ? `/reviews/${v.review_id}` : `/upload?version=${v.id}`} className={`tl-node ${i === versions.length - 1 ? "latest" : ""}`}>
+              <Link key={v.id} href={v.review_id ? `/reviews/${v.review_id}` : demo ? `/projects/${project.id}` : `/upload?version=${v.id}`} className={`tl-node ${i === versions.length - 1 ? "latest" : ""}`}>
                 <span className="idx">{v.at.slice(0, 10)} / {v.review_id ? `R-${v.review_id.slice(0, 6).toUpperCase()}` : "NO REVIEW"}</span>
                 <i /><b>{v.label}</b>
-                {v.counts ? <SevBar counts={v.counts} size="sm" /> : <span className="idx">{v.status === "failed" ? "UPLOAD FAILED" : "START A REVIEW"}</span>}
+                {v.counts ? <SevBar counts={v.counts} size="sm" /> : <span className="idx">{v.status === "failed" ? "UPLOAD FAILED" : demo ? "NO REVIEW" : "START A REVIEW"}</span>}
                 <p>{v.note || `${v.counts ? total(v.counts) : 0} open findings. ${STATE[v.state]}.`}</p>
               </Link>
             ))}

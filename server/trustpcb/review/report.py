@@ -342,7 +342,7 @@ def render_headline(h: dict) -> str:
 
 
 def render_version_change(vc: dict) -> str:
-    """The lead of a recheck: the as-built result against the previous version, whether its prediction held, and whether the target is met."""
+    """The lead of a recheck: the as-built result against the previous version, whether it is consistent with the earlier prediction (same solver run) or the prediction held (separate run), and whether the target is met."""
     a, b, frm, to = vc['from_version'], vc['to_version'], vc['from'], vc['to']
     tone = {'improved': 'cls-measured', 'worse': 'sev-high', 'unchanged': 'cls-not_tested'}[vc['direction']]
     rows = [('Worst S11 across the band, as built', f'{frm["band_worst_s11_db"]:g} dB', f'{to["band_worst_s11_db"]:g} dB', f'{vc["gain_db"]:+g} dB')]
@@ -354,17 +354,23 @@ def render_version_change(vc: dict) -> str:
         rows.append(('Accepted power, mean across the band', f'{frm["accepted_power_mean_pct"]:g} %', f'{to["accepted_power_mean_pct"]:g} %', f'{vc["accepted_power_gain_mean_pct"]:+g} points'))
     prediction = vc.get('prediction_from_previous')
     if prediction:
-        rows.append((f'Predicted by version {a}: {prediction["parts_text"]}', '', f'{prediction["band_worst_s11_db"]:g} dB predicted', f'measured {to["band_worst_s11_db"]:g} dB'))
+        rows.append((f'Predicted by version {a}: {prediction["parts_text"]}', '', f'{prediction["band_worst_s11_db"]:g} dB predicted', f'{"separate confirm run" if vc.get("independent_check") else "same solver run"}: {to["band_worst_s11_db"]:g} dB'))
     table = (f'<table class="vc"><tr><th></th><th>Version {esc(a)}</th><th>Version {esc(b)}</th><th>Change</th></tr>'
              + ''.join(f'<tr><td>{esc(x)}</td><td class="n">{esc(y)}</td><td class="n">{esc(z)}</td><td class="n">{esc(w)}</td></tr>' for x, y, z, w in rows) + '</table>')
     badges = pill(tone, {'improved': 'improved', 'worse': 'worse', 'unchanged': 'unchanged'}[vc['direction']])
     if prediction:
-        badges += ' ' + (pill('cls-measured', 'Prediction held') if vc.get('held') else pill('cls-not_tested', 'Prediction not tested') if vc.get('applied') is False else pill('sev-high', 'Prediction did not hold'))
+        if vc.get('applied') is False:
+            badges += ' ' + pill('cls-not_tested', 'Prediction not tested')
+        elif vc.get('independent_check'):
+            badges += ' ' + (pill('cls-simulated', 'Prediction held') if vc.get('held') else pill('sev-high', 'Prediction did not hold'))
+        else:
+            badges += ' ' + (pill('cls-simulated', 'Same solver run, new parts') if vc.get('consistent') else pill('sev-high', 'Same solver run, not consistent'))
     badges += ' ' + (pill('cls-measured', 'Target met') if vc['target_met'] else pill('sev-medium', 'Target not met'))
     return (f'<div class="card"><h2 style="margin-top:0;border:0">Compared with version {esc(a)}</h2><p>{badges}</p><p>{esc(vc["text"])}</p>{table}'
             '<p class="small muted">Accepted power is 100 x (1 - |S11|^2) per frequency: a mismatch figure only, not radiated power or efficiency. '
-            f'Both results are confirm-quality simulations of the board as built (evidence {esc(frm.get("evidence"))} and {esc(to.get("evidence"))}); '
-            'not a substitute for a real antenna measurement.</p></div>')
+            f'Both results are confirm-quality simulations of the board as built (evidence {esc(frm.get("evidence"))} and {esc(to.get("evidence"))}). '
+            + ('Version ' + esc(b) + ' was finalised from the same solver run as version ' + esc(a) + ', with its own matching parts: it is consistent with the prediction, not an independent result. ' if prediction and not vc.get('independent_check') and vc.get('applied') is not False else '')
+            + 'Simulated, not a substitute for a real antenna measurement.</p></div>')
 
 
 def render_confirmation(c: dict, title: str = 'Screen against confirm') -> str:

@@ -7,17 +7,25 @@ import { PowerPair } from "./PowerPair";
 const db = (v: number | null | undefined) => (typeof v === "number" ? `${v.toFixed(2).replace(/\.?0+$/, "").replace("-", "−")} dB` : "-");
 const TONE = { improved: "Improved", worse: "Worse", unchanged: "No change" } as const;
 
-/** The badge that says whether the earlier review's prediction came true. */
+/**
+ * The badge that says how this version's number relates to the earlier review's prediction. With the copper unchanged the number is the same solver run
+ * finalised with this version's parts (not an independent result), so it is "consistent" or not; "held" is only for a separate confirm run.
+ */
 export function HeldBadge({ vc }: { vc: VC }) {
   if (!vc.prediction_from_previous) return null;
   if (vc.applied === false) return <span className="stamp" title="The parts the earlier review recommended are not the ones this version has.">Prediction not tested</span>;
-  return vc.held
-    ? <span className="stamp solid" title={`Measured result within ${vc.hold_tolerance_db} dB of the earlier prediction`}>Prediction held</span>
-    : <span className="stamp sig" title={`Measured result more than ${vc.hold_tolerance_db} dB from the earlier prediction`}>Prediction did not hold</span>;
+  if (vc.independent_check) {
+    return vc.held
+      ? <span className="stamp solid" title={`A separate confirm run is within ${vc.hold_tolerance_db} dB of the earlier prediction`}>Prediction held</span>
+      : <span className="stamp sig" title={`A separate confirm run is more than ${vc.hold_tolerance_db} dB from the earlier prediction`}>Prediction did not hold</span>;
+  }
+  return vc.consistent
+    ? <span className="stamp solid" title={`Consistent with the prediction (within ${vc.hold_tolerance_db} dB): the same solver run, recalculated with this version's parts. Not an independent result. Simulated.`}>Same solver run, new parts</span>
+    : <span className="stamp sig" title={`More than ${vc.hold_tolerance_db} dB from the prediction although it is the same solver run recalculated with this version's parts. Simulated.`}>Same solver run, not consistent</span>;
 }
 
 /**
- * What changed since the previous version, as built: the accepted power before and after on one scale, the worst S11, whether the earlier prediction held.
+ * What changed since the previous version, as built: the accepted power before and after on one scale, the worst S11, whether it is consistent with the earlier prediction.
  * Every figure comes from the server's `version_change`, which reads stored confirm-quality results.
  */
 export function VersionChange({ vc, compact = false, wide = false, onFinding }: { vc: VC; compact?: boolean; wide?: boolean; onFinding?: (code: string) => void }) {
@@ -53,7 +61,7 @@ export function VersionChange({ vc, compact = false, wide = false, onFinding }: 
             <div>
               <dt className="idx">PREDICTED BY VERSION {a}</dt>
               <dd className="mono">{db(p.band_worst_s11_db)} for {p.parts_text || "no change to the board"}<br />
-                {vc.applied === false ? "these parts are not what this version has" : <>measured {db(vc.to.band_worst_s11_db)}{vc.difference_db != null && <span className="pwin-gain"> ({vc.difference_db === 0 ? "equal to the prediction" : `${vc.difference_db > 0 ? "+" : "−"}${Math.abs(vc.difference_db).toFixed(2).replace(/\.?0+$/, "")} dB from the prediction`})</span>}</>}
+                {vc.applied === false ? "these parts are not what this version has" : <>{vc.independent_check ? "separate confirm run" : "same solver run, version " + b + "'s parts"}: {db(vc.to.band_worst_s11_db)}{vc.difference_db != null && <span className="pwin-gain"> ({vc.difference_db === 0 ? "equal to the prediction" : `${vc.difference_db > 0 ? "+" : "−"}${Math.abs(vc.difference_db).toFixed(2).replace(/\.?0+$/, "")} dB from the prediction`})</span>}</>}
               </dd>
             </div>
           )}

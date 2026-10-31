@@ -5,6 +5,10 @@ from pathlib import Path
 
 args = sys.argv[1:]
 state = Path(os.environ["FAKE_DOCKER_STATE"])
+if args[0] == "ps":          # containers an earlier process left behind: names listed in state/orphans
+    orphans = state / "orphans"
+    print(orphans.read_text() if orphans.exists() else "", end="")
+    sys.exit(0)
 if args[0] == "kill":
     (state / f"kill-{args[1]}").write_text("1")
     sys.exit(0)
