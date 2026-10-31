@@ -88,7 +88,7 @@ export const BoardLayers = memo(function BoardLayers({ board, layers, scene, fun
       {layers.bottom && (
         <g className="bl-bot">
           {layers.zones && g.zoneD["B.Cu"] && (<>
-            <path d={g.zoneD["B.Cu"]} fill="var(--bl-bcu)" fillRule="evenodd" opacity="0.1" />
+            <path d={g.zoneD["B.Cu"]} fill="#ffffff" fillRule="evenodd" opacity="0.04" />
             <path d={g.zoneD["B.Cu"]} fill="url(#hatch-bot)" fillRule="evenodd" opacity="0.16" />
           </>)}
           {[...g.trackGroups["B.Cu"]].map(([w, d]) => (<path key={w} d={d} stroke="var(--bl-bcu)" strokeWidth={w} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.88" />))}
@@ -100,7 +100,7 @@ export const BoardLayers = memo(function BoardLayers({ board, layers, scene, fun
       {layers.top && (
         <g className="bl-top">
           {layers.zones && g.zoneD["F.Cu"] && (<>
-            <path d={g.zoneD["F.Cu"]} fill="var(--bl-fcu)" fillRule="evenodd" opacity="0.1" />
+            <path d={g.zoneD["F.Cu"]} fill="#ffffff" fillRule="evenodd" opacity="0.04" />
             <path d={g.zoneD["F.Cu"]} fill="url(#hatch-top)" fillRule="evenodd" opacity="0.2" />
           </>)}
           {[...g.trackGroups["F.Cu"]].map(([w, d]) => (<path key={w} d={d} stroke="var(--bl-fcu)" strokeWidth={w} fill="none" strokeLinecap="round" strokeLinejoin="round" />))}
