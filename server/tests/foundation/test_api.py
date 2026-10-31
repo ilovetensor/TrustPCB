@@ -23,6 +23,8 @@ def zip_bytes(**files):
 def test_security_rejects_missing_or_wrong_token_foreign_host_and_origin(client):
     assert client.get('/api/projects', headers={'X-TrustPCB-Token': ''}).status_code == 401
     assert client.get('/api/projects', headers={'X-TrustPCB-Token': 'wrong'}).status_code == 401
+    assert client.get('/api/projects', headers={'X-TrustPCB-Token': 'caf\u00e9'.encode('utf-8')}).status_code == 401   # non-ASCII bytes on the wire: 401, not a 500
+    assert client.get('/api/projects', headers={'X-TrustPCB-Token': b'\xff\xfe'}).status_code == 401
     assert client.get('/api/projects', headers={'Host': 'evil.example'}).status_code == 403
     assert client.get('/api/projects', headers={'Host': '127.0.0.1:9999'}).status_code == 403
     assert client.get('/api/projects', headers={'Origin': 'https://evil.example'}).status_code == 403
@@ -82,34 +84,9 @@ def store_of():
     return lambda client: client.app.state.store
 
 
-# ---- lane stubs ---------------------------------------------------------------------
+# ---- service hooks ------------------------------------------------------------------
 
-def test_missing_lane_functions_answer_501(client, store_of, fakes):
-    store = store_of(client)
-    project = client.post('/api/projects', json={'name': 'p'}).json()
-    version = store.create_version(project['id'])
-    review = store.create_review(version['id'])
-    thread = store.create_thread(review['id'])
-    revision = store.add_report_revision(review['id'], 'done', {'x': 1})
-    checks = [
-        ('trustpcb.intake.service', 'ingest', lambda: client.post(f"/api/projects/{project['id']}/versions", content=b'x', headers={'X-Filename': 'a.zip'})),
-        ('trustpcb.review.service', 'start_review', lambda: client.post(f"/api/versions/{version['id']}/reviews", json={})),
-        ('trustpcb.review.followup', 'start_thread', lambda: client.post(f"/api/reviews/{review['id']}/threads", json={})),
-        ('trustpcb.review.followup', 'send_message', lambda: client.post(f"/api/threads/{thread['id']}/messages", json={'text': 'hi', 'request_id': 'r'})),
-        ('trustpcb.review.report', 'render_revision', lambda: client.get(f"/api/reviews/{review['id']}/report/{revision['number']}.html")),
-        ('trustpcb.review.compare', 'compare_versions', lambda: client.get('/api/compare', params={'from': version['id'], 'to': version['id']})),
-    ]
-    ran = 0
-    for module, function, call in checks:
-        if fakes.lane_present(module, function):
-            continue  # that lane has landed; its own tests cover it
-        response = call()
-        assert response.status_code == 501, (module, response.text)
-        assert module in response.json()['detail'] and function in response.json()['detail']
-        ran += 1
-
-
-def test_lane_functions_are_called_with_the_documented_arguments(client, store_of, fakes):
+def test_service_functions_are_called_with_the_documented_arguments(client, store_of, fakes):
     calls = {}
 
     def start_review(*, store, manager, version_id, goal, depth):
@@ -136,7 +113,7 @@ def test_lane_functions_are_called_with_the_documented_arguments(client, store_o
     assert client.post('/api/versions/nope/reviews', json={}).status_code == 404
 
 
-def test_lane_value_error_is_a_400_and_conflict_a_409(client, store_of, fakes):
+def test_service_value_error_is_a_400_and_conflict_a_409(client, store_of, fakes):
     from trustpcb.sessions import SessionConflict
 
     def start_review(**kwargs):
@@ -307,7 +284,7 @@ def test_assumptions_and_report_revisions(client, review_setup):
     assert client.get(f'/api/reviews/{id}').json()['report_revision'] == 2
 
 
-def test_report_html_goes_through_the_review_lane(client, review_setup, fakes):
+def test_report_html_goes_through_the_review_service(client, review_setup, fakes):
     store, review, _ = review_setup
     store.add_report_revision(review['id'], 'done', {'x': 1})
     seen = {}

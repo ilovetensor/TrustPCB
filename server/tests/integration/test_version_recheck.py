@@ -10,6 +10,7 @@ import sqlite3
 import pytest
 
 from helpers import BRIEF, GOAL, ROOT, VIEWS, make_test_lab, tool_results
+from trustpcb.pcb import kicad_cli
 from trustpcb.review import report, service
 from trustpcb.review.fingerprint import TargetIndex, fingerprint
 from trustpcb.review.lab import BaselineLab
@@ -146,7 +147,7 @@ async def test_a_v2_review_starts_from_the_v1_findings_and_sees_the_new_parts_fo
     assert classified['against']['review_id'] == first['id'] and [f['code'] for f in classified['fixed']] == ['F-001']
 
 
-@pytest.mark.skipif(shutil.which('kicad-cli') is None and not __import__('trustpcb.pcb.kicad_cli', fromlist=['x']).find_kicad_cli(), reason='kicad-cli not installed')
+@pytest.mark.skipif(kicad_cli.find_kicad_cli() is None, reason='kicad-cli not installed')   # honours KICAD_CLI_PATH like the app
 async def test_the_drc_findings_carry_forward_as_still_present_and_only_the_fitted_part_parity_result_goes(tmp_path):
     """The real KiCad checks on both samples. Only the footprint/symbol mismatch on C20 (fitted in the schematic and not on the board before) is gone."""
     store = Store(tmp_path / 'data')

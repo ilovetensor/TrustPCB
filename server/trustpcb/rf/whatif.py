@@ -15,11 +15,10 @@ here because it changes no geometry (see matching.py).
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from shapely.geometry import LineString, Point, Polygon, box
-from shapely.ops import unary_union
 
 from .types import Item, RfSetup
 

@@ -219,7 +219,7 @@ def port_axis(p, a, b) -> int:
     return int(np.argmax(np.abs(np.asarray(b, float) - np.asarray(a, float))))
 
 
-def build_model(sc, sim_dir):
+def build_model(sc):
     from CSXCAD import ContinuousStructure
     from openEMS import openEMS
 
@@ -325,8 +325,8 @@ def build_model(sc, sim_dir):
     dt_raw = max(stop_t / 240.0, 1e-13)
     over = max(1, int(math.ceil(t_nyq / dt_raw)))
     ss = max(1, int(min(len(gx), len(gy)) // 160))  # keep the raw time-domain dump small
-    dpulse = box("E_t", 0, [gx[0], gy[0], zp], [gx[-1], gy[-1], zp], over=over,
-                 sub=pul.get("sub_sampling", [ss, ss, 1]))
+    box("E_t", 0, [gx[0], gy[0], zp], [gx[-1], gy[-1], zp], over=over,
+        sub=pul.get("sub_sampling", [ss, ss, 1]))
     meta["dumps"]["pulse"] = {"z_mm": zp, "stop_t_s": stop_t, "over_sampling": over,
                               "max_frames": int(pul.get("max_frames", 80))}
 
@@ -409,7 +409,6 @@ def process(sc, sim, out, fd, port, nf, meta, slog, prog, t_solve):
     zin = port.uf_tot / port.if_tot
     s11_db = 20 * np.log10(np.maximum(np.abs(s11), 1e-12))
     p_acc = 0.5 * np.real(port.uf_tot * np.conj(port.if_tot))
-    p_inc = 0.5 * np.abs(port.uf_inc) ** 2 / float(sc["port"].get("impedance_ohm", 50.0))
     i_res = int(np.argmin(s11_db))
     f_res = float(freqs[i_res])
 
@@ -551,7 +550,7 @@ def cells_per_wavelength(sc, fmax):
     return lam_mm / (worst or 1.0)
 
 
-def dominant_component(F, plane_axes_complex=True):
+def dominant_component(F):
     """F [3, ...] -> index of the component with the most energy."""
     e = [float(np.sum(np.abs(F[c]) ** 2)) for c in range(3)]
     return int(np.argmax(e))
@@ -672,7 +671,7 @@ def main(job: pathlib.Path) -> int:
         cap = int(os.environ.get("EMS_MAX_THREADS", "0") or 0)
         if cap:
             threads = min(threads, cap)
-        fd, csx, port, nf, meta = build_model(sc, sim)
+        fd, csx, port, nf, meta = build_model(sc)
         slog = SolverLog(prog, job / "solver.log")
         t0 = time.time()
         if os.environ.get("EMS_POST_ONLY") == "1":  # development: reuse an earlier _sim
@@ -706,8 +705,8 @@ def main(job: pathlib.Path) -> int:
         sys.stderr.write(tb)
         try:
             os.chdir(job)
-        except Exception:
-            pass
+        except Exception as chdir_error:  # the failure report below still goes to job by absolute path
+            sys.stderr.write(f"could not change to the job folder: {chdir_error}\n")
         prog.emit(phase="failed", error=f"{type(e).__name__}: {e}")
         jdump(job / "result.json", {"error": f"{type(e).__name__}: {e}", "trace": tb[-2000:],
                                     "trust": {"energy_decay_db": None, "passive": False,

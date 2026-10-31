@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
 from trustpcb.rf import scenario as S
-from trustpcb.rf.queue import SimQueue, progress_fraction
+from trustpcb.rf.queue import SimQueue, container_user, docker_run_command, owner_label, progress_fraction
 from trustpcb.storage import Store
 
 HERE = Path(__file__).parent
@@ -88,7 +89,7 @@ async def test_one_at_a_time(env):
     (job2 / "meta.json").write_text((job / "meta.json").read_text().replace(sc.hash(), sc2.hash()))
     a = await q.submit(sc.hash(), job)
     b = await q.submit(sc2.hash(), job2)
-    ra = await a.wait()
+    await a.wait()
     assert not b._fut.done()  # second waits for the first
     assert (await b.wait())["status"] == "done"
 
@@ -158,3 +159,55 @@ async def test_orphaned_containers_of_an_earlier_process_are_killed_at_start(env
     assert {p.name for p in state.glob("kill-*")} == {"kill-trustpcb-ems-aaaa", "kill-trustpcb-ems-bbbb"}
     (state / "orphans").unlink()
     assert await q.kill_orphans() == 0
+
+
+async def test_orphan_sweep_only_asks_for_containers_of_this_data_folder(env, tmp_path):
+    q, store, sc, job, state = env
+    await q.kill_orphans()
+    ps = json.loads((state / "ps_args.json").read_text())
+    filters = [ps[i + 1] for i, a in enumerate(ps) if a == "--filter"]
+    assert f"label=trustpcb.data={owner_label(store.data_dir)}" in filters and "name=trustpcb-ems-" in filters
+    assert owner_label(store.data_dir) != owner_label(tmp_path / "another-data-folder")
+    h = await q.submit(sc.hash(), job)
+    await h.wait()
+    cmd = json.loads((state / "last_cmd.json").read_text())
+    assert _flag_value(cmd, "--label") == f"trustpcb.data={owner_label(store.data_dir)}"
+
+
+def _flag_value(cmd, flag):
+    return cmd[cmd.index(flag) + 1]
+
+
+def test_docker_command_is_locked_down(tmp_path, monkeypatch):
+    monkeypatch.delenv("TRUSTPCB_EMS_USER", raising=False)
+    cmd = docker_run_command("docker", "trustpcb-ems-x", "img:tag", tmp_path / "job", cpus=2, memory="4g", worker_dir=tmp_path / "worker")
+    assert _flag_value(cmd, "--network") == "none"
+    assert _flag_value(cmd, "--cap-drop") == "ALL"
+    assert _flag_value(cmd, "--security-opt") == "no-new-privileges"
+    assert "--read-only" in cmd
+    assert _flag_value(cmd, "--tmpfs").startswith("/tmp:") and "noexec" in _flag_value(cmd, "--tmpfs")
+    assert _flag_value(cmd, "--pids-limit") == "1024" and _flag_value(cmd, "--cpus") == "2" and _flag_value(cmd, "--memory") == "4g"
+    if hasattr(os, "getuid"):
+        assert _flag_value(cmd, "--user") == f"{os.getuid()}:{os.getgid()}" and not _flag_value(cmd, "--user").startswith("0:")
+    mounts = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"]
+    assert mounts == [f"{tmp_path / 'job'}:/job", f"{tmp_path / 'worker'}:/app:ro"]   # the job folder is the only writable host path
+    assert cmd[-4:] == ["img:tag", "python3", "/app/run_scenario.py", "/job"]
+    assert "--privileged" not in cmd
+
+
+def test_docker_command_without_worker_mount_and_user_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRUSTPCB_EMS_USER", "1234:5678")
+    cmd = docker_run_command("docker", "n", "img", tmp_path, cpus=1, memory="1g")
+    assert _flag_value(cmd, "--user") == "1234:5678"
+    assert [cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"] == [f"{tmp_path}:/job"]
+    monkeypatch.setenv("TRUSTPCB_EMS_USER", "")          # rootless Docker: keep the image's own user
+    assert container_user() is None and "--user" not in docker_run_command("docker", "n", "img", tmp_path, cpus=1, memory="1g")
+
+
+async def test_queue_run_uses_the_locked_down_command(env):
+    q, store, sc, job, state = env
+    h = await q.submit(sc.hash(), job)
+    await h.wait()
+    cmd = json.loads((state / "last_cmd.json").read_text())
+    assert _flag_value(cmd, "--network") == "none" and _flag_value(cmd, "--cap-drop") == "ALL" and "--read-only" in cmd
+    assert _flag_value(cmd, "--security-opt") == "no-new-privileges"

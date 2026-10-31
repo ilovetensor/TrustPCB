@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import logging
 import math
 import re
 from dataclasses import dataclass, field
@@ -28,6 +29,8 @@ from typing import Any
 
 from . import geom, sexpr
 from .sexpr import Node, arg, find, findall, num
+
+logger = logging.getLogger("trustpcb")
 
 COPPER_KIND = "copper"
 
@@ -558,7 +561,6 @@ class _Parser:
         texts: list[Text] = []
         edge_polylines: list[list[tuple[float, float]]] = []
         edge_rings: list[list[tuple[float, float]]] = []
-        footprint_zones: list[tuple[Node, Any]] = []
         ref_seen: dict[str, int] = {}
 
         for node in findall(root, "footprint"):
@@ -624,6 +626,7 @@ class _Parser:
                     try:
                         idx = int(item[0])
                     except ValueError:
+                        logger.debug("Skipping layer %r: its index is not a number", item[1])
                         continue
                     self.layers.append(Layer(item[1], _layer_kind(item[1]), idx))
         self.copper = [layer.name for layer in self.layers if layer.kind == COPPER_KIND]
@@ -815,6 +818,7 @@ class _Parser:
                     pts = geom.arc_points((float(s[1]), float(s[2])), (float(m[1]), float(m[2])), (float(e[1]), float(e[2])))
                     shapes.append(LineString(pts).buffer(max(width, 0.001) / 2))
             except (TypeError, ValueError, IndexError):
+                logger.debug("Skipping a malformed copper outline in the board", exc_info=True)
                 continue
         merged = unary_union(shapes)
         if merged.is_empty:
@@ -1124,7 +1128,8 @@ def parse_board(path: str | Path, version_id: str = "") -> Board:
     if pro.is_file():
         try:
             project = json.loads(pro.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            logger.warning("Ignoring %s, which could not be read as JSON (net classes fall back to defaults): %s", pro.name, exc)
             project = None
     return parse_board_text(text, version_id=version_id, source=str(path), project=project)
 

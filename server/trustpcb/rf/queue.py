@@ -10,7 +10,9 @@ kills the container. ``recover_interrupted`` marks jobs left running by an earli
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import logging
 import os
 import shutil
 import time
@@ -19,16 +21,63 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from ..pcb.env import child_environment
 from . import postprocess
+
+logger = logging.getLogger("trustpcb")
 
 IMAGE = "trustpcb-ems:dev"            # TRUSTPCB_EMS_IMAGE overrides it when a queue is made
 #: The repository's worker/ folder. It is mounted read-only over /app in the container, so a change to the worker
 #: needs no image rebuild. Set TRUSTPCB_WORKER_MOUNT=0 to run the copy baked into the image instead.
 WORKER_DIR = Path(__file__).resolve().parents[3] / "worker"
 CONTAINER_PREFIX = "trustpcb-ems-"
+OWNER_LABEL = "trustpcb.data"        # label on every solver container: which data folder started it
 ProgressCb = Callable[[dict[str, Any]], Awaitable[None] | None]
 
 PHASE_FRACTION = {"setup": 0.02, "solved": 0.86, "ports": 0.87, "nf2ff": 0.9, "fields": 0.94, "current": 0.96, "pulse": 0.98, "done": 1.0}
+
+
+def docker_environment() -> dict[str, str]:
+    """What the docker client may see: the basics, ``DOCKER*`` settings and the ssh agent socket, not the server's secrets.
+
+    The client does not hand its own environment to the container. ``TRUSTPCB_DOCKER_PASS_ENV`` (comma separated names)
+    adds variables for a client that needs them, such as a stand-in client in tests.
+    """
+    extra = [n.strip() for n in os.environ.get("TRUSTPCB_DOCKER_PASS_ENV", "").split(",") if n.strip()]
+    return child_environment(extra_names=("SSH_AUTH_SOCK", *extra), extra_prefixes=("DOCKER",))
+
+
+def container_user() -> str | None:
+    """The ``uid:gid`` the solver container runs as: the app's own, so the job folder it writes stays readable and deletable
+    by the host on Linux Docker. ``TRUSTPCB_EMS_USER`` overrides it (set it to an empty string to leave the image's user,
+    for example with rootless Docker, where the host uid does not map into the container). None where the OS has no uids."""
+    override = os.environ.get("TRUSTPCB_EMS_USER")
+    if override is not None:
+        return override.strip() or None
+    if hasattr(os, "getuid"):
+        return f"{os.getuid()}:{os.getgid()}"
+    return None
+
+
+def owner_label(data_dir: str | Path | None) -> str:
+    """A label value naming the data folder a container belongs to, so one app never stops another app's solver."""
+    return hashlib.sha1(str(data_dir or "").encode()).hexdigest()[:16]
+
+
+def docker_run_command(docker: str, name: str, image: str, job_dir: str | Path, *, cpus: int | float, memory: str,
+                       worker_dir: str | Path | None = None, owner: str | None = None) -> list[str]:
+    """The ``docker run`` argv for one solver job.
+
+    The scenario comes from an uploaded board, so the container gets the least it can work with: no network, no Linux
+    capabilities, no privilege gain, a read-only root file system, a small private /tmp, and a non-root user. The job
+    folder is the only writable host path, and the worker code is mounted read-only.
+    """
+    user = container_user()
+    return [docker, "run", "--rm", "--name", name, "--cpus", str(cpus), "--memory", memory, "--network", "none",
+            "--pids-limit", "1024", *(["--label", f"{OWNER_LABEL}={owner}"] if owner else []), "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--read-only",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=512m", *(["--user", user] if user else []),
+            "-v", f"{job_dir}:/job", *(["-v", f"{worker_dir}:/app:ro"] if worker_dir else []),
+            image, "python3", "/app/run_scenario.py", "/job"]
 
 
 def progress_fraction(line: dict[str, Any], end_db: float, prev: float = 0.0) -> float:
@@ -68,6 +117,7 @@ class SimQueue:
             worker_dir = WORKER_DIR
         self.worker_dir = Path(worker_dir) if worker_dir else None
         self.timeout_s, self.docker, self.poll_s = timeout_s, docker, poll_s
+        self.owner = owner_label(getattr(store, "data_dir", None))
         self._q: asyncio.Queue | None = None
         self._worker: asyncio.Task | None = None
         self._jobs: dict[str, dict[str, Any]] = {}
@@ -87,18 +137,22 @@ class SimQueue:
     async def kill_orphans(self) -> int:
         """Kill solver containers an earlier process left running (it was killed before it could stop them). Best effort: no Docker means nothing to do.
 
-        Call at start-up only. Only containers named with this app's prefix are touched.
+        Call at start-up only. Only containers with this app's name prefix and this data folder's label are touched, so a
+        second app (or a test run) on the same machine leaves the first one's solver alone.
         """
         if shutil.which(self.docker) is None and not Path(self.docker).is_file():
             return 0
         try:
-            listing = await asyncio.create_subprocess_exec(self.docker, "ps", "-q", "--filter", f"name={CONTAINER_PREFIX}", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            listing = await asyncio.create_subprocess_exec(self.docker, "ps", "-q", "--filter", f"name={CONTAINER_PREFIX}",
+                                                           "--filter", f"label={OWNER_LABEL}={self.owner}", env=docker_environment(),
+                                                           stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             out, _ = await asyncio.wait_for(listing.communicate(), timeout=10)
             ids = out.decode().split() if listing.returncode == 0 else []
             for container in ids:
                 await self._kill(container)
             return len(ids)
-        except (asyncio.TimeoutError, OSError):
+        except (asyncio.TimeoutError, OSError) as exc:
+            logger.warning("Could not look for leftover solver containers: %s", exc)
             return 0
 
     def cached_summary(self, scenario_hash: str) -> dict[str, Any] | None:
@@ -110,7 +164,8 @@ class SimQueue:
             r = json.loads(res.read_text())
             lines = (d / "progress.jsonl").read_text().strip().splitlines()
             last = json.loads(lines[-1]) if lines else {}
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            logger.warning("Ignoring the cached result in %s, which cannot be read: %s", d, exc)
             return None
         if "error" in r or last.get("phase") != "done":
             return None
@@ -161,7 +216,7 @@ class SimQueue:
     # ---- internals ---------------------------------------------------------
 
     async def _kill(self, name: str) -> None:
-        p = await asyncio.create_subprocess_exec(self.docker, "kill", name, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        p = await asyncio.create_subprocess_exec(self.docker, "kill", name, env=docker_environment(), stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
         await p.wait()
 
     async def _loop(self) -> None:
@@ -175,6 +230,7 @@ class SimQueue:
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
+                logger.exception("Simulation job %s failed", jid)
                 out = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
                 self.store.update_sim_job(jid, status="failed", error=out["error"])
             out.setdefault("job_id", jid)
@@ -202,11 +258,9 @@ class SimQueue:
         self.store.update_sim_job(jid, status="running", progress=0.0)
         self.stats["ran"] += 1
         j["running"] = True
-        cmd = [self.docker, "run", "--rm", "--name", j["name"], "--cpus", str(self.cpus), "--memory", self.memory, "--network", "none",
-               "--pids-limit", "1024", "-v", f"{d}:/job",
-               *(["-v", f"{self.worker_dir}:/app:ro"] if self.worker_dir else []), self.image, "python3", "/app/run_scenario.py", "/job"]
+        cmd = docker_run_command(self.docker, j["name"], self.image, d, cpus=self.cpus, memory=self.memory, worker_dir=self.worker_dir, owner=self.owner)
         t0 = time.time()
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        proc = await asyncio.create_subprocess_exec(*cmd, env=docker_environment(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         j["proc"] = proc
         tail = bytearray()
 

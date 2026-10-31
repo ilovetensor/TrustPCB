@@ -1,7 +1,7 @@
 """Async wrappers around ``kicad-cli`` (KiCad is only ever run as a separate program).
 
-Discovery order, version rule and the default DRC, ERC, netlist and export calls follow the
-setup the owner approved for reuse; no custom checks are included here.
+Discovery order, version rule and the default DRC, ERC and export calls are KiCad's own;
+no custom checks are included here.
 
 Discovery order for the executable:
 
@@ -26,6 +26,8 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from .env import child_environment
 
 ENVIRONMENT_VARIABLE = "KICAD_CLI_PATH"
 DEFAULT_NAME = "kicad-cli"
@@ -156,6 +158,14 @@ def _clean_stderr(text: str) -> str:
     return "\n".join(line for line in text.splitlines() if line.strip() and not line.startswith("Fontconfig"))
 
 
+def kicad_environment() -> dict[str, str]:
+    """What kicad-cli may see: the basics plus every ``KICAD*`` variable (library and settings locations).
+
+    The server's own secrets (model API key, launch token) are not passed on to a program that parses uploads.
+    """
+    return child_environment(extra_prefixes=("KICAD",))
+
+
 async def run(args: list[str], *, cwd: str | Path | None = None, timeout: float = DEFAULT_TIMEOUT) -> CliResult:
     """Run ``kicad-cli <args>``; kills the process and raises ``KicadError('timeout')`` on timeout."""
     exe = find_kicad_cli()
@@ -166,6 +176,7 @@ async def run(args: list[str], *, cwd: str | Path | None = None, timeout: float 
         exe,
         *args,
         cwd=str(cwd) if cwd else None,
+        env=kicad_environment(),
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -214,7 +225,7 @@ async def version(*, require_supported: bool = True) -> tuple[int, int, int]:
         raise KicadUnavailable("version_failed", "Unable to determine KiCad version.", result.stderr)
     v = parse_version(result.stdout)
     if require_supported and not supports(v):
-        raise KicadUnavailable("unsupported_version", f"KiCad {'.'.join(map(str, v))} is unsupported; V1 needs {MIN_MAJOR}+.")
+        raise KicadUnavailable("unsupported_version", f"KiCad {'.'.join(map(str, v))} is unsupported; TrustPCB needs KiCad {MIN_MAJOR} or newer.")
     _version_cache = v
     return v
 
@@ -268,14 +279,6 @@ async def erc(sch: str | Path, out_json: str | Path, *, timeout: float = DEFAULT
     return _check(await run(args, cwd=sch.parent, timeout=timeout), out_json, "erc", (0, 5))
 
 
-async def netlist(sch: str | Path, out: str | Path, *, timeout: float = DEFAULT_TIMEOUT) -> CliResult:
-    sch, out = Path(sch), Path(out)
-    _guard(sch)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    args = ["sch", "export", "netlist", "--format", "kicadsexpr", "-o", str(out), str(sch)]
-    return _check(await run(args, cwd=sch.parent, timeout=timeout), out, "netlist")
-
-
 async def stats(pcb: str | Path, out_json: str | Path, *, timeout: float = DEFAULT_TIMEOUT) -> CliResult:
     pcb, out_json = Path(pcb), Path(out_json)
     _guard(pcb)
@@ -294,25 +297,6 @@ async def export_glb(pcb: str | Path, out: str | Path, *, timeout: float = SLOW_
         "--include-silkscreen", "-o", str(out), str(pcb),
     ]
     return _check(await run(args, cwd=pcb.parent, timeout=timeout), out, "glb")
-
-
-async def render(
-    pcb: str | Path,
-    out: str | Path,
-    side: str = "top",
-    *,
-    width: int = 1600,
-    height: int = 900,
-    quality: str = "basic",
-    background: str = "transparent",
-    timeout: float = SLOW_TIMEOUT,
-) -> CliResult:
-    """Raytraced-style 3D render to PNG. ``side``: top, bottom, left, right, front, back."""
-    pcb, out = Path(pcb), Path(out)
-    _guard(pcb)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    args = ["pcb", "render", "--side", side, "--width", str(width), "--height", str(height), "--quality", quality, "--background", background, "-o", str(out), str(pcb)]
-    return _check(await run(args, cwd=pcb.parent, timeout=timeout), out, "render")
 
 
 async def refill_zones(pcb: str | Path, workdir: str | Path, *, timeout: float = SLOW_TIMEOUT) -> Path:

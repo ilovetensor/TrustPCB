@@ -3,9 +3,14 @@
 #
 #   scripts/test-related.sh server/trustpcb/pcb/model.py server/tests/pcb/test_model.py -- -k board
 #
-# A path under server/tests is run as is. A path under server/trustpcb/<lane>/ runs
-# server/tests/<lane>/. The top-level modules api, storage, sessions, events and the runners
-# package belong to the foundation lane. Everything after "--" goes to pytest unchanged.
+# A path under server/tests is run as is. Source paths map to the test folders that cover them:
+#   server/trustpcb/rf/, worker/, docker/       tests/rf_model and tests/rf
+#   server/trustpcb/runners/                    tests/foundation and tests/muse
+#   server/trustpcb/{api,storage,sessions,events}.py   tests/foundation
+#   server/trustpcb/intake/                     tests/pcb
+#   server/trustpcb/prompts/                    tests/review
+#   server/trustpcb/<package>/                  tests/<package>   (pcb, analyzers, review)
+# Everything after "--" goes to pytest unchanged. The web app has its own tests: npm --prefix web test.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
@@ -19,9 +24,14 @@ while [[ $# -gt 0 ]]; do
   rel="${abs#"$root"/}"
   case "$rel" in
     server/tests/*) targets+=("${rel#server/}") ;;
-    server/trustpcb/runners/*|server/trustpcb/api.py|server/trustpcb/storage.py|server/trustpcb/sessions.py|server/trustpcb/events.py) targets+=("tests/foundation") ;;
-    server/trustpcb/*/*) lane="${rel#server/trustpcb/}"; targets+=("tests/${lane%%/*}") ;;
-    *) echo "skipping $arg: not under server/tests or server/trustpcb" >&2 ;;
+    server/trustpcb/rf/*|worker/*|docker/*) targets+=("tests/rf_model" "tests/rf") ;;
+    server/trustpcb/runners/*) targets+=("tests/foundation" "tests/muse") ;;
+    server/trustpcb/api.py|server/trustpcb/storage.py|server/trustpcb/sessions.py|server/trustpcb/events.py) targets+=("tests/foundation") ;;
+    server/trustpcb/intake/*) targets+=("tests/pcb") ;;
+    server/trustpcb/prompts/*) targets+=("tests/review") ;;
+    server/trustpcb/*/*) package="${rel#server/trustpcb/}"; targets+=("tests/${package%%/*}") ;;
+    web/*) echo "skipping $arg: web tests run with npm --prefix web test" >&2 ;;
+    *) echo "skipping $arg: not under server/tests, server/trustpcb, worker or docker" >&2 ;;
   esac
 done
 

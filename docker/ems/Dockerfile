@@ -2,6 +2,9 @@
 #
 #   docker build -t trustpcb-ems:dev -f docker/ems/Dockerfile .
 #
+# TrustPCB runs it with --network none, --cap-drop ALL, no-new-privileges, a read-only root file system,
+# a small /tmp, and only the job folder writable (see server/trustpcb/rf/queue.py).
+#
 # Pinned: thliebig/openEMS-Project v0.37.0 (commit 974294ba7d812ef5a46a4760593057aee7ce6866,
 # 2026-10-09). Submodules are taken at the commits that tag records.
 # Builds natively on linux/arm64 and linux/amd64. No GUI (no Qt/VTK).
@@ -93,4 +96,8 @@ RUN echo "/opt/ems/lib" > /etc/ld.so.conf.d/ems.conf && ldconfig \
  && python3 -c "import CSXCAD, openEMS, numpy, h5py, scipy.interpolate, scipy.ndimage; print('bindings ok', openEMS.__file__)"
 WORKDIR /app
 COPY worker/ /app/
+# Unprivileged by default. TrustPCB also starts the container with --user set to the host user's uid:gid, so the files the
+# solver writes into the mounted job folder belong to the host user and can be read and deleted there.
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin ems
+USER 10001:10001
 CMD ["python3", "/app/run_scenario.py", "/job"]

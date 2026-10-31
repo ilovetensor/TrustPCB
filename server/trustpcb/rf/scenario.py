@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,7 @@ from ..pcb.model import Board
 from . import geometry as geo
 from . import mesh as meshmod
 from . import whatif
-from .types import NotSimulatable, RfSetup
+from .types import RfSetup
 
 MODEL_VERSION = "rf-model-4"  # 4: far field and efficiency at the band centre f0, not the deepest dip; 3: 801 sweep points at both qualities; each bump changes every cache key
 

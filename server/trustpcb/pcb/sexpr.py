@@ -103,11 +103,6 @@ def flag(node: Node, tag: str) -> bool:
     return tag in node
 
 
-def atoms(node: Node) -> list[str]:
-    """The string arguments of ``node`` (children that are lists are skipped)."""
-    return [x for x in node[1:] if x.__class__ is str]
-
-
 def xy(node: Node | None, tag: str = "xy") -> tuple[float, float] | None:
     """Read ``(tag x y)`` from a node."""
     if node is None:

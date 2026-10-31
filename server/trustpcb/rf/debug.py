@@ -6,7 +6,6 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from . import geometry as geo
 
 COLORS = {0: (200, 60, 50, 150), 1: (50, 90, 200, 130), 2: (60, 160, 70, 120), 3: (200, 160, 40, 120)}
 

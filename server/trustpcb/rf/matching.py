@@ -12,7 +12,6 @@ Recommended changes are worded for the engineer to apply in their own tool.
 
 from __future__ import annotations
 
-import itertools
 import math
 from typing import Any
 
@@ -318,7 +317,6 @@ def tune_matching(
     def apply(z, s, arr_row):
         return z + arr_row if s.topology == "series" else 1.0 / (1.0 / z + arr_row)
 
-    best = (1e9, None)
     # iterate the first slot, broadcast the rest
     counts = [len(o) for o in opts]
     results: list[tuple[float, float, tuple[int, ...]]] = []

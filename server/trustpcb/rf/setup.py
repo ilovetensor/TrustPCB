@@ -98,7 +98,6 @@ def _stackup(board: Board) -> tuple[dict[str, Any] | None, NotSimulatable | None
                 diel = sum(p["thickness_mm"] for p in pending)
                 z0 = z
                 z = z + diel + (prev_cu_t + t) / 2
-                slabs_z0 = z0 - prev_cu_t / 2 if False else z0
                 # one slab per dielectric layer between the two copper sheets, scaled to fill the gap
                 gap = z - z0
                 cur = z0
@@ -330,7 +329,7 @@ def plan_setup(
         d = (b[0] - a[0], b[1] - a[1]) if pb.contains(Point(a)) else (a[0] - b[0], a[1] - b[1])
         if (t.width or 0) >= STRIP_PORT_MIN_WIDTH_MM:
             port_axis = "x" if abs(d[1]) >= abs(d[0]) else "y"
-            across = min(feed_pad.w, feed_pad.h) if False else (feed_pad.w if port_axis == "x" else feed_pad.h)
+            across = feed_pad.w if port_axis == "x" else feed_pad.h
             port_width = round(0.9 * min(t.width, across), 3)
 
     # ---- ground reference ----------------------------------------------------
