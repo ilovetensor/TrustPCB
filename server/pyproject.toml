@@ -16,6 +16,7 @@ dependencies = [
   "scikit-rf>=1.5,<2",
   "pypdf>=6,<7",
   "playwright>=1.64,<2",
+  "scipy>=1.14,<2",
 ]
 
 [dependency-groups]
