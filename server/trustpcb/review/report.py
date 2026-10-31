@@ -69,7 +69,9 @@ def _investigations(store, review_id: str) -> list[dict]:
             data = s.get('data') or {}
             suspects.append({'code': data.get('code') or f'S{s["rank"]}', 'title': s['title'], 'status': s['status'], 'reason': (s.get('conclusion') or {}).get('reason'),
                              'experiments': data.get('experiments') or []})
-        out.append({'code': f'I{index}', 'question': inv['question'], 'status': inv['status'], 'outcome': inv.get('outcome'), 'suspects': suspects})
+        outcome = inv.get('outcome')
+        out.append({'code': f'I{index}', 'question': inv['question'], 'status': inv['status'], 'outcome': outcome, 'suspects': suspects,
+                    'confirmation': outcome.get('confirmation') if isinstance(outcome, dict) else None})
     return out
 
 
@@ -86,7 +88,11 @@ def _rf_section(store, review_id: str, summary: dict, evidence_rows: list[dict])
     shown = lambda r: r and {'code': r['code'], 'label': r['values'].get('label'), 'quality': r['values'].get('quality'), 'trust': r['values'].get('trust'),
                              'measurements': r['values'].get('measurements'), 'scenario_hash': r['values'].get('scenario_hash'), 'curve': r['values'].get('curve')}
     section['confirm_base'], section['confirm_winner'] = shown(base_confirm), shown(winner_confirm)
-    best = winner_confirm or base_confirm
+    calc = [r for r in evidence_rows if r['type'] == ev.CALCULATION and (r['values'].get('trust') or {}).get('status') == 'ok' and r['values'].get('quality') == 'confirm']
+    locked = next((r for r in calc if r['values'].get('label') == 'confirm matching, parts locked'), None)
+    free = next((r for r in calc if r['values'].get('label') == 'confirm matching, free tuning'), None)
+    section['confirm_matching'] = {'locked': shown(locked), 'free': shown(free)} if (locked or free) else None
+    best = locked or winner_confirm or base_confirm
     if best:
         metrics = best['values'].get('metrics') or {}
         goal = (store.get_review(review_id) or {}).get('goal') or {}
@@ -286,6 +292,54 @@ def curve_svg(curve: dict, band: list | None, target: float | None) -> str:
     return ''.join(parts)
 
 
+def experiment_line(e: dict) -> str:
+    """One experiment of a suspect: what it was, what kind, and how the in-band result moved against the base (screen: for comparing only)."""
+    text = f'{e.get("ref")} {e.get("label")} ({e.get("kind")}, {e.get("quality")}){" - failed trust" if not e.get("ok") else ""}'
+    if e.get('kind') == 'matching' and e.get('quality') == 'screen':
+        text += ' - no solver time'
+    delta = (e.get('delta') or {}).get('s11_db')
+    if e.get('kind') in ('whatif', 'matching') and e.get('quality') == 'screen' and delta is not None:
+        text += f': worst in-band S11 {abs(delta):.1f} dB {"better" if delta < 0 else "worse"} than the base (screen, for comparing only)'
+    return esc(text)
+
+
+def _cell(row: dict | None, key: str, unit: str) -> str:
+    if not row or row.get(key) is None:
+        return '<td class="muted">not run</td>' if row is None else '<td class="muted">-</td>'
+    return f'<td class="n">{esc(row[key])} {esc(unit)}</td>'
+
+
+def render_confirmation(c: dict) -> str:
+    """Screen against confirm: the honest comparison, with the matching re-tuned at confirm quality."""
+    rows = c.get('rows') or {}
+    tone = {'held': 'cls-measured', 'held_smaller': 'sev-medium', 'held_after_retune': 'sev-medium', 'not_held': 'sev-high', 'unconfirmed': 'cls-not_tested'}.get(c.get('outcome'), '')
+    winner = c.get('winner') or {}
+    change = []
+    if winner.get('ops'):
+        change.append('what-if: ' + ', '.join(esc(json.dumps(o)) for o in winner['ops']))
+    if winner.get('parts'):
+        change.append('matching: ' + ', '.join(esc(f'{p.get("ref")} {p.get("was")} to {p.get("now")}') for p in winner['parts']))
+    out = [f'<h3>Screen against confirm</h3><p>{pill(tone, str(c.get("outcome", "")).replace("_", " "))} {esc(c.get("statement"))}</p>',
+           '<p class="small">Candidate change, tested in simulation (apply it in your own tool and re-measure): ' + ('; '.join(change) or 'none') + '. Screen columns are for comparing only; confirm columns are the result.</p>',
+           '<table><tr><th></th><th>Base, screen</th><th>Base, confirm</th><th>Change, screen</th><th>Change, confirm</th></tr>']
+    cols = [(rows.get('base') or {}).get('screen'), (rows.get('base') or {}).get('confirm'), (rows.get('winner') or {}).get('screen'), (rows.get('winner') or {}).get('confirm')]
+    for label, key, unit in (('Worst S11 in the band', 'band_worst_s11_db', 'dB'), ('Mean S11 in the band', 'band_mean_s11_db', 'dB'), ('Deepest dip (descriptive)', 'deepest_dip_mhz', 'MHz'),
+                             ('Depth of that dip', 'deepest_dip_db', 'dB'), ('Resistance at the band centre', 'centre_resistance_ohm', 'ohm'),
+                             ('Reactance at the band centre', 'centre_reactance_ohm', 'ohm'), ('First series resonance', 'first_series_resonance_mhz', 'MHz')):
+        out.append(f'<tr><td>{esc(label)}</td>' + ''.join(_cell(col, key, unit) for col in cols) + '</tr>')
+    out.append('</table>')
+    matching = c.get('matching_at_confirm') or {}
+    if matching:
+        out.append('<p class="small"><strong>Matching re-tuned at confirm quality</strong> (no solver time)</p><table><tr><th></th><th>Parts</th><th>Worst S11 in the band</th><th>Mean S11 in the band</th><th>Meets target</th></tr>')
+        for key, label in (('locked', 'Screen\'s parts locked'), ('free', 'Free tuning')):
+            m = matching.get(key)
+            if m:
+                parts = ', '.join(esc(f'{p.get("ref")} {p.get("was")} to {p.get("now")}') for p in m.get('parts') or []) or 'as built'
+                out.append(f'<tr><td>{label}</td><td class="small">{parts}</td>{_cell(m, "band_worst_s11_db", "dB")}{_cell(m, "band_mean_s11_db", "dB")}<td>{"yes" if m.get("meets_target") else "no"}</td></tr>')
+        out.append('</table>')
+    return ''.join(out)
+
+
 def render_html(snap: dict, images: dict | None = None) -> str:
     images = images or {}
     cover, overview, rf = snap['cover'], snap['overview'], snap['rf']
@@ -341,9 +395,12 @@ def render_html(snap: dict, images: dict | None = None) -> str:
                 out.append(f'<p>{esc(outcome["summary"])}</p>')
             out.append('<table><tr><th>Suspect</th><th>Result</th><th>Tests</th></tr>')
             for s in inv['suspects']:
-                tests = '<br>'.join(esc(f'{e.get("ref")} {e.get("label")} ({e.get("kind")}, {e.get("quality")}){" - failed trust" if not e.get("ok") else ""}') for e in s['experiments']) or '<span class="muted">none</span>'
+                tests = '<br>'.join(experiment_line(e) for e in s['experiments']) or '<span class="muted">none</span>'
                 out.append(f'<tr><td>{esc(s["code"])} {esc(s["title"])}</td><td>{pill("", s["status"].replace("_", " "))}<br><span class="small">{esc(s.get("reason") or "")}</span></td><td class="small">{tests}</td></tr>')
-            out.append('</table></div>')
+            out.append('</table>')
+            if inv.get('confirmation'):
+                out.append(render_confirmation(inv['confirmation']))
+            out.append('</div>')
     else:
         out.append('<p class="muted">No investigation was run.</p>')
     # 6 findings

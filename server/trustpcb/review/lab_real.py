@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .lab import BaselineLab, LabUnavailable, Progress
+from .lab import BadMatchingRequest, BaselineLab, LabUnavailable, Progress
 
 DOCKER_CHECK_SECONDS = 30.0
 DATASHEET_PAGE_CHARS = 6000
@@ -247,24 +247,34 @@ class RealLab(BaselineLab):
 
     @staticmethod
     def describe(run: dict) -> str:
-        """One plain paragraph the agent reads first: every dip, the first series resonance, antenna-alone and as-built numbers."""
+        """One plain paragraph the agent reads first: S11 across the band, the impedance at the band centre and what it means,
+        every dip (descriptive only), the first series resonance and the trust verdict."""
+        from .evidence import CHARACTER_MEANING, reactance_character
         sim = {**(run.get('sim') or {}), **(run.get('result') or {})}
         s11 = run.get('s11') or {}
         alone, built = s11.get('antenna_only') or {}, s11.get('as_built')
         parts = []
+
+        def band_text(stats: dict) -> str:
+            return f'worst {stats.get("band_worst_db")} dB, mean {stats.get("band_mean_db")} dB, best {stats.get("band_best_db")} dB'
+
+        if built:
+            parts.append(f'In the band, as built (the board\'s matching parts): S11 {band_text(built)}. Antenna alone: {band_text(alone)}.' if alone else f'In the band, as built: S11 {band_text(built)}.')
+        elif alone:
+            parts.append(f'In the band, antenna alone: S11 {band_text(alone)}. As built: not available ({s11.get("network_note") or "matching network unknown"}).')
+        centre = run.get('zin_at_band_centre') or sim.get('zin_at_band_centre')
+        if centre and centre.get('im') is not None:
+            re, im = centre.get('re') or 0.0, centre['im']
+            character = reactance_character(re, im)
+            parts.append(f'Impedance at the band centre ({centre["f_hz"] / 1e6:.0f} MHz): {re:.1f} {"+" if im >= 0 else "-"} j{abs(im):.1f} ohm, {character}. {CHARACTER_MEANING.get(character, "")}')
         dips = sim.get('s11_dips') or []
         if dips:
-            parts.append('S11 dips below -3 dB: ' + ', '.join(f'{d["f_hz"] / 1e6:.0f} MHz ({d["s11_db"]:.1f} dB)' for d in dips) + '. The deepest dip is not always the antenna mode; judge by all of them.')
+            parts.append('S11 dips below -3 dB (descriptive; they do not decide success): ' + ', '.join(f'{d["f_hz"] / 1e6:.0f} MHz ({d["s11_db"]:.1f} dB)' for d in dips) +
+                         '. Compare dips between runs: one that stays put when the antenna changes is probably a board mode.')
         else:
             parts.append('No S11 dip below -3 dB in the sweep.')
         first = sim.get('first_series_resonance_hz')
         parts.append(f'First series resonance (reactance crosses zero upward): {first / 1e6:.0f} MHz.' if first else 'No series resonance in the sweep.')
-        if alone:
-            parts.append(f'Antenna alone: worst S11 in band {alone.get("band_worst_db")} dB, best {alone.get("band_best_db")} dB.')
-        if built:
-            parts.append(f'As built (the board\'s matching parts): worst S11 in band {built.get("band_worst_db")} dB, best {built.get("band_best_db")} dB.')
-        else:
-            parts.append(f'As built: not available ({s11.get("network_note") or "matching network unknown"}).')
         trust = run.get('trust') or {}
         parts.append(f'Trust: {trust.get("status")}' + (': ' + '; '.join(trust.get('reasons') or []) if trust.get('reasons') else '') + '.')
         return ' '.join(parts)
@@ -297,6 +307,9 @@ class RealLab(BaselineLab):
     # ---- tune_matching -----------------------------------------------------------------------------------
 
     async def tune_matching(self, *, review_id, version_id, result, params) -> dict:
+        """Matching parts for a stored result. With `params['changes']` those parts are applied; otherwise E24 values are searched.
+        Either way the answer carries the changed parts, the in-band result, every dip, the impedance at the band centre and the curve."""
+        from ..rf.lab import match_changes
         from ..rf.lab import tune_matching as rf_tune
         job = self.job_dir(result)
         if job is None:
@@ -304,29 +317,47 @@ class RealLab(BaselineLab):
         band = params.get('band_hz')
         band_ghz = (band[0] / 1e9, band[1] / 1e9) if isinstance(band, (list, tuple)) and len(band) == 2 else None
         target = params.get('target_db')
-        out = await asyncio.to_thread(lambda: rf_tune(job, target_db=float(target) if isinstance(target, (int, float)) else -10.0, band_ghz=band_ghz))
-        if not out.get('ok'):
-            raise LabUnavailable(out.get('reason') or 'The matching network could not be tuned.')
-        best = out['best']
-        single = out.get('best_single_change')
-        components, changes = [], []
-        for row in best['parts']:
-            changes.append({'ref': row['ref'], 'position': row['topology'], 'was': row['was'], 'now': row['now']})
+        target = float(target) if isinstance(target, (int, float)) else -10.0
+        single = None
+        base_stats = None
+        note = 'Ideal lumped parts, 50 ohm source, no tolerance or parasitics. Apply any change in your own tool and re-measure.'
+        if params.get('changes'):
+            changes = list(params['changes'])
+            applied = await asyncio.to_thread(lambda: match_changes(job, changes, band_ghz=band_ghz))
+            if not applied.get('ok'):
+                raise BadMatchingRequest(applied.get('reason') or 'Those parts could not be applied.')
+            rows, stats = applied['parts'], applied['result']
+        else:
+            out = await asyncio.to_thread(lambda: rf_tune(job, target_db=target, band_ghz=band_ghz))
+            if not out.get('ok'):
+                raise LabUnavailable(out.get('reason') or 'The matching network could not be tuned.')
+            best = out['best']
+            base_stats = out.get('as_built')
+            single = out.get('best_single_change')
+            note = out.get('note') or note
+            changes = [{'ref': r['ref'], 'kind': r['kind'], 'value': r['value']} for r in best['parts'] if r.get('changed')]
+            applied = await asyncio.to_thread(lambda: match_changes(job, changes, band_ghz=band_ghz))     # the curve, dips and impedance of the winner
+            rows, stats = (applied['parts'], applied['result']) if applied.get('ok') else (best['parts'], best['result'])
+        components, parts = [], []
+        for row in rows:
             if row.get('kind') and row.get('value'):
                 kind, value = row['kind'], float(row['value'])
                 scale, unit = {'L': (1e9, 'nH'), 'C': (1e12, 'pF'), 'R': (1.0, 'ohm')}[kind]
                 components.append({'name': f'{row["ref"]}_{row["topology"]}', 'kind': kind, 'value': round(value * scale, 3), 'unit': unit, 'ref': row['ref'], 'position': row['topology']})
-        stats = best['result']
-        base = out.get('as_built') or {}
+            if row.get('changed'):
+                parts.append({'ref': row['ref'], 'position': row['topology'], 'kind': row.get('kind'), 'value': row.get('value'), 'was': row['was'].replace(' (fitted)', ''), 'now': row['now']})
         topology = '_'.join(f'{c["position"]}_{c["kind"].lower()}' for c in components) or 'no_parts'
-        return {
-            'topology': topology, 'components': components, 'changes': changes,
-            'predicted': {'s11_min_db': stats['s11_min_db'], 'band_worst_db': stats['band_worst_db'], 'band_best_db': stats['band_best_db']},
-            'as_built_before': {k: base.get(k) for k in ('s11_min_db', 'band_worst_db', 'band_best_db')} if base else None,
-            'meets_target': bool(best.get('meets_target')), 'target_db': out.get('target_db'),
-            'best_single_change': ({'changes': [{'ref': r['ref'], 'was': r['was'], 'now': r['now']} for r in single['parts']], 'band_worst_db': single['result']['band_worst_db']} if single else None),
-            'note': out.get('note'),
+        result = {
+            'topology': topology, 'components': components, 'parts': parts, 'changes': [{'ref': p['ref'], 'position': p['position'], 'was': p['was'], 'now': p['now']} for p in parts],
+            'predicted': {'s11_min_db': stats['s11_min_db'], 'f_min_hz': stats.get('f_min_hz'), 'band_worst_db': stats['band_worst_db'], 'band_best_db': stats['band_best_db'], 'band_mean_db': stats.get('band_mean_db')},
+            'as_built_before': {k: base_stats.get(k) for k in ('s11_min_db', 'band_worst_db', 'band_best_db', 'band_mean_db')} if base_stats else None,
+            'meets_target': stats['band_worst_db'] <= target, 'target_db': target,
+            'best_single_change': ({'changes': [{'ref': r['ref'], 'was': r['was'], 'now': r['now']} for r in single['parts'] if r.get('changed')], 'band_worst_db': single['result']['band_worst_db']} if single else None),
+            'note': note,
         }
+        if applied.get('ok'):
+            result.update(dips=applied.get('dips'), first_series_resonance_hz=applied.get('first_series_resonance_hz'), zin_band_centre=applied.get('zin_band_centre'), curve=applied.get('curve'))
+        return result
 
     # ---- view_result -------------------------------------------------------------------------------------
 

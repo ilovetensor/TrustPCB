@@ -125,6 +125,7 @@ class Mismatch:
     value: float
     unit: str
     reason: str   # 'not_in_evidence' | 'needs_confirm_run' | 'trust_failed'
+    start: int = 0   # where the number starts in the text
 
     def message(self) -> str:
         if self.reason == 'needs_confirm_run':
@@ -141,9 +142,9 @@ def check_text(text: str, allowed: Iterable[Quantity]) -> list[Mismatch]:
     for written in extract(text):
         matches = [a for a in pool if _explains(written, a)]
         if not matches:
-            problems.append(Mismatch(written.raw, written.value, written.unit, 'not_in_evidence'))
+            problems.append(Mismatch(written.raw, written.value, written.unit, 'not_in_evidence', written.start))
         elif all(a.note for a in matches):
-            problems.append(Mismatch(written.raw, written.value, written.unit, matches[0].note))
+            problems.append(Mismatch(written.raw, written.value, written.unit, matches[0].note, written.start))
     return problems
 
 

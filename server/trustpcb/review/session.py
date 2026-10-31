@@ -94,20 +94,56 @@ class ReviewSession:
     def base_hash(self) -> str:
         return scenario_hash(self.make_scenario([], None, 'screen'))
 
+    def in_band_view(self, m: dict) -> dict:
+        """The in-band numbers stated plainly: S11 across the band, then the impedance at the band centre and what it means."""
+        band = self.rf.get('band_hz') or self.goal.get('band_hz')
+        basis = {'as_built': 'as built (with the board\'s own matching parts)', 'antenna_only': 'antenna alone (the board\'s matching parts are not known)'}.get(m.get('basis'))
+        view: dict[str, Any] = {}
+        if band:
+            view['band_mhz'] = [round(band[0] / 1e6, 1), round(band[1] / 1e6, 1)]
+        if m.get('band_worst_s11_db') is not None:
+            view['worst_s11_db'] = round(m['band_worst_s11_db'], 2)
+        if m.get('band_mean_s11_db') is not None:
+            view['mean_s11_db'] = round(m['band_mean_s11_db'], 2)
+        if basis:
+            view['basis'] = basis
+        if m.get('antenna_only_band_worst_db') is not None and m.get('basis') == 'as_built':
+            view['antenna_alone_worst_s11_db'] = m['antenna_only_band_worst_db']
+        view['target_s11_db'] = ev.target_db(self.goal, self.rf)
+        view['meets_target'] = ev.meets_target(m, self.goal, self.rf)
+        view['how_to_read'] = 'Success is the worst S11 across the band, as built. The deepest dip is only a description.'
+        return view
+
+    def impedance_view(self, m: dict) -> dict | None:
+        if m.get('centre_re') is None or m.get('centre_im') is None:
+            return None
+        character = ev.reactance_character(m['centre_re'], m['centre_im'])
+        seen = ('as seen by the radio, through the matching parts' if m.get('centre_basis') == 'radio_side'
+                else 'at the antenna feed, before the matching parts')
+        out = {'resistance_ohm': round(m['centre_re'], 1), 'reactance_ohm': round(m['centre_im'], 1), 'character': character, 'seen': seen, 'meaning': ev.CHARACTER_MEANING.get(character)}
+        if m.get('centre_f_hz') is not None:
+            out['frequency_mhz'] = round(m['centre_f_hz'] / 1e6, 2)
+        return out
+
     def result_view(self, exp) -> dict:
-        """What the agent is told about a stored experiment."""
+        """What the agent is told about a stored experiment: in-band first, then the impedance, every dip, the first series resonance."""
         item = self.refs.get(exp.ref)
         values = (item['evidence']['values'] if item else {}) or {}
         out = {'ref': exp.ref, 'label': exp.label, 'kind': exp.kind, 'quality': exp.quality, 'trust': values.get('trust'), 'measurements': values.get('measurements'),
                'meets_target': ev.meets_target(exp.metrics, self.goal, self.rf)}
         m = exp.metrics or {}
+        out['in_band'] = self.in_band_view(m)
+        impedance = self.impedance_view(m)
+        if impedance:
+            out['band_centre_impedance'] = impedance
         detail = {}
         if m.get('dips'):
             detail['s11_dips'] = [{'frequency_mhz': round(d['f_hz'] / 1e6, 1), 's11_db': d['s11_db']} for d in m['dips']]
+            detail['dips_note'] = 'Dips are descriptive. Compare them between runs: a dip that stays put when the antenna changes is probably a board mode.'
         for key, name in (('first_series_resonance_hz', 'first_series_resonance_mhz'),):
             if m.get(key) is not None:
                 detail[name] = round(m[key] / 1e6, 1)
-        for key in ('antenna_only_band_worst_db', 'antenna_only_band_best_db', 'as_built_band_worst_db', 'as_built_band_best_db', 'basis'):
+        for key in ('antenna_only_band_worst_db', 'antenna_only_band_best_db', 'antenna_only_band_mean_db', 'as_built_band_worst_db', 'as_built_band_best_db', 'as_built_band_mean_db', 'basis'):
             if m.get(key) is not None:
                 detail[key] = m[key]
         if m.get('plausibility'):
@@ -116,6 +152,10 @@ class ReviewSession:
             out['rf_detail'] = detail
         if m.get('summary_text'):
             out['rf_summary'] = m['summary_text']
+        if exp.kind == 'matching':
+            out['applied_to'] = exp.source_ref
+            out['parts_changed'] = [{'part': p['ref'], 'position': p['position'], 'was': p['was'], 'now': p['now']} for p in exp.parts or []]
+            out['solver_s'] = 0
         if exp.quality == 'screen':
             out['compare_only'] = 'Screen runs are for comparing with the base run. Do not quote their absolute values as results.'
         if exp.delta:

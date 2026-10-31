@@ -60,9 +60,25 @@ def check_wording(texts: dict[str, str]) -> None:
                                   'write recommendations as steps for the engineer to apply in their own tool.', field=name)
 
 
-def check_numbers(texts: dict[str, str], allowed: list[Quantity]) -> None:
+_COMPARE_MARK = re.compile(r'\b(?:screen|compar\w*|versus|vs|base run|than the base|relative to the base|against the base|better than|worse than)\b', re.I)
+
+
+def _sentence_at(text: str, position: int) -> str:
+    start = 0
+    for part in re.finditer(r'[^\n]*?(?:[.!?](?=\s|$)|\n|$)', text):
+        if part.end() > position:
+            return text[start:part.end()]
+        start = part.end()
+    return text
+
+
+def check_numbers(texts: dict[str, str], allowed: list[Quantity], *, compare_only: bool = False) -> None:
+    """Every number with a unit must match evidence. With `compare_only` (a suspect's conclusion, the closing of an investigation) a
+    number that comes only from a screen run is accepted when its sentence says it is a screen run or a comparison with the base."""
     for name, value in texts.items():
         problems = check_text(value, allowed)
+        if compare_only:
+            problems = [p for p in problems if not (p.reason == 'needs_confirm_run' and _COMPARE_MARK.search(_sentence_at(value, p.start)))]
         if problems:
             first = problems[0]
             raise FindingRejected('number_check_failed', f'In {name}: {first.message()}', field=name, number=first.raw,
@@ -160,6 +176,11 @@ class FindingEngine:
             values = row['values'] or {}
             if values.get('kind') == 'simulated' and (values.get('trust') or {}).get('status') != 'ok':
                 raise FindingRejected('trust_failed', f'Evidence {row["code"]} failed its trust checks and cannot support a finding.', evidence=row['code'])
+        # Once confirm results exist, a finding that stands on simulation must stand on them: confirm numbers, not screen numbers.
+        sim_rows = [r for r in rows if (r['values'] or {}).get('kind') == 'simulated']
+        if sim_rows and not any((r['values'] or {}).get('quality') == 'confirm' for r in sim_rows) and any(
+                r['type'] == ev.CONFIRM and ((r['values'] or {}).get('trust') or {}).get('status') == 'ok' for r in self.evidence_rows()):
+            raise FindingRejected('confirm_required', 'Confirm-quality results exist for this review. A finding about the antenna must cite and quote them (the confirm evidence codes from confirm_result), not screen runs alone.')
         class_ = ev.derive_class(rows)
         if class_ == 'opinion' and merged['severity'] == 'critical':
             raise FindingRejected('severity_not_supported', 'Engineering opinion cannot be critical. Choose high or lower, or link evidence from a tool.')
@@ -205,7 +226,6 @@ class FindingEngine:
         fp = existing['fingerprint'] if existing else fingerprint(rule, all_targets, self.index)
         notes = []
         not_tested = list(args.get('not_tested') if args.get('not_tested') is not None else (existing or {}).get('not_tested') or [])
-        sim_rows = [r for r in rows if (r['values'] or {}).get('kind') == 'simulated']
         line = SCREEN_ONLY
         if sim_rows and all((r['values'] or {}).get('quality') == 'screen' for r in sim_rows):
             if line not in not_tested:
@@ -213,6 +233,11 @@ class FindingEngine:
                 notes.append(line)
         elif line in not_tested:
             not_tested.remove(line)       # a confirm run now supports it
+        for row in sim_rows:              # a screen improvement that did not hold at confirm quality stays on the finding, whatever the agent writes
+            values = row['values'] or {}
+            if values.get('confirm_held') is False and values.get('statement') and values['statement'] not in not_tested:
+                not_tested.append(values['statement'])
+                notes.append(values['statement'])
         assumption_names = list(args.get('assumptions') if args.get('assumptions') is not None else (existing or {}).get('assumptions') or [])
         fields = {
             'title': merged['title'].strip()[:200], 'severity': merged['severity'], 'what': merged['what'].strip(),

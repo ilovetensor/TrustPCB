@@ -131,7 +131,9 @@ class Handlers:
     def persist_suspect(self, st) -> None:
         data = {'code': st.code, 'experiments': [
             {'ref': e.ref, 'hash': e.hash, 'kind': e.kind, 'label': e.label, 'quality': e.quality, 'ok': e.ok, 'delta': e.delta, 'cached': e.cached,
-             'evidence_id': e.evidence_id, 'metrics': {k: v for k, v in e.metrics.items() if k != 'trust_reasons'}} for e in st.experiments]}
+             'evidence_id': e.evidence_id, 'metrics': {k: v for k, v in e.metrics.items() if k != 'trust_reasons'},
+             **({'source_ref': e.source_ref, 'parts': [{k: p.get(k) for k in ('ref', 'position', 'was', 'now')} for p in e.parts or []]} if e.kind == 'matching' else {}),
+             'ops': e.ops} for e in st.experiments]}
         self.store.update_suspect(st.id, status=st.status, data=data,
                                   **({'conclusion': {'status': st.status, 'reason': st.reason}} if st.closed else {}))
 
@@ -176,7 +178,8 @@ class Handlers:
             'images_left': s.budgets.images_left(s.phase), 'solver_s_left': round(s.budgets.solver_left()),
             'candidates': self.candidate_counts(), 'findings': len(self.store.list_findings(s.review_id)),
             'brief_submitted': s.brief is not None, 'rf': {'simulatable': bool(s.rf.get('simulatable')), 'reason': s.rf.get('reason')},
-            'open_investigation': None if open_inv is None else {'code': open_inv.code, 'experiments_used': open_inv.experiments,
+            'open_investigation': None if open_inv is None else {'code': open_inv.code, 'experiments_used': open_inv.experiments, 'matching_experiments': open_inv.matching_runs,
+                                                                 'still_required_before_closing_without_a_result': s.ledger.closing_gaps(open_inv),
                                                                  'suspects': [{'code': x.code, 'title': x.title, 'status': x.status} for x in open_inv.suspects]},
             'investigations_left': s.config.investigations - s.budgets.investigations,
         }

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from trustpcb import runners
+from trustpcb.review.lab import BadMatchingRequest, LabUnavailable
 from trustpcb.pcb.model import parse_board
 from trustpcb.review import service
 from trustpcb.runners.scripted import ScriptedRunner
@@ -75,11 +76,16 @@ def default_model(scenario):
             f += 1.5e6
             s11 -= 0.1
             worst -= 0.1
+    series = 1.7e9 + sum(op.get('delta_mm', 0) for op in scenario.get('whatif_ops') or []) * -20e6
     if scenario.get('material'):
         f *= (4.5 / scenario['material']['epsilon_r']) ** 0.5
+        series *= (4.5 / scenario['material']['epsilon_r']) ** 0.5
     if quality == 'confirm':
         f, s11, worst = f - 2e6, s11 - 0.8 if worst < -10 else s11 + 0.2, worst - 0.7 if worst < -10 else worst + 0.2
-    return {'f_res': f, 's11_min_db': s11, 'band_worst_s11_db': worst, 'bandwidth': {'width_hz': bw}, 'zin_at_res': {'re': 48.2, 'im': 3.1}, 'dmax_dbi': 2.1,
+    reactance = 62.0 if worst > -10 else 4.0         # an unmatched antenna looks inductive at the band centre
+    return {'f_res': f, 's11_min_db': s11, 'band_worst_s11_db': worst, 'band_mean_s11_db': round(worst - 1.5, 2), 'bandwidth': {'width_hz': bw}, 'zin_at_res': {'re': 48.2, 'im': 3.1},
+            'zin_at_band_centre': {'f_hz': 2.44175e9, 're': 31.0, 'im': reactance}, 's11_dips': [{'f_hz': f, 's11_db': s11}, {'f_hz': 2.254e9, 's11_db': -4.2}],
+            'first_series_resonance_hz': series, 'dmax_dbi': 2.1,
             'efficiency_est': 0.62, 'trust': {'status': 'ok', 'reasons': []}, 'quality': quality}
 
 
@@ -96,6 +102,9 @@ class FakeLab:
         self.model = default_model
         self.fail_trust = 0          # the next N runs fail their trust checks
         self.baseline_error = None
+        self.matching_error = None          # make tune_matching say it cannot run
+        self.matching_bad = None            # make tune_matching refuse the parts it was given
+        self.match_gain = {'screen': 9.0, 'confirm_locked': 8.0, 'confirm_free': 9.5}
         self.run_delay = 0.0
 
     def count(self, name):
@@ -142,9 +151,27 @@ class FakeLab:
         return {'status': 'done', 'job_id': 'job-' + scenario_hash, 'cached': False, 'solve_s': seconds, 'result': {**result, 'solve_s': seconds}, 'curve': curve}
 
     async def tune_matching(self, *, review_id, version_id, result, params):
-        self.calls.append(('tune_matching',))
-        return {'topology': 'series_l_shunt_c', 'components': [{'name': 'series_l', 'kind': 'L', 'value': 3.9, 'unit': 'nH'}, {'name': 'shunt_c', 'kind': 'C', 'value': 1.2, 'unit': 'pF'}],
-                'predicted': {'s11_min_db': -17.5}, 'note': 'E24 values'}
+        """Matching on a stored run. `match_gain` is how many dB the band-worst S11 improves: by quality, and for explicit parts (locked) or the search (free)."""
+        res = result.get('result') or {}
+        quality = res.get('quality') or 'screen'
+        locked = bool(params.get('changes'))
+        self.calls.append(('tune_matching', 'locked' if locked else 'search', quality))
+        if self.matching_error:
+            raise LabUnavailable(self.matching_error)
+        if self.matching_bad and locked:
+            raise BadMatchingRequest(self.matching_bad)
+        key = 'screen' if quality == 'screen' else ('confirm_locked' if locked else 'confirm_free')
+        worst = res['band_worst_s11_db'] - self.match_gain[key]
+        if locked:
+            parts = [{'ref': c['ref'], 'position': 'series', 'kind': c['kind'], 'value': c['value'], 'was': '2.2 nH', 'now': f"{c['value'] * 1e12:g} pF" if c['kind'] == 'C' else 'leave empty'} for c in params['changes']]
+        else:
+            parts = [{'ref': 'L1', 'position': 'series', 'kind': 'C', 'value': 0.75e-12, 'was': '2.2 nH', 'now': '0.75 pF'}]
+        return {'topology': 'series_c', 'components': [{'name': 'L1_series', 'kind': 'C', 'value': 0.75, 'unit': 'pF', 'ref': 'L1', 'position': 'series'}], 'parts': parts,
+                'changes': [{'ref': p['ref'], 'position': p['position'], 'was': p['was'], 'now': p['now']} for p in parts],
+                'predicted': {'s11_min_db': worst - 6, 'f_min_hz': 2.44e9, 'band_worst_db': worst, 'band_best_db': worst - 4, 'band_mean_db': round(worst - 1.5, 2)},
+                'meets_target': worst <= -10, 'target_db': -10, 'best_single_change': None, 'note': 'E24 values',
+                'dips': [{'f_hz': 2.44e9, 's11_db': worst - 6}], 'first_series_resonance_hz': 2.4e9, 'zin_band_centre': {'f_hz': 2.44175e9, 're': 49.0, 'im': 2.0},
+                'curve': {'freq_hz': [2.3e9, 2.5e9], 's11_db': [-3.0, worst]}}
 
     async def view_result(self, *, review_id, result, kind, params):
         self.calls.append(('view_result', kind))
@@ -235,6 +262,12 @@ def env(tmp_path, sample_board):
     service.configure(lab=lab, clock=clock, poll_s=1.0)
     yield environment
     service.configure()
+
+
+@pytest.fixture
+def base_model():
+    """The fake antenna model, for tests that wrap it in a variation of their own."""
+    return default_model
 
 
 @pytest.fixture

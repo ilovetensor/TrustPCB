@@ -174,6 +174,79 @@ def as_built(network: MatchNetwork | None, freqs: np.ndarray, s11_complex: np.nd
     return out
 
 
+# ------------------------------------------------------------------ explicit changes and what the agent reads
+
+
+def _as_built_item(e: MatchElement) -> tuple[str, float] | None:
+    return (e.kind, e.value) if e.populated and e.value and e.kind in ("L", "C") else None
+
+
+def _slot_changed(e: MatchElement, item: tuple[str, float] | None) -> bool:
+    """Does `item` differ from what the board has in this position?"""
+    was = _as_built_item(e)
+    if (was is None) != (item is None):
+        return True
+    return was is not None and item is not None and (was[0] != item[0] or abs(math.log(item[1] / was[1])) > 0.03)
+
+
+def apply_changes(network: MatchNetwork | None, freqs: np.ndarray, s11_complex: np.ndarray, band_hz: tuple[float, float],
+                  changes: list[dict[str, Any]]) -> dict[str, Any]:
+    """The as-built network with explicit part changes applied; positions not named keep their fitted part.
+
+    Each change is {ref, kind: "L" | "C" | None, value} with the value in henry or farad. kind None takes the part out
+    (a series position then becomes a 0 ohm link). Costs no solver time.
+    """
+    if network is None:
+        return {"ok": False, "reason": "no matching network found at the feed"}
+    if not network.understood:
+        return {"ok": False, "reason": "matching network not fully understood: " + "; ".join(network.notes)}
+    by_ref = {c["ref"]: c for c in changes}
+    unknown = sorted(set(by_ref) - {e.ref for e in network.elements})
+    if unknown:
+        return {"ok": False, "reason": "these parts are not in the matching network: " + ", ".join(unknown)}
+    parts, rows = [], []
+    for e in sorted(network.elements, key=lambda e: e.position):
+        part: tuple[str, str, float] | None = None
+        if e.ref in by_ref:
+            kind, value = by_ref[e.ref].get("kind"), by_ref[e.ref].get("value")
+            if kind in ("L", "C"):
+                if not isinstance(value, (int, float)) or value <= 0:
+                    return {"ok": False, "reason": f"{e.ref} needs a positive value"}
+                part = (e.topology, kind, float(value))
+        elif e.populated:
+            if e.value is None or e.kind not in ("L", "C", "R"):
+                return {"ok": False, "reason": f"{e.ref} is fitted but its value {e.value_text!r} cannot be used"}
+            part = (e.topology, e.kind, e.value)
+        if part:
+            parts.append(part)
+        item = (part[1], part[2]) if part and part[1] in ("L", "C") else None
+        was = f"{fmt_value(e.kind, e.value)} (fitted)" if e.populated and e.value is not None else "not fitted"
+        now = fmt_value(part[1], part[2]) if part else ("leave empty" if e.topology == "shunt" else "0 ohm link")
+        rows.append({"ref": e.ref, "topology": e.topology, "was": was, "now": now, "kind": item[0] if item else None,
+                     "value": item[1] if item else None, "changed": _slot_changed(e, item)})
+    g = skrf_cascade(s11_complex, freqs, parts) if parts else s11_complex
+    return {"ok": True, "parts": rows, "result": band_stats(freqs, g, band_hz), "gamma": g}
+
+
+def response_fields(freqs: np.ndarray, gamma: np.ndarray, band_hz: tuple[float, float]) -> dict[str, Any]:
+    """What the agent reads about a response: every S11 dip below -3 dB, the first series resonance and the
+    impedance at the band centre with its character (inductive or capacitive)."""
+    freqs = np.asarray(freqs, float)
+    db = 20 * np.log10(np.maximum(np.abs(gamma), 1e-9))
+    dips = [{"f_hz": float(freqs[i]), "s11_db": round(float(db[i]), 2)} for i in range(1, len(freqs) - 1)
+            if db[i] < db[i - 1] and db[i] <= db[i + 1] and db[i] <= -3.0]
+    z = gamma_to_z(np.asarray(gamma, complex))
+    first = None
+    for i in range(len(freqs) - 1):
+        if z.imag[i] < 0 <= z.imag[i + 1]:
+            first = float(freqs[i] - z.imag[i] * (freqs[i + 1] - freqs[i]) / (z.imag[i + 1] - z.imag[i]))
+            break
+    centre = float(np.mean(band_hz))
+    k = int(np.argmin(np.abs(freqs - centre)))
+    return {"dips": dips, "first_series_resonance_hz": first,
+            "zin_band_centre": {"f_hz": float(freqs[k]), "re": round(float(z.real[k]), 3), "im": round(float(z.imag[k]), 3)}}
+
+
 # ------------------------------------------------------------------ tuning
 
 
@@ -277,7 +350,8 @@ def tune_matching(
                 parts.append((s.topology, item[0], item[1]))
                 parts_txt = fmt_value(item[0], item[1])
             rows.append({"ref": s.ref, "topology": s.topology, "was": cur, "now": parts_txt,
-                         "kind": None if item is None else item[0], "value": None if item is None else item[1]})
+                         "kind": None if item is None else item[0], "value": None if item is None else item[1],
+                         "changed": _slot_changed(s, item)})
         g = skrf_cascade(s11_complex, freqs_all, parts) if parts else s11_complex
         st = band_stats(freqs_all, g, band_hz)
         return {"parts": rows, "result": st, "meets_target": st["band_worst_db"] <= target_db, "fitted_parts": len(parts)}

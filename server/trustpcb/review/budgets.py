@@ -14,18 +14,44 @@ from typing import Any
 
 DEPTHS = ('quick', 'standard', 'deep')
 
-# Rule 5: two experiments in a row that move the result less than this close the suspect.
+# Rule 5: two experiments in a row that move the in-band result (worst and mean) less than this close the suspect.
 NO_PROGRESS_DB = 0.5
-NO_PROGRESS_HZ = 5e6
+NO_PROGRESS_HZ = 5e6             # and the first series resonance (else the deepest dip) less than this
+MIN_SUSPECTS_TESTED = 2          # Standard: an investigation may not close without a result until this many suspects were tested
+
 DUPLICATE_CLOSE_AT = 3           # rule 3: the third repeat of an identical request closes the suspect
 REPAIRS_PER_SCENARIO = 1         # rule 7
 REPAIRS_PER_INVESTIGATION = 2
 SILENCE_SECONDS = 180.0          # rule 8
 MIN_REGION_VIEWS = {'quick': 1, 'standard': 2, 'deep': 2}   # phase 3 open-review gate: region views before leaving the phase
 REFUSAL_STREAK_LIMIT = 6         # extra safety: this many refused calls in a row end the agent
-IMPROVEMENT_DB = 1.0             # a what-if counts as an improvement when it gains at least this much
-SCREEN_CONFIRM_DB = 3.0          # screen and confirm must agree within these limits
-SCREEN_CONFIRM_HZ = 100e6
+IMPROVEMENT_DB = 1.0             # a what-if or matching change counts as an improvement when the worst in-band S11 gains at least this much
+SCREEN_CONFIRM_DB = 3.0          # screen and confirm must agree within these limits (in-band worst S11, then the first series resonance)
+SCREEN_CONFIRM_RES_REL = 0.06
+
+
+# ---- judging a change by the in-band result (a delta is evidence.delta: s11_db is the change in worst in-band S11) ----
+
+def gain_db(d: dict | None) -> float:
+    """In-band improvement in dB (positive is better) from a delta."""
+    return -((d or {}).get('s11_db') or 0.0)
+
+
+def is_improvement(d: dict | None) -> bool:
+    return gain_db(d) >= IMPROVEMENT_DB
+
+
+def rank_key(d: dict | None) -> tuple[float, float]:
+    """Order candidates by in-band worst gain, then by mean gain."""
+    return (round(gain_db(d), 2), -((d or {}).get('band_mean_db') or 0.0))
+
+
+def moved_little(d: dict | None, db: float, hz: float, *, frequency: bool = True) -> bool:
+    """No-progress test: the in-band worst and mean moved under `db` and, for a change to the antenna, the first series resonance
+    (else the deepest dip) under `hz`. A matching change moves the resonance of the whole network by design, so only the band counts for it."""
+    d = d or {}
+    freq = d.get('series_res_hz', d.get('f_hz', 0.0)) if frequency else 0.0
+    return abs(d.get('s11_db', 0.0)) < db and abs(d.get('band_mean_db', 0.0)) < db and abs(freq) < hz
 
 
 class Clock:
@@ -56,6 +82,7 @@ class BudgetConfig:
     confirm_runs_per_investigation: int = 2
     silence_s: float = SILENCE_SECONDS
     reserve_s: float | None = None                        # time before the hard deadline when only closing tools work
+    full_investigation: bool = False                      # Standard: no closing without a result while budget allows and the method is incomplete
 
     @property
     def soft_wall_s(self) -> float:
@@ -74,7 +101,7 @@ _PHASE_CALLS = {
 
 CONFIGS: dict[str, BudgetConfig] = {
     'quick': BudgetConfig('quick', 6 * 60, 0, 90, 0, 0, 0, 8, 3_000_000, 30_000, _PHASE_CALLS['quick'], {3: 8}),
-    'standard': BudgetConfig('standard', 60 * 60, 40 * 60, 160, 1, 5, 2, 14, 4_000_000, 40_000, _PHASE_CALLS['standard'], {3: 8}),
+    'standard': BudgetConfig('standard', 60 * 60, 40 * 60, 160, 1, 5, 2, 14, 4_000_000, 40_000, _PHASE_CALLS['standard'], {3: 8}, full_investigation=True),
     'deep': BudgetConfig('deep', 120 * 60, 90 * 60, 220, 3, 6, 4, 20, 6_000_000, 60_000, _PHASE_CALLS['deep'], {3: 8}),
 }
 
@@ -221,7 +248,7 @@ class Experiment:
     hash: str
     key: str
     suspect_id: str
-    kind: str                 # base | whatif | confirm
+    kind: str                 # base | whatif | matching | confirm
     label: str
     quality: str
     ok: bool                  # completed with a trusted result
@@ -230,6 +257,9 @@ class Experiment:
     cached: bool = False
     evidence_id: str | None = None
     repair: bool = False
+    source_ref: str | None = None      # matching: the run the parts were applied to
+    parts: list | None = None          # matching: the changed parts [{ref, position, kind, value, was, now}]
+    ops: list = field(default_factory=list)   # the what-if operations of the geometry this result stands on
 
 
 @dataclass
@@ -264,6 +294,9 @@ class InvestigationState:
     good_enough: bool = False
     confirms: dict = field(default_factory=dict)       # 'base' | 'winner' -> Experiment
     outcome: str | None = None
+    matching_runs: int = 0                              # matching experiments recorded (zero solver time)
+    matching_unavailable: str | None = None             # why a matching experiment cannot be done on this board
+    confirmation: dict | None = None                    # the screen against confirm comparison, once confirmed
 
 
 @dataclass
@@ -334,11 +367,12 @@ class Ledger:
                     decision.close = (suspect, 'looped', suspect.reason)
                 return decision
             return Decision('cached', cached=cached, message='Identical to an earlier run: returned the stored result at no cost.')
-        if kind == 'whatif' and (inv.base is None or not inv.base.ok):
+        experiment = kind in ('whatif', 'matching')
+        if experiment and (inv.base is None or not inv.base.ok):
             return Decision('refuse', 'base_required', 'Run the unmodified base scenario first so tests can be compared with it.')
-        if kind == 'whatif' and inv.good_enough and optimisation:
+        if experiment and inv.good_enough and optimisation:
             return Decision('refuse', 'target_met', 'The target is already met. Optimising further is not allowed; confirm and close.', 'good_enough')
-        if kind == 'whatif' and inv.experiments >= self.config.experiments_per_investigation:
+        if experiment and inv.experiments >= self.config.experiments_per_investigation:
             return Decision('refuse', 'budget_exhausted', f'This investigation used its {self.config.experiments_per_investigation} experiments.', 'experiment_budget')
         repair = key in inv.failures_by_key
         if repair:
@@ -358,8 +392,10 @@ class Ledger:
         if repair:
             inv.repairs += 1
             inv.repairs_by_key[exp.key] = inv.repairs_by_key.get(exp.key, 0) + 1
-        if exp.kind == 'whatif':
+        if exp.kind in ('whatif', 'matching'):
             inv.experiments += 1
+        if exp.kind == 'matching':
+            inv.matching_runs += 1
         if not exp.ok:
             inv.failures_by_key[exp.key] = inv.failures_by_key.get(exp.key, 0) + 1
             if exp.kind == 'confirm':          # a failed confirm run never closes the suspect that earned it
@@ -379,22 +415,42 @@ class Ledger:
         if meets_target:
             inv.good_enough = True
         # Rule 5: two experiments in a row that barely move the result close the suspect.
-        delta = exp.delta or {}
-        small = abs(delta.get('s11_db', 0.0)) < NO_PROGRESS_DB and abs(delta.get('f_hz', 0.0)) < NO_PROGRESS_HZ
+        small = moved_little(exp.delta, NO_PROGRESS_DB, NO_PROGRESS_HZ, frequency=exp.kind != 'matching')
         suspect.no_effect_streak = suspect.no_effect_streak + 1 if small else 0
         if suspect.no_effect_streak >= 2:
-            self.close_suspect(suspect, 'no_effect', 'Two experiments in a row moved the result by under 0.5 dB and 5 MHz.', base_hash)
+            self.close_suspect(suspect, 'no_effect', 'Two experiments in a row moved the in-band result by under 0.5 dB and 5 MHz.', base_hash)
             closures.append((suspect, 'no_effect', suspect.reason))
         return closures
 
     def winner(self, inv: InvestigationState) -> Experiment | None:
-        """The best trusted what-if that improved on the base by IMPROVEMENT_DB."""
-        best, best_gain = None, 0.0
+        """The best trusted what-if or matching experiment that improved the in-band result by IMPROVEMENT_DB.
+
+        A winner stands for a pair: the what-if operations of its geometry and the matching parts it changed.
+        """
+        best = None
         for suspect in inv.suspects:
             for exp in suspect.experiments:
-                if exp.kind != 'whatif' or not exp.ok or exp.quality != 'screen' or not exp.delta:
+                if exp.kind not in ('whatif', 'matching') or not exp.ok or exp.quality != 'screen' or not exp.delta or not is_improvement(exp.delta):
                     continue
-                gain = -exp.delta.get('s11_db', 0.0)
-                if gain >= IMPROVEMENT_DB and gain > best_gain:
-                    best, best_gain = exp, gain
+                if best is None or rank_key(exp.delta) > rank_key(best.delta):
+                    best = exp
         return best
+
+    # ---- not stopping early (Standard) -----------------------------------------------------
+    @staticmethod
+    def suspect_tested(suspect: SuspectState) -> bool:
+        return any(e.kind in ('whatif', 'matching') for e in suspect.experiments) or suspect.status in ('no_effect', 'looped', 'could_not_test')
+
+    def closing_gaps(self, inv: InvestigationState) -> list[str]:
+        """What is still missing before an investigation may close without an improvement. Empty when nothing is required."""
+        if not self.config.full_investigation:
+            return []
+        gaps = []
+        if inv.matching_runs == 0 and not inv.matching_unavailable:
+            gaps.append('no matching experiment yet (run tune_matching on a trusted run, for example the base, and pass the suspect it tests)')
+        need = min(MIN_SUSPECTS_TESTED, len(inv.suspects))
+        untested = [x for x in inv.suspects if not self.suspect_tested(x) and not x.closed]
+        tested = len(inv.suspects) - len([x for x in inv.suspects if not self.suspect_tested(x)])
+        if tested < need:
+            gaps.append(f'only {tested} of {need} required suspects tested; not tested yet: ' + ', '.join(f'{x.code} ({x.title})' for x in untested[:3]))
+        return gaps

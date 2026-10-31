@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from .budgets import SCREEN_CONFIRM_DB, SCREEN_CONFIRM_HZ
+from .budgets import SCREEN_CONFIRM_DB, SCREEN_CONFIRM_RES_REL, gain_db, is_improvement, moved_little, rank_key  # noqa: F401
 from .number_check import Quantity, allowed_from_text, allowed_from_values, make_quantity
+
+MAX_DIPS = 10
+FIXED_DIP_HZ = 12e6            # a dip that moves less than this between two runs has stayed where it was
 
 # evidence types
 CANDIDATE, MEASUREMENT, SIMULATION, CONFIRM, COMPARISON, CALCULATION, PLACEMENT, REFERENCE = (
@@ -33,8 +36,8 @@ def metrics_from_result(run: dict, goal: dict | None = None) -> dict:
     """Plain numbers from a Lab run, in one stable shape.
 
     Accepts the worker's result.json under `result`, or the RF summary (`sim`, `trust` and `s11` at the top
-    level). The band-worst S11 comes from the as-built result when the board's matching network is known,
-    else from the antenna alone.
+    level). The in-band numbers (worst, mean) come from the as-built result when the board's matching network is
+    known, else from the antenna alone. The deepest dip is kept as a description only.
     """
     result = {**(run.get('sim') or {}), **(run.get('result') or {})}
     trust = run.get('trust') or result.get('trust') or {}
@@ -43,23 +46,43 @@ def metrics_from_result(run: dict, goal: dict | None = None) -> dict:
     s11 = run.get('s11') or {}
     stats = s11.get('as_built') or s11.get('antenna_only') or {}
     worst = result.get('band_worst_s11_db', stats.get('band_worst_db'))
+    mean = result.get('band_mean_s11_db', stats.get('band_mean_db'))
+    centre = run.get('zin_at_band_centre') or result.get('zin_at_band_centre') or {}
     out: dict[str, Any] = {
         'f_res_hz': result.get('f_res'), 's11_min_db': result.get('s11_min_db'), 'bandwidth_hz': bandwidth.get('width_hz'),
         'dmax_dbi': result.get('dmax_dbi'), 'efficiency': result.get('efficiency_est'),
-        'zin_re': zin.get('re'), 'zin_im': zin.get('im'), 'band_worst_s11_db': worst,
+        'zin_re': zin.get('re'), 'zin_im': zin.get('im'), 'band_worst_s11_db': worst, 'band_mean_s11_db': mean,
+        'centre_f_hz': centre.get('f_hz'), 'centre_re': centre.get('re'), 'centre_im': centre.get('im'),
         'trust_status': trust.get('status'), 'trust_reasons': list(trust.get('reasons') or []), 'solve_s': run.get('solve_s') or result.get('solve_s'),
     }
     # What the real RF lab adds: every dip (the deepest one alone is fragile), the first series resonance, and both band views.
-    dips = [{'f_hz': d['f_hz'], 's11_db': d['s11_db']} for d in (result.get('s11_dips') or []) if isinstance(d, dict) and 'f_hz' in d and 's11_db' in d][:6]
+    dips = [{'f_hz': d['f_hz'], 's11_db': d['s11_db']} for d in (result.get('s11_dips') or []) if isinstance(d, dict) and 'f_hz' in d and 's11_db' in d][:MAX_DIPS]
     if dips:
         out['dips'] = dips
     alone, built = s11.get('antenna_only') or {}, s11.get('as_built') or {}
     out.update(first_series_resonance_hz=result.get('first_series_resonance_hz'),
-               antenna_only_band_worst_db=alone.get('band_worst_db'), antenna_only_band_best_db=alone.get('band_best_db'),
-               as_built_band_worst_db=built.get('band_worst_db'), as_built_band_best_db=built.get('band_best_db'),
+               antenna_only_band_worst_db=alone.get('band_worst_db'), antenna_only_band_best_db=alone.get('band_best_db'), antenna_only_band_mean_db=alone.get('band_mean_db'),
+               as_built_band_worst_db=built.get('band_worst_db'), as_built_band_best_db=built.get('band_best_db'), as_built_band_mean_db=built.get('band_mean_db'),
                basis='as_built' if built else ('antenna_only' if alone else None), summary_text=run.get('summary_text'),
                plausibility=list(run.get('plausibility') or []) or None)
     return {k: v for k, v in out.items() if v is not None or k.startswith('trust')}
+
+
+def reactance_character(re: float | None, im: float | None) -> str | None:
+    """inductive, capacitive or resistive, from an impedance R + jX."""
+    if im is None:
+        return None
+    magnitude = abs(complex(re or 0.0, im))
+    if abs(im) < max(5.0, 0.1 * magnitude):
+        return 'resistive'
+    return 'inductive' if im > 0 else 'capacitive'
+
+
+CHARACTER_MEANING = {
+    'inductive': 'Inductive: the antenna looks electrically long at the band centre. Matching can often cancel this with a series capacitor or a smaller series inductor.',
+    'capacitive': 'Capacitive: the antenna looks electrically short at the band centre. Matching can often cancel this with a series inductor.',
+    'resistive': 'Nearly resistive: little reactance for matching to cancel. A poor match here comes from the resistance, not a reactance.',
+}
 
 
 def trusted(metrics: dict, run: dict | None = None) -> bool:
@@ -67,21 +90,17 @@ def trusted(metrics: dict, run: dict | None = None) -> bool:
 
 
 def meets_target(metrics: dict, goal: dict, rf: dict | None = None) -> bool:
-    """Does this result meet the tuning target? Good-enough rule: yes ends optimisation."""
-    target = _target_db(goal, rf)
+    """Does this result meet the tuning target across the whole band? Good-enough rule: yes ends optimisation.
+
+    Judged by the worst in-band S11 only; a deep dip elsewhere does not count.
+    """
     if metrics.get('trust_status') != 'ok':
         return False
     worst = metrics.get('band_worst_s11_db')
-    if worst is not None:
-        return worst <= target
-    f, s11 = metrics.get('f_res_hz'), metrics.get('s11_min_db')
-    band = _band(goal, rf)
-    if f is None or s11 is None:
-        return False
-    return s11 <= target and (band is None or band[0] <= f <= band[1])
+    return worst is not None and worst <= target_db(goal, rf)
 
 
-def _target_db(goal: dict, rf: dict | None) -> float:
+def target_db(goal: dict, rf: dict | None = None) -> float:
     for source in (goal, rf or {}):
         value = source.get('target_s11_db') if isinstance(source, dict) else None
         if isinstance(value, (int, float)):
@@ -89,32 +108,44 @@ def _target_db(goal: dict, rf: dict | None) -> float:
     return -10.0
 
 
-def _band(goal: dict, rf: dict | None) -> tuple[float, float] | None:
-    for source in (rf or {}, goal):
-        band = source.get('band_hz') if isinstance(source, dict) else None
-        if isinstance(band, (list, tuple)) and len(band) == 2 and all(isinstance(v, (int, float)) for v in band):
-            return float(band[0]), float(band[1])
-    return None
-
-
 def objective(metrics: dict) -> float | None:
-    """Smaller is better: the band-worst S11, else the deepest S11."""
-    value = metrics.get('band_worst_s11_db')
-    return value if value is not None else metrics.get('s11_min_db')
+    """Smaller is better: the worst in-band S11 (as built), else the mean in band. The deepest dip is a last resort only."""
+    for key in ('band_worst_s11_db', 'band_mean_s11_db'):
+        if metrics.get(key) is not None:
+            return metrics[key]
+    return metrics.get('s11_min_db')
 
 
 def delta(metrics: dict, base: dict) -> dict:
-    """What a what-if changed against the base run: {s11_db, f_hz, bandwidth_hz, dmax_db}."""
+    """What a change did against the base run, judged in band: {s11_db (worst in band), band_mean_db, series_res_hz, f_hz (deepest dip, descriptive), ...}.
+
+    Negative dB is better matching.
+    """
     out: dict[str, float] = {}
     a, b = objective(metrics), objective(base)
     if a is not None and b is not None:
         out['s11_db'] = round(a - b, 3)
+    if metrics.get('band_mean_s11_db') is not None and base.get('band_mean_s11_db') is not None:
+        out['band_mean_db'] = round(metrics['band_mean_s11_db'] - base['band_mean_s11_db'], 3)
+    if metrics.get('first_series_resonance_hz') is not None and base.get('first_series_resonance_hz') is not None:
+        out['series_res_hz'] = round(metrics['first_series_resonance_hz'] - base['first_series_resonance_hz'], 1)
     if metrics.get('f_res_hz') is not None and base.get('f_res_hz') is not None:
         out['f_hz'] = round(metrics['f_res_hz'] - base['f_res_hz'], 1)
     if metrics.get('bandwidth_hz') is not None and base.get('bandwidth_hz') is not None:
         out['bandwidth_hz'] = round(metrics['bandwidth_hz'] - base['bandwidth_hz'], 1)
     if metrics.get('dmax_dbi') is not None and base.get('dmax_dbi') is not None:
         out['dmax_db'] = round(metrics['dmax_dbi'] - base['dmax_dbi'], 3)
+    return out
+
+
+def fixed_dips(dips_a: list[dict], dips_b: list[dict], tol_hz: float = FIXED_DIP_HZ) -> list[dict]:
+    """Dips present at the same frequency in both runs. A dip that stays put while the antenna changes is probably a board mode."""
+    out = []
+    for a in dips_a or []:
+        near = [b for b in dips_b or [] if abs(b['f_hz'] - a['f_hz']) <= tol_hz]
+        if near:
+            b = min(near, key=lambda d: abs(d['f_hz'] - a['f_hz']))
+            out.append({'f_hz': (a['f_hz'] + b['f_hz']) / 2, 'moved_hz': round(b['f_hz'] - a['f_hz'], 1)})
     return out
 
 
@@ -127,6 +158,13 @@ def measurements_of(metrics: dict) -> dict:
         out['s11_min'] = {'value': round(metrics['s11_min_db'], 2), 'unit': 'dB'}
     if metrics.get('band_worst_s11_db') is not None:
         out['s11_band_worst'] = {'value': round(metrics['band_worst_s11_db'], 2), 'unit': 'dB'}
+    if metrics.get('band_mean_s11_db') is not None:
+        out['s11_band_mean'] = {'value': round(metrics['band_mean_s11_db'], 2), 'unit': 'dB'}
+    if metrics.get('centre_re') is not None and metrics.get('centre_im') is not None:
+        out['band_centre_resistance'] = {'value': round(metrics['centre_re'], 1), 'unit': 'ohm'}
+        out['band_centre_reactance'] = {'value': round(metrics['centre_im'], 1), 'unit': 'ohm'}
+        if metrics.get('centre_f_hz') is not None:
+            out['band_centre_frequency'] = {'value': round(metrics['centre_f_hz'] / 1e6, 2), 'unit': 'MHz'}
     if metrics.get('bandwidth_hz') is not None:
         out['bandwidth'] = {'value': round(metrics['bandwidth_hz'] / 1e6, 2), 'unit': 'MHz'}
     if metrics.get('dmax_dbi') is not None:
@@ -141,6 +179,10 @@ def measurements_of(metrics: dict) -> dict:
         out['antenna_only_band_worst_s11'] = {'value': round(metrics['antenna_only_band_worst_db'], 2), 'unit': 'dB'}
     if metrics.get('as_built_band_worst_db') is not None:
         out['as_built_band_worst_s11'] = {'value': round(metrics['as_built_band_worst_db'], 2), 'unit': 'dB'}
+    if metrics.get('as_built_band_mean_db') is not None:
+        out['as_built_band_mean_s11'] = {'value': round(metrics['as_built_band_mean_db'], 2), 'unit': 'dB'}
+    if metrics.get('antenna_only_band_mean_db') is not None:
+        out['antenna_only_band_mean_s11'] = {'value': round(metrics['antenna_only_band_mean_db'], 2), 'unit': 'dB'}
     if metrics.get('first_series_resonance_hz') is not None:
         out['first_series_resonance'] = {'value': round(metrics['first_series_resonance_hz'] / 1e6, 1), 'unit': 'MHz'}
     for index, dip in enumerate(metrics.get('dips') or [], start=1):
@@ -153,6 +195,10 @@ def delta_measurements(d: dict) -> dict:
     out = {}
     if 's11_db' in d:
         out['delta_s11'] = {'value': d['s11_db'], 'unit': 'dB'}
+    if 'band_mean_db' in d:
+        out['delta_band_mean'] = {'value': d['band_mean_db'], 'unit': 'dB'}
+    if 'series_res_hz' in d:
+        out['delta_first_series_resonance'] = {'value': round(d['series_res_hz'] / 1e6, 3), 'unit': 'MHz'}
     if 'f_hz' in d:
         out['delta_resonance'] = {'value': round(d['f_hz'] / 1e6, 3), 'unit': 'MHz'}
     if 'bandwidth_hz' in d:
@@ -173,9 +219,12 @@ def simulation_values(*, ref: str, label: str, quality: str, sc_hash: str, scena
 
 
 def screen_confirm_agree(screen: dict, confirm: dict) -> tuple[bool, dict]:
-    """Do a screen result and its confirm run agree within the limits (spec section 7)?"""
+    """Do a screen result and its confirm run agree within the limits (spec section 7)? Judged in band, with the first series resonance as a second check."""
     d = delta(confirm, screen)
-    agree = abs(d.get('s11_db', 0.0)) <= SCREEN_CONFIRM_DB and abs(d.get('f_hz', 0.0)) <= SCREEN_CONFIRM_HZ
+    agree = abs(d.get('s11_db', 0.0)) <= SCREEN_CONFIRM_DB
+    a, b = screen.get('first_series_resonance_hz'), confirm.get('first_series_resonance_hz')
+    if a and b and abs(a - b) / b > SCREEN_CONFIRM_RES_REL:
+        agree = False
     return agree, d
 
 

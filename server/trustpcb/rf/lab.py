@@ -60,3 +60,21 @@ def tune_matching(job_dir: str | Path, *, target_db: float = -10.0, band_ghz: tu
     g = np.array(s11["s11_re"]) + 1j * np.array(s11["s11_im"])
     band = tuple(g_ * 1e9 for g_ in (band_ghz or meta["setup"]["band_ghz"]))
     return matching.tune_matching(postprocess.network_from_dict(meta["setup"].get("network")), f, g, band, target_db=target_db)
+
+
+def match_changes(job_dir: str | Path, changes: list[dict[str, Any]], *, band_ghz: tuple[float, float] | None = None) -> dict[str, Any]:
+    """Explicit part changes (ref, kind L or C or None, value in SI units) applied to a finished job, with the response fields
+    the agent reads (dips, first series resonance, impedance at the band centre) and the S11 curve. No solver time."""
+    job = Path(job_dir)
+    s11 = json.loads((job / "s11.json").read_text())
+    meta = json.loads((job / "meta.json").read_text())
+    f = np.array(s11["freq_hz"])
+    g = np.array(s11["s11_re"]) + 1j * np.array(s11["s11_im"])
+    band = tuple(g_ * 1e9 for g_ in (band_ghz or meta["setup"]["band_ghz"]))
+    out = matching.apply_changes(postprocess.network_from_dict(meta["setup"].get("network")), f, g, band, changes)
+    if not out.get("ok"):
+        return out
+    gamma = out.pop("gamma")
+    out.update(matching.response_fields(f, gamma, band))
+    out["curve"] = {"freq_hz": [round(v) for v in f.tolist()], "s11_db": [round(float(v), 2) for v in 20 * np.log10(np.maximum(np.abs(gamma), 1e-9))], "basis": "as_built_with_changes"}
+    return out
