@@ -105,7 +105,7 @@ export function CalloutLayer({
         const left = Math.min(Math.max(6, right ? p.bx + R + 10 : p.bx - R - 10 - w), Math.max(6, width - w - 6));
         const top = Math.min(Math.max(8, p.by - 22), height - 70);
         return (
-          <div key={a.id} className="cl-tag hair panel" style={{ left, top, width: w }}>
+          <div key={a.id} className="cl-tag panel" style={{ left, top, width: w }}>
             <div className="idx" style={{ color: `var(--sev-${a.sev})` }}>F-{String(a.n).padStart(3, "0")}</div>
             <div className="cl-tag-title">{a.title}</div>
             {a.value && <div className="cl-tag-val num">{a.value}</div>}
@@ -129,7 +129,7 @@ function Dimension({ d, dy = 0 }: { d: DimLine; dy?: number }) {
       <line x1={g.line[0][0]} y1={g.line[0][1]} x2={g.line[1][0]} y2={g.line[1][1]} className="cl-dimline" pathLength={1} />
       {g.arrows.map((a, i) => (<polygon key={i} points={a.map((p) => p.join(",")).join(" ")} fill={col} stroke="none" />))}
       {dy !== 0 && <line x1={g.mid[0]} y1={g.mid[1]} x2={g.mid[0]} y2={g.mid[1] + dy} strokeWidth="0.8" strokeDasharray="2 2" />}
-      <rect x={g.mid[0] - tw / 2} y={g.mid[1] + dy - 8} width={tw} height="16" fill="var(--panel-solid)" stroke={col} strokeWidth="0.8" />
+      <rect x={g.mid[0] - tw / 2} y={g.mid[1] + dy - 9} width={tw} height="18" rx="9" fill="var(--panel-solid)" stroke="none" />
       <text x={g.mid[0]} y={g.mid[1] + dy} textAnchor="middle" dy="0.34em" className="cl-dimtext" fill="var(--paper)" stroke="none">{d.text}</text>
     </g>
   );

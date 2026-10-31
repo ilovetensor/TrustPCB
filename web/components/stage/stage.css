@@ -7,10 +7,7 @@
 .stage-bg {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(900px 600px at 62% 38%, rgba(70, 52, 190, 0.16), transparent 70%),
-    radial-gradient(700px 500px at 18% 90%, rgba(150, 30, 120, 0.07), transparent 70%),
-    linear-gradient(180deg, #08081a, #06060e 60%);
+  background: #000;
 }
 .stage-loading {
   position: absolute;
@@ -18,66 +15,91 @@
   display: grid;
   place-items: center;
 }
+
+/* one floating pill on the stage: view mode, layers, explode */
 .stage-tools {
   position: absolute;
   z-index: 6;
+  left: 14px;
+  top: 14px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  max-width: calc(100% - 40px);
-  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px;
+  max-width: calc(100% - 28px);
+  background: var(--panel);
+  border-radius: 999px;
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
 }
-.stage-tools .vr {
-  width: 1px;
-  height: 18px;
-  background: var(--hair);
-  margin: 0 6px;
+.stage-tools .btn.sm {
+  height: 32px;
+}
+.stage-tools .btn[aria-expanded="true"] {
+  background: var(--panel-3);
+  color: var(--paper);
 }
 .explode {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  padding: 0 10px 0 6px;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--paper-2);
 }
 .explode input {
   width: 96px;
-  accent-color: var(--signal);
+  padding: 0;
+  background: transparent;
+  accent-color: var(--paper);
 }
-.pick-chip {
+.stage-pop {
   position: absolute;
-  z-index: 7;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 232px;
+  padding: 6px;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px 6px 12px;
-  max-width: calc(100% - 24px);
-  background-color: var(--panel-solid);
-}
-.pick-t {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-.pick-t b {
-  font: 600 13px/1.2 var(--font-mono);
-}
-.pick-t .dim {
-  color: var(--paper-3);
-  font-size: 12px;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--panel-solid);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
 }
 
-.stage-rfchip {
+/* what the stage is showing right now: the selected part, the solver run on the board */
+.stage-foot {
   position: absolute;
-  z-index: 6;
+  z-index: 7;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.stage-chip {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 12px;
-  font-size: 11px;
-  color: var(--paper-2);
-  max-width: min(640px, 60vw);
   flex-wrap: wrap;
+  gap: 4px 10px;
+  max-width: min(680px, 100%);
+  padding: 6px 8px 6px 16px;
+  background: var(--panel);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--paper-2);
+  pointer-events: auto;
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+}
+.stage-chip b {
+  font-weight: 600;
+  color: var(--paper);
+}
+.stage-chip .btn.sm {
+  height: 30px;
 }

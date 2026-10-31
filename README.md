@@ -6,7 +6,7 @@ TrustPCB is an open-source inspection layer for circuit boards. You upload a KiC
 
 Upload a new version later and TrustPCB rechecks it and shows what changed.
 
-![A finished review of the sample board in the web app: the 3D board with numbered findings, the investigation trail on the left, the findings list on the right](docs/images/review-3d.jpg)
+![A finished review of the sample board in the web app: the 3D board with numbered findings, the sidebar on the left, the findings list on the right](docs/images/review-3d.jpg)
 
 *A finished review of the bundled nRF52840 sample board (`samples/nrf52840-node/`), in the review workspace: the board in 3D with findings marked on it, the investigation trail, and the confirmed antenna result with its target not met. The solver numbers are real openEMS output and are labelled Simulated; this is a sample board, not a customer design.*
 

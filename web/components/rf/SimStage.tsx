@@ -13,7 +13,7 @@ import { CurrentCanvas2D, FieldCanvas2D, PulseCanvas2D } from "./FieldCanvas2D";
 import { CurrentPlane3D, PulsePlane3D, WaveField3D } from "./WaveField3D";
 import { RadiationBalloon } from "./RadiationBalloon";
 
-const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false, loading: () => <div className="stage-loading mono idx">LOADING 3D BOARD</div> });
+const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false, loading: () => <div className="rf-loading idx">Loading the 3D board</div> });
 
 export type SimView = "wave" | "pulse" | "pattern" | "current";
 const noop = () => {};
@@ -32,7 +32,7 @@ function Outline3D({ meta, y = 1.7 }: { meta: SimMeta | null | undefined; y?: nu
   const { region, port } = useOutline(meta);
   return (
     <>
-      {region && <Line points={[[region[0], y, region[1]], [region[2], y, region[1]], [region[2], y, region[3]], [region[0], y, region[3]], [region[0], y, region[1]]]} color="#b4b2c4" lineWidth={1} dashed dashSize={1.2} gapSize={1} transparent opacity={0.5} />}
+      {region && <Line points={[[region[0], y, region[1]], [region[2], y, region[1]], [region[2], y, region[3]], [region[0], y, region[3]], [region[0], y, region[1]]]} color="#c7c7cc" lineWidth={1} dashed dashSize={1.2} gapSize={1} transparent opacity={0.5} />}
       {port && (
         <group position={[port[0], y + 0.1, port[1]]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.9, 1.3, 32]} /><meshBasicMaterial color="#ff4a1f" transparent opacity={0.95} depthWrite={false} /></mesh>
@@ -47,7 +47,7 @@ function Outline2D({ meta }: { meta: SimMeta | null | undefined }) {
   const { region, antenna, port } = useOutline(meta);
   return (
     <svg style={{ position: "absolute", left: 0, top: 0, width: 1, height: 1, overflow: "visible", pointerEvents: "none" }}>
-      {region && <rect x={region[0]} y={region[1]} width={region[2] - region[0]} height={region[3] - region[1]} fill="none" stroke="#b4b2c4" strokeOpacity="0.6" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />}
+      {region && <rect x={region[0]} y={region[1]} width={region[2] - region[0]} height={region[3] - region[1]} fill="none" stroke="#c7c7cc" strokeOpacity="0.6" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />}
       {antenna && <rect x={antenna[0]} y={antenna[1]} width={antenna[2] - antenna[0]} height={antenna[3] - antenna[1]} fill="none" stroke="#ff4a1f" strokeOpacity="0.55" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />}
       {port && <circle cx={port[0]} cy={port[1]} r={1.1} fill="none" stroke="#ff4a1f" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />}
     </svg>

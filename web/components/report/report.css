@@ -1,8 +1,8 @@
 .rp {
   min-height: 100vh;
-  background: var(--stage);
+  background: #000;
   color: var(--paper);
-  padding: 0 0 80px;
+  padding: 0 0 48px;
 }
 .rp-bar {
   position: sticky;
@@ -10,21 +10,44 @@
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 24px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--hair);
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  background: rgba(0, 0, 0, 0.85);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+.rp-bar-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-left: 8px;
+  min-width: 0;
+}
+.rp-bar-title b {
+  font: 600 16px/1 var(--font-ui);
+  letter-spacing: -0.01em;
+}
+.rp-sheet {
+  max-width: 1000px;
+  margin: 8px auto 0;
+  padding: 0 28px;
+  background: #fff;
+  color: var(--paper);
+  border-radius: var(--r-lg);
 }
 .rp-page {
   max-width: 940px;
   margin: 0 auto;
   padding: 0 28px;
 }
+.rp-sheet .rp-page {
+  padding: 0;
+}
 .rp-cover {
   position: relative;
   min-height: 560px;
   padding: 70px 0 40px;
-  border-bottom: 1px solid var(--hair-2);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -37,33 +60,29 @@
   letter-spacing: -0.03em;
 }
 .rp-cover .kicker {
-  font: 500 11px/1 var(--font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 500 13px/1 var(--font-ui);
   color: var(--paper-3);
 }
 .rp-meta {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 0;
-  border: 1px solid var(--hair-2);
+  gap: 8px;
   margin-top: 10px;
 }
 .rp-meta > div {
-  padding: 10px 12px;
-  border-right: 1px solid var(--hair);
-  border-bottom: 1px solid var(--hair);
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border-radius: var(--r-md);
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 0 -1px -1px 0;
 }
 .rp-meta b {
-  font: 500 13px var(--font-mono);
+  font: 500 13px var(--font-ui);
+  overflow-wrap: anywhere;
 }
 .rp-sec {
   padding: 46px 0 6px;
-  border-bottom: 1px solid var(--hair);
 }
 .rp-sec > header {
   display: flex;
@@ -103,18 +122,18 @@
   content: counter(a);
   width: 24px;
   height: 24px;
-  border: 1.3px solid var(--signal);
+  background: var(--panel-3);
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font: 600 11px var(--font-mono);
+  font: 600 11.5px var(--font-ui);
 }
 .plate {
   position: relative;
-  background: var(--stage);
-  border: 1px solid var(--hair-2);
+  background: #000;
+  border-radius: var(--r-md);
   overflow: hidden;
-  color: var(--paper);
+  color: #f5f5f7;
 }
 .plate .stage-bg {
   display: none;
@@ -124,7 +143,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 6px 2px;
-  font: 400 10.5px var(--font-mono);
+  font: 400 12px var(--font-ui);
   color: var(--paper-3);
 }
 .rp-grid2 {
@@ -141,28 +160,20 @@
 }
 .rp-tbl th {
   text-align: left;
-  font: 500 9.5px var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 12px var(--font-ui);
   color: var(--paper-3);
-  padding: 6px 8px 6px 0;
-  border-bottom: 1px solid var(--hair-2);
+  padding: 6px 10px 8px 0;
 }
 .rp-tbl td {
-  padding: 7px 8px 7px 0;
-  border-bottom: 1px solid var(--hair);
+  padding: 8px 10px 8px 0;
   vertical-align: top;
 }
 .rp-find {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 22px;
-  padding: 26px 0;
-  border-top: 1px solid var(--hair);
+  padding: 22px 0;
   break-inside: avoid;
-}
-.rp-find:first-of-type {
-  border-top: 0;
 }
 .rp-find h3 {
   margin: 4px 0 8px;
@@ -188,7 +199,7 @@
   height: 26px;
   border-radius: 50%;
   border: 1.4px solid var(--sev-info);
-  font: 600 12px var(--font-mono);
+  font: 600 12px var(--font-ui);
   margin-right: 8px;
 }
 .rp-balloon.critical {
@@ -221,18 +232,21 @@
   display: grid;
   grid-template-columns: 26px 1fr auto;
   gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--hair);
+  padding: 10px 0;
   font-size: 13px;
 }
 .rp-foot {
   padding: 30px 0;
   display: flex;
   justify-content: space-between;
-  font: 400 10.5px var(--font-mono);
+  font: 400 12px var(--font-ui);
   color: var(--paper-3);
 }
 @media (max-width: 760px) {
+  .rp-sheet {
+    padding: 0 18px;
+    margin: 4px 8px 0;
+  }
   .rp-grid2,
   .rp-find,
   .rp-two {
@@ -251,8 +265,18 @@
     size: A4;
     margin: 14mm;
   }
+  .rp {
+    background: #fff;
+    padding: 0;
+  }
   .rp-bar {
     display: none;
+  }
+  .rp-sheet {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
   }
   .rp-page {
     max-width: none;
@@ -281,12 +305,15 @@
   position: relative;
   flex: 1;
   display: flex;
-  background: #f3f0e6;
+  margin: 4px 14px 14px;
+  background: #fff;
+  border-radius: var(--r-lg);
+  overflow: hidden;
 }
 .rp-frame {
   flex: 1;
   width: 100%;
-  min-height: calc(100dvh - 56px);
+  min-height: calc(100dvh - 90px);
   border: 0;
   background: #fff;
 }
@@ -295,4 +322,5 @@
   left: 50%;
   top: 40px;
   transform: translateX(-50%);
+  color: #6e6e73;
 }

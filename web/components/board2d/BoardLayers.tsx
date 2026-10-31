@@ -61,7 +61,6 @@ export const BoardLayers = memo(function BoardLayers({ board, layers, scene, fun
   board: Board; layers: LayerState; scene?: SceneMarkup | null; functionZones?: FunctionZone[];
 }) {
   const g = useGeometry(board);
-  const [x0, y0, x1, y1] = board.bbox;
   return (
     <g className="bl">
       <defs>
@@ -74,10 +73,7 @@ export const BoardLayers = memo(function BoardLayers({ board, layers, scene, fun
         <pattern id="hatch-keep" patternUnits="userSpaceOnUse" width="1.1" height="1.1" patternTransform="rotate(45)">
           <path d="M0 0H1.1" stroke="#a78bfa" strokeWidth="0.07" />
         </pattern>
-        <filter id="bl-glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="1.6" /></filter>
       </defs>
-      {/* soft light under the board so its edge lifts off the stage */}
-      <path d={g.outline} className="bl-glow" filter="url(#bl-glow)" />
       <path d={g.outline} className="bl-substrate" />
       <path d={g.outline} className="bl-substrate-inner" />
       {/* bottom copper */}
@@ -139,10 +135,6 @@ export const BoardLayers = memo(function BoardLayers({ board, layers, scene, fun
         </g>
       ))}
       <path d={g.outline} className="bl-edge" vectorEffect="non-scaling-stroke" />
-      {/* origin datum drawn on the sheet */}
-      <g className="bl-sheet" stroke="var(--paper-3)" strokeWidth="1" vectorEffect="non-scaling-stroke">
-        <Axis x0={x0} y0={y0} x1={x1} y1={y1} />
-      </g>
     </g>
   );
 });
@@ -157,15 +149,6 @@ export function ZoneLabels({ zones, px, show }: { zones: FunctionZone[]; px: (n:
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = Math.min(...ys);
         return <text key={`${z.role}-${z.index}`} x={cx} y={cy - px(4)} textAnchor="middle" fontSize={px(9)} fill={roleColor(z.role)} fillOpacity="0.8" style={{ font: `500 ${px(9)}px var(--font-mono)`, letterSpacing: "0.06em", textTransform: "uppercase" }}>{z.role}</text>;
       })}
-    </g>
-  );
-}
-
-function Axis({ x0, y0, x1, y1 }: { x0: number; y0: number; x1: number; y1: number }) {
-  return (
-    <g>
-      <path d={`M${x0 - 1.6} ${y0}H${x0 + 1.6}M${x0} ${y0 - 1.6}V${y0 + 1.6}`} vectorEffect="non-scaling-stroke" />
-      <path d={`M${x1 - 1.6} ${y1}H${x1 + 1.6}M${x1} ${y1 - 1.6}V${y1 + 1.6}`} vectorEffect="non-scaling-stroke" opacity="0.5" />
     </g>
   );
 }

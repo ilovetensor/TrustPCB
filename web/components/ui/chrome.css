@@ -1,63 +1,102 @@
+/* the app sidebar: icon and name on every item, the page moves over to make room */
 .topbar {
-  position: relative;
+  position: fixed;
   z-index: 20;
+  top: 10px;
+  bottom: 10px;
+  left: 10px;
+  width: 224px;
   display: flex;
-  align-items: center;
-  gap: 22px;
-  height: 52px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--hair);
-  background: color-mix(in srgb, var(--stage) 92%, transparent);
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 12px 14px;
+  border-radius: var(--r-lg);
+  background: var(--stage-2);
+}
+.topbar-brand {
+  padding: 0 8px;
+}
+body:has(.topbar) {
+  padding-left: 244px;
 }
 .topnav {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 2px;
 }
-.topnav a {
+.navitem {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  height: 38px;
   padding: 0 10px;
-  height: 52px;
-  display: grid;
-  place-items: center;
-  font: 500 11px/1 var(--font-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--paper-3);
-  position: relative;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  font: 500 14px/1 var(--font-ui);
+  color: var(--paper-2);
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
 }
-.topnav a:hover,
-.topnav a[aria-current="page"] {
+.navitem svg {
+  flex: none;
+  color: var(--paper-3);
+}
+.navitem small {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--paper-3);
+  font-variant-numeric: tabular-nums;
+}
+.navitem:hover {
+  background: var(--panel-2);
   color: var(--paper);
 }
-.topnav a[aria-current="page"]::after {
-  content: "";
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: -1px;
-  height: 2px;
-  background: var(--signal);
+.navitem[aria-current="page"],
+.navitem[aria-selected="true"] {
+  background: var(--panel-3);
+  color: var(--paper);
 }
-@media (max-width: 640px) {
-  .topbar {
-    padding: 0 14px;
-    gap: 10px;
-  }
-  .topnav a {
-    padding: 0 6px;
-  }
+.navitem[aria-current="page"] svg,
+.navitem[aria-selected="true"] svg {
+  color: var(--paper);
 }
-@media (max-width: 520px) {
+.navlabel {
+  padding: 0 10px 6px;
+  font-size: 12px;
+  color: var(--paper-3);
+}
+.topbar-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 8px;
+}
+@media (max-width: 860px) {
   .topbar {
-    gap: 6px;
-    padding: 0 10px;
+    position: static;
+    width: auto;
+    margin: 8px 8px 0;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
   }
-  .topnav a {
-    padding: 0 5px;
-    font-size: 10px;
-    letter-spacing: 0.06em;
+  body:has(.topbar) {
+    padding-left: 0;
   }
-  .topbar .stamp {
-    padding: 0 4px;
-    font-size: 8px;
+  .topnav {
+    flex-direction: row;
+  }
+  .navitem {
+    width: auto;
+  }
+  .topbar-foot {
+    margin: 0 0 0 auto;
+    padding: 0;
   }
 }

@@ -29,7 +29,6 @@ export function PowerBar({ value, label, sub, tone = "now", size = "md", delay =
       <div className="pw-head"><span className="idx">{label}</span>{sub && <span className="idx pw-sub">{sub}</span>}</div>
       <div className="pw-line">
         <div className="pw-track" role="img" aria-label={ok ? `${label}: ${fmtPct(value)} percent accepted` : `${label}: not available`}>
-          {[25, 50, 75].map((t) => (<i key={t} style={{ left: `${t}%` }} />))}
           <b style={{ width: armed ? `${pct}%` : "0%", transitionDelay: `${delay}ms` }} />
         </div>
         <span className="pw-num mono">{ok ? <>{fmtPct(value)}<small>%</small></> : <small>n/a</small>}</span>
@@ -46,7 +45,7 @@ export function PowerPair({ before, after, caption, size = "lg", note = true }: 
     <figure className={`pw ${size}`}>
       <PowerBar {...before} tone="before" size={size} />
       <div className="pw-delta mono" aria-hidden={delta == null}>
-        {delta != null && <><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden><path d="M6 1v11M2 8l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg><span>{delta >= 0 ? "+" : "−"}{fmtPct(Math.abs(delta))} points</span></>}
+        {delta != null && <><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden><path d="M6 1v11M2 8l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{delta >= 0 ? "+" : "−"}{fmtPct(Math.abs(delta))} points</span></>}
       </div>
       <PowerBar {...after} tone="now" size={size} delay={350} />
       <figcaption className="pw-cap">

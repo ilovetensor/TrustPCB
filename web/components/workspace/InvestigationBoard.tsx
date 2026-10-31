@@ -13,6 +13,7 @@ const VERDICT: Record<string, { text: string; cls: string }> = {
   testing: { text: "Testing", cls: "testing" },
   pending: { text: "Queued", cls: "pending" },
 };
+const sentence = (t: string) => { const x = t.replace(/_/g, " "); return x.charAt(0).toUpperCase() + x.slice(1); };
 const db = (v: number | null | undefined) => (typeof v === "number" ? `${v.toFixed(1).replace("-", "−")} dB` : "-");
 const bandWorst = (s: Test) => s.measurements?.as_built_band_worst_s11?.value ?? s.measurements?.s11_band_worst?.value ?? s.measurements?.antenna_only_band_worst_s11?.value ?? null;
 
@@ -22,10 +23,12 @@ function TestLine({ s }: { s: Test }) {
   const acc = s.measurements ? acceptedOf(s.measurements).headline?.worst ?? null : null;
   return (
     <li className="ib-test">
-      <span className="mono ib-ref">{s.id}</span>
+      <span className="ib-ref">{s.id}</span>
       <span className="ib-tl" title={s.label}>{s.label}</span>
-      {s.quality === "screen" ? <span className="stamp" title="Screen runs are for comparing. Do not read them as absolute numbers.">Screen, compare only</span> : s.quality === "confirm" ? <span className="stamp solid">Confirm</span> : <span className="stamp" title={s.kind === "matching" ? "Matching parts calculated on a stored result: no solver time" : undefined}>{s.kind === "matching" ? "Matching, no solver" : s.kind}</span>}
-      <span className="mono ib-tn">{s.status === "done" ? <>{db(bandWorst(s))}{acc != null && <> / {fmtPct(acc)} %</>}</> : s.status}</span>
+      <span className="ib-tm">
+        {s.quality === "screen" ? <span className="stamp" title="Screen runs are for comparing. Do not read them as absolute numbers.">Screen, compare only</span> : s.quality === "confirm" ? <span className="stamp solid">Confirm</span> : <span className="stamp" title={s.kind === "matching" ? "Matching parts calculated on a stored result: no solver time" : undefined}>{s.kind === "matching" ? "Matching, no solver" : s.kind}</span>}
+        <span className="ib-tn">{s.status === "done" ? <>{db(bandWorst(s))}{acc != null && <> / {fmtPct(acc)} %</>}</> : s.status}</span>
+      </span>
     </li>
   );
 }
@@ -37,15 +40,15 @@ function SuspectCard({ s, sims }: { s: Suspect; sims: Test[] }) {
     <li className={`ib-sus ${v.cls}`}>
       <div className="ib-sus-top">
         <span className="idx">{s.code}</span>
-        <span className="ib-round idx">{s.round ? `REFINE ROUND ${s.round}` : "FIRST PASS"}</span>
+        <span className="ib-round idx">{s.round ? `Refine round ${s.round}` : "First pass"}</span>
         <span className={`stamp ib-verdict ${v.cls}`}>{v.text}</span>
       </div>
       <p className="ib-title">{s.title}</p>
       <div className="ib-what">
-        <span className="idx">WHAT WAS TESTED</span>
+        <span className="idx">What was tested</span>
         {mine.length ? <ul className="ib-tests">{mine.map((m) => (<TestLine key={m.id} s={m} />))}</ul> : <span className="dim ib-none">{s.status === "not_tested" ? "No run: the investigation closed before this was tested." : "No simulation run yet."}</span>}
       </div>
-      {s.conclusion && <p className="ib-why"><span className="idx">WHY</span> {s.conclusion}</p>}
+      {s.conclusion && <p className="ib-why"><span className="idx">Why</span> {s.conclusion}</p>}
     </li>
   );
 }
@@ -56,7 +59,7 @@ function ScreenConfirm({ rounds }: { rounds: StoryRound[] }) {
     <div className="ib-story">
       {rounds.map((r) => (
         <div key={`${r.investigation}-${r.round}`} className="ib-story-r">
-          <span className="idx">{r.round ? `REFINE ROUND ${r.round}` : "FIRST CONFIRMATION"}: SCREEN AGAINST CONFIRM</span>
+          <span className="idx">{r.round ? `Refine round ${r.round}` : "First confirmation"}: screen against confirm</span>
           {r.rows.map((x) => {
             const over = x.screen != null && x.confirm != null && x.screen < x.confirm - 0.5;
             return (
@@ -66,10 +69,10 @@ function ScreenConfirm({ rounds }: { rounds: StoryRound[] }) {
               </p>
             );
           })}
-          {r.outcome && <p className="ib-out"><span className="stamp">{r.outcome.replace(/_/g, " ")}</span> {r.statement ?? OUTCOME_TEXT[r.outcome] ?? ""}</p>}
+          {r.outcome && <p className="ib-out"><span className="stamp">{sentence(r.outcome)}</span> {r.statement ?? OUTCOME_TEXT[r.outcome] ?? ""}</p>}
         </div>
       ))}
-      <p className="idx ib-compare">SCREEN RUNS ARE FOR COMPARING. THE CONFIRM NUMBERS ARE THE RESULT.</p>
+      <p className="idx ib-compare">Screen runs are for comparing. The confirm numbers are the result.</p>
     </div>
   );
 }
@@ -91,9 +94,9 @@ export function InvestigationBoard({ state, story, tests = [] }: { state: Review
         inv.suspects.forEach((s) => { tally[s.status in tally ? s.status : "other"]++; });
         return (
           <section key={inv.id} className="ib-inv">
-            <header><span className="idx">INVESTIGATION {inv.code}</span>{inv.outcome && <span className="stamp">{String(inv.outcome).replace(/_/g, " ")}</span>}</header>
-            <p className="serif ib-q">{inv.question}</p>
-            <p className="idx ib-tally">{tally.confirmed} CONFIRMED / {tally.ruled_out} RULED OUT / {tally.inconclusive} INCONCLUSIVE / {tally.other} OTHER</p>
+            <header><span className="idx">Investigation {inv.code}</span>{inv.outcome && <span className="stamp">{sentence(String(inv.outcome))}</span>}</header>
+            <p className="ib-q">{inv.question}</p>
+            <p className="idx ib-tally">{tally.confirmed} confirmed, {tally.ruled_out} ruled out, {tally.inconclusive} inconclusive, {tally.other} other</p>
             <ul className="ib-list">{inv.suspects.map((s) => (<SuspectCard key={s.id} s={s} sims={sims} />))}</ul>
             {story.filter((r) => r.investigation === inv.code).length > 0 && <ScreenConfirm rounds={story.filter((r) => r.investigation === inv.code)} />}
           </section>
@@ -102,7 +105,7 @@ export function InvestigationBoard({ state, story, tests = [] }: { state: Review
       {state.cleared.length > 0 && (
         <section className="ib-cleared">
           <button className="btn sm ghost" onClick={() => setShowCleared(!showCleared)} aria-expanded={showCleared}>{showCleared ? "Hide" : "Show"} checked and cleared ({clearedTotal} results)</button>
-          <p className="idx">CHECKED AND CLEARED: JUDGED HARMLESS ON THIS BOARD. THE REASON IS THE AGENT&apos;S OWN.</p>
+          <p className="idx">Checked and cleared: judged harmless on this board. The reason is the agent&apos;s own.</p>
           {showCleared && (
             <ul className="ib-clr">{state.cleared.map((c) => (<li key={c.id}><span className="mono">{c.rule ?? "candidates"}</span><span className="num">{c.count}</span><span className="dim">{c.reason}</span></li>))}</ul>
           )}

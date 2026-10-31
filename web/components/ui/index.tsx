@@ -13,13 +13,13 @@ export function Logo({ size = 22, word = true }: { size?: number; word?: boolean
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-        <circle cx="15" cy="9" r="6.2" stroke="currentColor" strokeWidth="1.2" />
-        <circle cx="15" cy="9" r="1.6" fill="var(--signal)" />
-        <path d="M10.6 13.4 3 21H8" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="15" cy="9" r="6.2" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="15" cy="9" r="1.8" fill="var(--signal)" />
+        <path d="M10.6 13.4 3 21H8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       {word && (
         <span style={{ font: "600 15px/1 var(--font-ui)", letterSpacing: "-0.01em" }}>
-          Trust<span className="mono" style={{ fontWeight: 500, letterSpacing: "0.04em", color: "var(--paper-2)" }}>PCB</span>
+          Trust<span style={{ fontWeight: 500, color: "var(--paper-2)" }}>PCB</span>
         </span>
       )}
     </span>
@@ -31,16 +31,15 @@ export function Idx({ children, style }: { children: ReactNode; style?: CSSPrope
 }
 
 export function Panel({
-  idx, title, actions, children, className = "", style, delay = 0, crop = true, bodyClass, bodyStyle,
+  title, actions, children, className = "", style, bodyClass, bodyStyle,
 }: {
-  idx?: string; title?: string; actions?: ReactNode; children?: ReactNode; className?: string; style?: CSSProperties;
-  delay?: number; crop?: boolean; bodyClass?: string; bodyStyle?: CSSProperties;
+  title?: string; actions?: ReactNode; children?: ReactNode; className?: string; style?: CSSProperties;
+  bodyClass?: string; bodyStyle?: CSSProperties;
 }) {
   return (
-    <section className={`panel hair ${crop ? "crop" : ""} ${className}`} style={{ animationDelay: `${delay}ms`, ...style }}>
-      {(idx || title || actions) && (
+    <section className={`panel ${className}`} style={style}>
+      {(title || actions) && (
         <header className="panel-head">
-          {idx && <Idx>{idx}</Idx>}
           {title && <h2>{title}</h2>}
           <span className="grow" />
           {actions}
@@ -124,17 +123,18 @@ export function TopBar({ children, right, current }: { children?: ReactNode; rig
   const { demo } = useAppEnv();
   return (
     <header className="topbar">
-      <Link href="/" aria-label="TrustPCB home"><Logo /></Link>
+      <Link href="/" aria-label="TrustPCB home" className="topbar-brand"><Logo /></Link>
       <nav className="topnav" aria-label="Main">
-        <Link href="/projects" aria-current={current === "projects" ? "page" : undefined}>Projects</Link>
-        {!demo && <Link href="/upload" aria-current={current === "upload" ? "page" : undefined}>Upload</Link>}
-        <Link href="/compare" aria-current={current === "compare" ? "page" : undefined}>Compare</Link>
+        <Link className="navitem" href="/projects" aria-current={current === "projects" ? "page" : undefined}><Icon name="folder" size={17} /> Projects</Link>
+        {!demo && <Link className="navitem" href="/upload" aria-current={current === "upload" ? "page" : undefined}><Icon name="upload" size={17} /> Upload a board</Link>}
+        <Link className="navitem" href="/compare" aria-current={current === "compare" ? "page" : undefined}><Icon name="compare" size={17} /> Compare</Link>
       </nav>
-      <span style={{ flex: 1 }} />
       {children}
-      {right}
-      <DemoNotice />
-      <FixtureBadge />
+      <div className="topbar-foot">
+        {right}
+        <DemoNotice />
+        <FixtureBadge />
+      </div>
     </header>
   );
 }

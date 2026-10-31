@@ -10,7 +10,6 @@ import type { BBox, Board, Geometry, Severity } from "../../lib/types";
 import type { ActiveMarkItem, FindingMeta, FocusRequest, Insets } from "../board2d/Board2D";
 import { CalloutLayer, type CalloutAnchor, type DimLine, type Rect } from "../callouts/CalloutLayer";
 import { buildBoardModel, type BoardModel, type LayerGroupKey } from "./boardModel";
-import { FloorGrid } from "./FloorGrid";
 
 export const EXPLODE_SPREAD = 9; // mm between layers when fully exploded
 const GROUP_LIFT: Record<LayerGroupKey, number> = { botCu: -1, substrate: 0, topCu: 1, components: 2 };
@@ -29,7 +28,7 @@ export function layerY(group: LayerGroupKey, explode: number) {
 
 export function Scene3D({
   board, glbUrl, marks, meta, selectedId, onSelect, explode, focus, insets, hero, autoRotate, pickedId, onPick,
-  showMarks = true, children, view3d, shift, className, onReady, boardDims = true, bare = false, center: centerProp,
+  showMarks = true, children, view3d, shift, className, onReady, boardDims = false, bare = false, center: centerProp,
 }: {
   board: Board; glbUrl: string; marks: ActiveMarkItem[]; meta: Record<string, FindingMeta>; selectedId: string | null;
   onSelect: (id: string | null) => void; explode: number; focus?: FocusRequest | null; insets: Insets; hero?: boolean;
@@ -129,7 +128,6 @@ export function Scene3D({
           <Suspense fallback={null}>
             <Env />
             <Lights />
-            <FloorGrid center={[center[0], center[2]]} />
             {!bare && <BoardScene
               board={board} glbUrl={glbUrl} explode={explode} marks={marks} index={index} selectedId={selectedId} showMarks={showMarks}
               pickedId={pickedId ?? null} onPick={(id, hitFinding) => { if (hitFinding) onSelect(hitFinding); else onSelect(null); onPick?.(id); }}
@@ -143,7 +141,7 @@ export function Scene3D({
       )}
       {proj.tags.map((t) => (
         <div key={t.k} className="layer-tag mono" style={{ left: t.x, top: t.y, flexDirection: t.side === 1 ? "row" : "row-reverse", transform: `translate(${t.side === 1 ? 0 : "-100%"}, -50%)` }}>
-          <i /><span>{LAYER_NAMES[t.k][0]}</span> {LAYER_NAMES[t.k][1]}
+          <i />{LAYER_NAMES[t.k]}
         </div>
       ))}
       {showMarks && (
@@ -223,9 +221,7 @@ function BoardScene({
   );
 }
 
-const LAYER_NAMES: Record<LayerGroupKey, [string, string]> = {
-  components: ["01", "PARTS, TOP"], topCu: ["02", "F.Cu + PADS"], substrate: ["03", "SUBSTRATE + VIAS"], botCu: ["04", "B.Cu"],
-};
+const LAYER_NAMES: Record<LayerGroupKey, string> = { components: "Parts", topCu: "Top copper", substrate: "Substrate", botCu: "Bottom copper" };
 const LAYER_Y: Record<LayerGroupKey, number> = { botCu: 0, substrate: 0.8, topCu: 1.55, components: 2.6 };
 
 /* Marks drawn in the 3D scene: tracks as fat lines, parts as box outlines, regions as outlined fills. */

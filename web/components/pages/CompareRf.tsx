@@ -11,7 +11,7 @@ import { Panel } from "../ui";
 import { TuningGraph, type CurveSpec } from "../rf/charts";
 import { PowerPair } from "../rf/PowerPair";
 
-export const A_COLOR = "var(--sev-low)";
+export const A_COLOR = "var(--paper-2)";
 export const B_COLOR = "var(--sev-medium)";
 
 /** Both versions' solver runs, listed from their reviews. A side with no review or no runs stays null. */
@@ -65,7 +65,7 @@ export function CompareHeadline({ jobA, jobB, dataA, dataB, nA, nB, band }: { jo
   const mixed = jobA && jobB && jobA.quality !== jobB.quality;
   if (!av || !bv) return null;
   return (
-    <Panel className="card" idx="BEFORE AND AFTER" title="Accepted power" delay={60}>
+    <Panel className="card" title="Accepted power, before and after">
       <div className="cmp-head">
         {geo.same === true && <span className="stamp solid cmp-same" title={geo.text}>{SAME_GEOMETRY}</span>}
         <PowerPair
@@ -111,12 +111,12 @@ export function CompareTuning({ sourceA, sourceB, jobA, jobB, onPickA, onPickB, 
   const meanA = (trace === "as_built" ? accA.asBuilt : accA.antenna)?.mean, meanB = (trace === "as_built" ? accB.asBuilt : accB.antenna)?.mean;
   const opsB = jobB ? describeOps(jobB.whatif_ops, jobB.material) : "";
   return (
-    <Panel className="card" idx="RF" title="Tuning, before and after" delay={150} actions={anyScreen ? <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span> : undefined}>
-      <div style={{ padding: 14, display: "grid", gap: 10 }}>
+    <Panel className="card" title="Tuning, before and after" actions={anyScreen ? <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span> : undefined}>
+      <div style={{ display: "grid", gap: 12 }}>
         <div className="cmp-picks"><Pick source={sourceA} job={jobA} onPick={onPickA} side="A" /><Pick source={sourceB} job={jobB} onPick={onPickB} side="B" /></div>
         {bothBuilt && (
           <div className="cmp-trace">
-            <span className="idx">S11 TRACE</span>
+            <span className="idx">S11 trace</span>
             <div className="seg" role="group" aria-label="Which S11 trace">
               <button aria-pressed={trace === "as_built"} onClick={() => setWhich("as_built")}>As built</button>
               <button aria-pressed={trace === "antenna"} onClick={() => setWhich("antenna")}>Antenna alone</button>
@@ -130,21 +130,21 @@ export function CompareTuning({ sourceA, sourceB, jobA, jobB, onPickA, onPickB, 
           {specs.map((c) => (<span key={c.id}><i style={{ background: c.color }} />{c.label}</span>))}
           {band && <span><i style={{ background: "var(--signal)" }} />Band {band.lo_ghz.toFixed(2)} to {band.hi_ghz.toFixed(2)} GHz</span>}
         </div>
-        <table className="rp-tbl cmp-rf-tbl">
+        <div className="cmp-scroll"><table className="rp-tbl cmp-rf-tbl">
           <thead><tr><th /><th>A v{nA}</th><th>B v{nB}</th><th>Change</th></tr></thead>
           <tbody>
-            <tr><td className="idx">DEEPEST DIP</td><td className="mono">{ma ? `${ghz(ma.f_ghz)} GHz, ${ma.db.toFixed(1)} dB` : "-"}</td><td className="mono">{mb ? `${ghz(mb.f_ghz)} GHz, ${mb.db.toFixed(1)} dB` : "-"}</td>
+            <tr><td>Deepest dip</td><td className="mono">{ma ? `${ghz(ma.f_ghz)} GHz, ${ma.db.toFixed(1)} dB` : "-"}</td><td className="mono">{mb ? `${ghz(mb.f_ghz)} GHz, ${mb.db.toFixed(1)} dB` : "-"}</td>
               <td className="mono">{ma && mb ? `${mb.f_ghz >= ma.f_ghz ? "+" : "−"}${Math.abs((mb.f_ghz - ma.f_ghz) * 1000).toFixed(0)} MHz` : "-"}</td></tr>
-            <tr><td className="idx">DIPS</td><td className="mono">{da.length}</td><td className="mono">{db.length}</td><td /></tr>
-            <tr><td className="idx">BAND WORST S11</td><td className="mono">{ra != null ? `${ra.toFixed(1)} dB` : "-"}</td><td className="mono">{rb != null ? `${rb.toFixed(1)} dB` : "-"}</td><td className="mono">{ra != null && rb != null ? `${rb - ra >= 0 ? "+" : "−"}${Math.abs(rb - ra).toFixed(1)} dB` : "-"}</td></tr>
-            <tr><td className="idx" title="Accepted power (mismatch only, not radiated power or efficiency)">ACCEPTED, WORST</td><td className="mono">{wa != null ? `${fmtPct(wa)} %` : "-"}</td><td className="mono">{wb != null ? `${fmtPct(wb)} %` : "-"}</td><td className="mono">{wa != null && wb != null ? `${wb - wa >= 0 ? "+" : "−"}${fmtPct(Math.abs(wb - wa))} pts` : "-"}</td></tr>
-            <tr><td className="idx">ACCEPTED, MEAN</td><td className="mono">{meanA != null ? `${fmtPct(meanA)} %` : "-"}</td><td className="mono">{meanB != null ? `${fmtPct(meanB)} %` : "-"}</td><td className="mono">{meanA != null && meanB != null ? `${meanB - meanA >= 0 ? "+" : "−"}${fmtPct(Math.abs(meanB - meanA))} pts` : "-"}</td></tr>
-            {(pa.length > 0 || pb.length > 0) && <tr><td className="idx">MATCHING PARTS</td><td className="mono cmp-parts">{pa.length ? pa.map((x) => <span key={x}>{x}</span>) : "-"}</td><td className="mono cmp-parts">{pb.length ? pb.map((x) => <span key={x}>{x}</span>) : "-"}</td><td /></tr>}
+            <tr><td>Dips</td><td className="mono">{da.length}</td><td className="mono">{db.length}</td><td /></tr>
+            <tr><td>Band worst S11</td><td className="mono">{ra != null ? `${ra.toFixed(1)} dB` : "-"}</td><td className="mono">{rb != null ? `${rb.toFixed(1)} dB` : "-"}</td><td className="mono">{ra != null && rb != null ? `${rb - ra >= 0 ? "+" : "−"}${Math.abs(rb - ra).toFixed(1)} dB` : "-"}</td></tr>
+            <tr><td title="Accepted power (mismatch only, not radiated power or efficiency)">Accepted, worst</td><td className="mono">{wa != null ? `${fmtPct(wa)} %` : "-"}</td><td className="mono">{wb != null ? `${fmtPct(wb)} %` : "-"}</td><td className="mono">{wa != null && wb != null ? `${wb - wa >= 0 ? "+" : "−"}${fmtPct(Math.abs(wb - wa))} pts` : "-"}</td></tr>
+            <tr><td>Accepted, mean</td><td className="mono">{meanA != null ? `${fmtPct(meanA)} %` : "-"}</td><td className="mono">{meanB != null ? `${fmtPct(meanB)} %` : "-"}</td><td className="mono">{meanA != null && meanB != null ? `${meanB - meanA >= 0 ? "+" : "−"}${fmtPct(Math.abs(meanB - meanA))} pts` : "-"}</td></tr>
+            {(pa.length > 0 || pb.length > 0) && <tr><td>Matching parts</td><td className="mono cmp-parts">{pa.length ? pa.map((x) => <span key={x}>{x}</span>) : "-"}</td><td className="mono cmp-parts">{pb.length ? pb.map((x) => <span key={x}>{x}</span>) : "-"}</td><td /></tr>}
           </tbody>
-        </table>
+        </table></div>
         {opsB && <p className="dim" style={{ margin: 0, fontSize: 12 }}>B's run changed: {opsB}.</p>}
         {mixed && <p className="rf-warn">A and B are different run qualities ({jobA?.quality} and {jobB?.quality}). Compare the shape and the dip positions, not the depths.</p>}
-        <p className="idx" style={{ margin: 0 }}>SIMULATED. NOT A SUBSTITUTE FOR A REAL ANTENNA MEASUREMENT.</p>
+        <p className="idx" style={{ margin: 0, whiteSpace: "normal" }}>Simulated. Not a substitute for a real antenna measurement.</p>
       </div>
     </Panel>
   );
@@ -165,7 +165,7 @@ function Slab({ board }: { board: Board }) {
   return (
     <mesh position={[(x0 + x1) / 2, 0.8, (y0 + y1) / 2]}>
       <boxGeometry args={[x1 - x0, 1.6, y1 - y0]} />
-      <meshStandardMaterial color="#14173a" roughness={0.6} metalness={0.15} transparent opacity={0.9} />
+      <meshStandardMaterial color="#1c1c1e" roughness={0.6} metalness={0.15} transparent opacity={0.9} />
     </mesh>
   );
 }

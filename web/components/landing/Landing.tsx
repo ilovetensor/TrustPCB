@@ -58,10 +58,10 @@ const none = { l: 0, r: 0, t: 0, b: 0 };
 const noop = () => {};
 
 const STEPS = [
-  ["01", "Upload", "Drop a KiCad project. TrustPCB reads the real geometry of every track, pad and part."],
-  ["02", "Baseline", "KiCad rule checks and code analyzers measure the board, with no AI involved."],
-  ["03", "Investigate", "An agent forms hypotheses and runs real electromagnetic simulations to test them."],
-  ["04", "Mark up", "Every issue is pinned to a real object on the board, with the numbers that prove it."],
+  ["upload", "Upload", "Drop a KiCad project. TrustPCB reads the real geometry of every track, pad and part."],
+  ["gauge", "Baseline", "KiCad rule checks and code analyzers measure the board, with no AI involved."],
+  ["search", "Investigate", "An agent forms hypotheses and runs real electromagnetic simulations to test them."],
+  ["flag", "Mark up", "Every issue is pinned to a real object on the board, with the numbers that prove it."],
 ];
 
 /** The numbers of the bundled nRF52840 sample run (public/fixtures/nrf-sim), read from its own files. Null when they are absent: the strip then stays qualitative. */
@@ -83,10 +83,10 @@ function useStoryNumbers(): StoryNumbers | null {
 }
 
 const HOW = [
-  ["Measure", "Code measures the board first: shorts, clearances, return paths, the length and shape of the antenna feed."],
-  ["Suspect", "The agent lists what could explain a problem, for example the antenna length, the matching parts or nearby copper."],
-  ["Screen", "A quick solver run per suspect, for comparing only. It rules suspects out and points at the likely cause."],
-  ["Confirm", "The best candidate is run again at higher quality. Only the confirmed numbers are quoted, and the report says when the screen was too optimistic."],
+  ["gauge", "Measure", "Code measures the board first: shorts, clearances, return paths, the length and shape of the antenna feed."],
+  ["search", "Suspect", "The agent lists what could explain a problem, for example the antenna length, the matching parts or nearby copper."],
+  ["layers", "Screen", "A quick solver run per suspect, for comparing only. It rules suspects out and points at the likely cause."],
+  ["check", "Confirm", "The best candidate is run again at higher quality. Only the confirmed numbers are quoted, and the report says when the screen was too optimistic."],
 ];
 
 function HowItWorks() {
@@ -94,14 +94,14 @@ function HowItWorks() {
   const best = n ? acceptedPct(n.bestWorstDb) : null;
   return (
     <section className="ld-sec">
-      <div className="ld-sec-head"><span className="idx">03 / HOW AN INVESTIGATION WORKS</span><h2 className="serif">Suspects, then evidence.</h2></div>
+      <div className="ld-sec-head"><span className="idx">How an investigation works</span><h2 className="serif">Suspects, then evidence.</h2></div>
       <ol className="ld-steps">
-        {HOW.map(([t, d], i) => (<li key={t} className="hair panel"><span className="idx">{String(i + 1).padStart(2, "0")}</span><h3>{t}</h3><p>{d}</p></li>))}
+        {HOW.map(([ic, t, d]) => (<li key={t}><span className="ld-step-ic"><Icon name={ic} size={18} /></span><h3>{t}</h3><p>{d}</p></li>))}
       </ol>
       {n && best != null && (
-        <div className="ld-story hair panel">
+        <div className="ld-story">
           <div className="ld-story-copy">
-            <span className="idx">EXAMPLE: THE BUNDLED nRF52840 SAMPLE RUN, NOT YOUR BOARD</span>
+            <span className="idx">Example: the bundled nRF52840 sample run, not your board</span>
             <p>
               As drawn, this antenna&apos;s deepest dip sits at <b className="mono">{n.dipGhz.toFixed(2)} GHz</b>{n.firstSeriesGhz ? <> and its first series resonance at <b className="mono">{n.firstSeriesGhz.toFixed(2)} GHz</b></> : null}, far below the 2.4 GHz band, so the worst S11 in the band is <b className="mono">{n.asBuiltWorstDb.toFixed(1)} dB</b>.
               {n.shortenedDipGhz && n.shortenedMm ? <> A screen run with the antenna {n.shortenedMm} mm shorter moves the dip to <b className="mono">{n.shortenedDipGhz.toFixed(2)} GHz</b>, the direction the length says it should.</> : null}
@@ -139,7 +139,6 @@ export function Landing() {
     <main className="ld">
       <section className="ld-hero">
         <div className="ld-scene" aria-hidden>
-          <div className="stage-bg" />
           {useRealBoard && nrf.hero ? (
             <Scene3D
               board={nrf.hero.board} glbUrl={NRF_BOARD.glb} marks={empty.marks} meta={empty.meta} selectedId={null} onSelect={noop}
@@ -161,61 +160,50 @@ export function Landing() {
             </Scene3D>
           )}
         </div>
-        <div className="ld-frame" aria-hidden>
-          {["A", "B", "C", "D", "E"].map((l, i) => (<span key={l} className="ld-zl mono" style={{ top: `${10 + i * 20}%` }}>{l}</span>))}
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((n, i) => (<span key={n} className="ld-zn mono" style={{ left: `${6 + i * 12.5}%` }}>{n}</span>))}
-        </div>
         <header className="ld-nav">
           <Logo />
           <nav>
-            <Link href="/projects">Projects</Link>
-            <Link href="/compare">Compare</Link>
-            {sampleHref && <Link href={sampleHref}>{FIXTURE_MODE ? "Sample review" : "Latest review"}</Link>}
+            <Link href="/projects"><Icon name="folder" size={16} /><span>Projects</span></Link>
+            <Link href="/compare"><Icon name="compare" size={16} /><span>Compare versions</span></Link>
+            {sampleHref && <Link href={sampleHref}><Icon name="board" size={16} /><span>{FIXTURE_MODE ? "Sample review" : "Latest review"}</span></Link>}
           </nav>
           <span style={{ flex: 1 }} />
           <FixtureBadge />
           <DemoNotice />
-          {!demo && <Link className="btn sm" href="/upload"><Icon name="upload" size={12} /> Upload</Link>}
+          {!demo && <Link className="btn sm" href="/upload"><Icon name="upload" size={14} /> Upload a board</Link>}
         </header>
         <div className="ld-copy">
-          <span className="idx rise" style={{ animationDelay: "100ms" }}>TPCB / INSPECTION BENCH / REV 0.1</span>
+          <span className="idx rise" style={{ animationDelay: "100ms" }}>Open-source inspection layer for circuit boards</span>
           <h1 className="serif">
             <span className="rise l1" style={{ animationDelay: "200ms" }}>Others read your datasheets.</span>
-            <span className="rise l2" style={{ animationDelay: "380ms" }}>TrustPCB tests <em>your board.</em></span>
+            <span className="rise l2" style={{ animationDelay: "380ms" }}>TrustPCB tests your board.</span>
           </h1>
           <p className="rise" style={{ animationDelay: "560ms" }}>
             Upload a KiCad board. Get it marked up like a senior engineer went over the drawing: layout measurements, real simulations, and tested fixes. Nothing is edited. Nothing is guessed.
           </p>
           <div className="ld-cta rise" style={{ animationDelay: "720ms" }}>
             {!demo && <Link className="btn primary big" href="/upload"><Icon name="upload" size={15} /> Upload a board</Link>}
-            {sampleHref && <Link className="btn big" href={sampleHref}>{FIXTURE_MODE ? "Watch a sample review" : "Open your latest review"} <Icon name="arrow" size={14} /></Link>}
+            {sampleHref && <Link className="btn big" href={sampleHref}><Icon name="board" size={16} /> {FIXTURE_MODE ? "Watch a sample review" : "Open your latest review"}</Link>}
           </div>
           <div className="ld-labels rise" style={{ animationDelay: "880ms" }}>
-            <span className="idx">EVERY CLAIM IS LABELLED</span>
+            <span className="idx">Every claim is labelled</span>
             <ClassStamp cls="measured" /><ClassStamp cls="simulated" /><ClassStamp cls="opinion" /><ClassStamp cls="not_tested" />
           </div>
         </div>
-        <div className="ld-fig mono rise" style={{ animationDelay: "1000ms" }}>
-          <span className="idx">FIG. 1</span>
+        <div className="ld-fig rise" style={{ animationDelay: "1000ms" }}>
           <span>{useRealBoard
             ? `nRF52840 node, 66 x 53 mm. Field at 2.44 GHz and the launch pulse from a real solver run, time slowed to be visible. As drawn, this antenna's deepest dip sits at ${nrf.hero?.f_res ? (nrf.hero.f_res / 1e9).toFixed(2) : "1.87"} GHz, off the band: the kind of thing TrustPCB reports.`
             : "2.5 GHz patch antenna, 60 x 50 mm. Complex field from the solver, phase locked, time slowed to be visible."}</span>
           <span className="stamp sim"><i />Real openEMS output</span>
         </div>
-        <div className="ld-title hair mono">
-          <div><span className="idx">DRAWING</span><b>INSPECTION BENCH</b></div>
-          <div><span className="idx">SHEET</span><b>1 / 1</b></div>
-          <div><span className="idx">SCALE</span><b>1 : 1</b></div>
-          <div><span className="idx">REV</span><b>A</b></div>
-        </div>
       </section>
 
       <section className="ld-sec">
-        <div className="ld-sec-head"><span className="idx">02 / METHOD</span><h2 className="serif">An inspection, not a rewrite.</h2></div>
+        <div className="ld-sec-head"><span className="idx">Method</span><h2 className="serif">An inspection, not a rewrite.</h2></div>
         <ol className="ld-steps">
-          {STEPS.map(([n, t, d]) => (
-            <li key={n} className="hair panel">
-              <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden><circle cx="19" cy="11" r="8.5" fill="none" stroke="var(--signal)" strokeWidth="1.3" /><text x="19" y="11" textAnchor="middle" dy="0.34em" className="mono" fontSize="9" fill="var(--paper)">{n}</text><path d="M13 17 3 28h6" fill="none" stroke="var(--signal)" strokeWidth="1.3" /></svg>
+          {STEPS.map(([ic, t, d]) => (
+            <li key={t}>
+              <span className="ld-step-ic"><Icon name={ic} size={18} /></span>
               <h3>{t}</h3><p>{d}</p>
             </li>
           ))}
@@ -225,18 +213,18 @@ export function Landing() {
       <HowItWorks />
 
       {projects.length > 0 && <section className="ld-sec">
-        <div className="ld-sec-head"><span className="idx">04 / {FIXTURE_MODE ? "SAMPLE REVIEWS" : "YOUR BOARDS"}</span><h2 className="serif">{FIXTURE_MODE ? "See finished reviews." : "Pick up where you left off."}</h2></div>
+        <div className="ld-sec-head"><span className="idx">{FIXTURE_MODE ? "Sample reviews" : "Your boards"}</span><h2 className="serif">{FIXTURE_MODE ? "See finished reviews." : "Pick up where you left off."}</h2></div>
         <div className="ld-cards">
           {projects.slice(0, 3).map((p, i) => (
-            <Link key={p.id} href={p.latest_review_id ? `/reviews/${p.latest_review_id}` : `/projects/${p.id}`} className="ld-card hair panel">
-              <div className="ld-card-top"><span className="idx">R-{p.latest_review_id.slice(0, 6).toUpperCase()}</span><span className="idx">{p.latest_version}</span></div>
+            <Link key={p.id} href={p.latest_review_id ? `/reviews/${p.latest_review_id}` : `/projects/${p.id}`} className="ld-card">
+              <div className="ld-card-top"><span className="idx">Review {p.latest_review_id.slice(0, 6)}</span><span className="idx">{p.latest_version}</span></div>
               <h3>{p.name}</h3>
               <p className="dim">{p.kind}</p>
               <div className="ld-card-graph">
                 {fx && p.rf !== "n/a" && <TuningGraph curves={i === 1 ? [{ id: "a", label: "a", ...fx.curve2 }] : [{ id: "a", label: "a", ...fx.curve }, { id: "b", label: "b", ...fx.curve2 }]} band={fx.band} height={64} compact />}
-                {!fx && <div className="dim mono" style={{ fontSize: 11, padding: "20px 0" }}>{p.rf === "n/a" ? "No radio part detected." : "Open the review for its RF result."}</div>}
+                {!fx && <div className="dim" style={{ fontSize: 12.5, padding: "20px 0" }}>{p.rf === "n/a" ? "No radio part detected." : "Open the review for its RF result."}</div>}
               </div>
-              <div className="ld-card-foot"><SevBar counts={p.counts} size="sm" /><span className="link-arrow mono idx">OPEN</span></div>
+              <div className="ld-card-foot"><SevBar counts={p.counts} size="sm" /><span className="ld-card-open">Open review <Icon name="arrow" size={13} /></span></div>
             </Link>
           ))}
         </div>

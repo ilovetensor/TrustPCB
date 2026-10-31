@@ -22,26 +22,23 @@ export function Projects() {
       <main className="pg-main">
         <div className="pg-head">
           <div>
-            <span className="idx">DASHBOARD / {projects?.length ?? 0} BOARDS / {total} OPEN FINDINGS</span>
             <h1 className="serif">Projects</h1>
+            <p className="pg-sub">{projects ? `${projects.length} ${projects.length === 1 ? "board" : "boards"}, ${total} open ${total === 1 ? "finding" : "findings"}` : "Loading projects."}</p>
           </div>
           <span className="grow" />
-          {!demo && <Link className="btn primary" href="/upload"><Icon name="upload" size={13} /> New board</Link>}
+          {!demo && <Link className="btn primary" href="/upload"><Icon name="upload" size={14} /> Upload a board</Link>}
         </div>
         <div className="pg-cols">
-          <div className="tbl" role="table" aria-label="Projects">
-            <div className="tbl-row head" role="row">
-              <span className="idx">ID</span><span className="idx">BOARD</span><span className="idx">LATEST RESULT</span><span className="idx">OPEN BY SEVERITY</span><span className="idx">TREND</span><span className="idx">VERSION</span><span className="idx">STATE</span>
-            </div>
+          <div className="tiles" aria-label="Projects">
             {projects?.map((p, i) => (
-              <Link key={p.id} href={`/projects/${p.id}`} className="tbl-row rise" style={{ animationDelay: `${i * 70}ms` }} role="row">
-                <span className="idx">P-{String(i + 1).padStart(3, "0")}</span>
-                <span><div className="tbl-name">{p.name}</div><div className="tbl-kind">{p.kind}</div></span>
-                <span className="mono" style={{ fontSize: 12, color: p.rf === "fail" ? "var(--signal)" : "var(--paper-2)" }}>{p.rf_note ?? RF[p.rf]}</span>
-                <span><SevBar counts={p.counts} size="sm" /></span>
-                <span><Sparkline values={p.trend} /></span>
-                <span className="mono" style={{ fontSize: 12 }}>{p.latest_version} / {p.versions} ver</span>
-                <span className={`tbl-state ${p.state}`}><i />{STATE[p.state]}</span>
+              <Link key={p.id} href={`/projects/${p.id}`} className="tile rise" style={{ animationDelay: `${i * 70}ms` }}>
+                <div className="tile-top">
+                  <div><div className="tile-name">{p.name}</div><div className="tile-kind">{p.kind}</div></div>
+                  <span className={`tbl-state ${p.state}`}><i />{STATE[p.state]}</span>
+                </div>
+                <div className={`tile-rf ${p.rf === "fail" ? "fail" : ""}`}>{p.rf_note ?? RF[p.rf]}</div>
+                <div className="tile-row"><SevBar counts={p.counts} size="sm" /><Sparkline values={p.trend} /></div>
+                <div className="tile-foot"><span>{p.latest_version}, {p.versions} {p.versions === 1 ? "version" : "versions"}</span><span className="tile-open">Open project <Icon name="arrow" size={13} /></span></div>
               </Link>
             ))}
             {!projects && !error && <p className="empty dim" style={{ padding: 24 }}>Loading projects.</p>}
@@ -49,13 +46,13 @@ export function Projects() {
             {projects && projects.length === 0 && <p className="empty dim" style={{ padding: 24 }}>No boards yet. {demo ? "This demo has none to show." : <><Link href="/upload" className="signal">Upload one</Link> to start a review.</>}</p>}
           </div>
           <aside>
-            <span className="idx">RECENT ACTIVITY</span>
-            <ul className="feed" style={{ marginTop: 14 }}>
+            <h2 className="pg-h2" style={{ margin: 0 }}>Recent activity</h2>
+            <ul className="feed">
               {(projects ?? []).slice(0, 6).map((p, i) => {
                 const n = p.counts.critical + p.counts.high + p.counts.medium + p.counts.low + p.counts.info;
                 return (
                   <li key={p.id} className={i === 0 ? "sig" : undefined}>
-                    <b>{p.name}</b> {p.latest_version}: {STATE[p.state].toLowerCase()}{p.state === "no_review" ? "." : `. ${n} open finding${n === 1 ? "" : "s"}.`}
+                    <span><b>{p.name}</b> {p.latest_version}: {STATE[p.state].toLowerCase()}{p.state === "no_review" ? "." : `. ${n} open finding${n === 1 ? "" : "s"}.`}</span>
                   </li>
                 );
               })}

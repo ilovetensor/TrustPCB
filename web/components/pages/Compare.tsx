@@ -21,8 +21,8 @@ import { Icon, Panel, SevBar, SevGlyph, TopBar } from "../ui";
 const none = { l: 0, r: 0, t: 0, b: 0 };
 /** Every finding of the newer version has a `change` against the older one. The server's buckets (changed, still_present, ...) are regrouped by it. */
 const GROUPS: { key: string; label: string }[] = [
-  { key: "improved", label: "IMPROVED" }, { key: "worse", label: "WORSE" }, { key: "new", label: "NEW" }, { key: "fixed", label: "FIXED" },
-  { key: "still_present", label: "STILL PRESENT" }, { key: "dismissed_carried", label: "DISMISSED, CARRIED" }, { key: "not_rechecked", label: "NOT RECHECKED" },
+  { key: "improved", label: "Improved" }, { key: "worse", label: "Worse" }, { key: "new", label: "New" }, { key: "fixed", label: "Fixed" },
+  { key: "still_present", label: "Still present" }, { key: "dismissed_carried", label: "Dismissed, carried" }, { key: "not_rechecked", label: "Not rechecked" },
 ];
 const groupOf = (f: NonNullable<CompareResult["findings"]>, key: string): FindingBrief[] => {
   if (key === "dismissed_carried" || key === "not_rechecked") return f[key] as FindingBrief[];
@@ -83,7 +83,7 @@ function CompareLive() {
   const rfBand = useMemo(() => { const bd = dataB.summary?.setup?.band_ghz ?? dataA.summary?.setup?.band_ghz ?? dataB.meta?.setup?.band_ghz; return bd ? { lo_ghz: bd[0], hi_ghz: bd[1], target_db: -10 } : null; }, [dataA.summary, dataB.summary, dataB.meta]);
   const antennaOf = (m: typeof dataA.meta, bd: BBox) => { const q = m?.setup?.antenna_bbox; return (q && q.length === 4 ? [(q[0] + q[2]) / 2, 3, (q[1] + q[3]) / 2] : [(bd[0] + bd[2]) / 2, 3, (bd[1] + bd[3]) / 2]) as [number, number, number]; };
   const refDbi = Math.max(dataA.pattern?.dmax_dbi ?? -99, dataB.pattern?.dmax_dbi ?? -99);
-  const marksA = useMemo(() => asMarks(cmp?.board ? (cmp.board as unknown as { marks?: { from: Mark[] } }).marks?.from : undefined, "low", "a"), [cmp]);
+  const marksA = useMemo(() => asMarks(cmp?.board ? (cmp.board as unknown as { marks?: { from: Mark[] } }).marks?.from : undefined, "info", "a"), [cmp]);
   const marksB = useMemo(() => asMarks(cmp?.board ? (cmp.board as unknown as { marks?: { to: Mark[] } }).marks?.to : undefined, "medium", "b"), [cmp]);
   const fit = useMemo<BBox | null>(() => (a && b ? (bboxUnion([a.board.bbox, b.board.bbox]) as BBox) : null), [a, b]);
 
@@ -101,24 +101,24 @@ function CompareLive() {
       <main className="pg-main" style={{ maxWidth: 1440 }}>
         <div className="pg-head">
           <div>
-            <span className="idx">COMPARE {cmp ? `/ V${nA} TO V${nB}` : ""}</span>
+            <span className="idx">{cmp ? `Version ${nA} against version ${nB}` : "Compare versions"}</span>
             <h1 className="serif">What changed between versions.</h1>
           </div>
           <span className="grow" />
           {bothSims && (
             <div className="seg" role="group" aria-label="What the slider compares" style={{ marginRight: 12 }}>
-              <button aria-pressed={mode === "board"} onClick={() => setRfMode("board")}>Board</button>
-              <button aria-pressed={mode === "field"} disabled={!fieldOk} title={fieldOk ? undefined : "One of the chosen runs kept no field files"} onClick={() => setRfMode("field")}>Field</button>
-              <button aria-pressed={mode === "pattern"} disabled={!patternOk} title={patternOk ? undefined : "One of the chosen runs has no radiation pattern"} onClick={() => setRfMode("pattern")}>Pattern</button>
+              <button aria-pressed={mode === "board"} onClick={() => setRfMode("board")}><Icon name="board" size={13} /> Board</button>
+              <button aria-pressed={mode === "field"} disabled={!fieldOk} title={fieldOk ? undefined : "One of the chosen runs kept no field files"} onClick={() => setRfMode("field")}><Icon name="wave" size={13} /> Field</button>
+              <button aria-pressed={mode === "pattern"} disabled={!patternOk} title={patternOk ? undefined : "One of the chosen runs has no radiation pattern"} onClick={() => setRfMode("pattern")}><Icon name="cube" size={13} /> Pattern</button>
             </div>
           )}
-          {cmp && <div className="seg" aria-label="Versions"><button aria-pressed>A: v{nA}</button><button aria-pressed>B: v{nB}</button></div>}
+          {cmp && <span className="pg-head-actions"><span className="stamp solid">A: version {nA}</span><span className="stamp solid">B: version {nB}</span></span>}
         </div>
         {error && <p className="chat-err" role="alert">{error}</p>}
         {!error && !cmp && <p className="dim">Comparing.</p>}
         {cmp && (
           <div className="cmp">
-            <div className="cmp-board hair panel" ref={box} onPointerMove={move} onPointerUp={() => { drag.current = false; }} onPointerLeave={() => { drag.current = false; }}>
+            <div className="cmp-board" ref={box} onPointerMove={move} onPointerUp={() => { drag.current = false; }} onPointerLeave={() => { drag.current = false; }}>
               {a && b && (
                 <>
                   {mode === "pattern" ? (
@@ -138,17 +138,17 @@ function CompareLive() {
                   <span className="cmp-lab a stamp solid">A / v{nA}</span>
                   <span className="cmp-lab b stamp solid">B / v{nB}</span>
                   {mode !== "board" && (
-                    <div className="cmp-note hair panel mono">
+                    <div className="cmp-note">
                       {mode === "field" ? (
                         <>
-                          <span className="idx">FIELD, E-Z</span>
+                          <span className="idx">Field, E-z</span>
                           <span>A {dataA.fields?.f_hz ? describeFreq(dataA.fields.f_hz, rfBand ? [rfBand.lo_ghz, rfBand.hi_ghz] : null) : "loading"}{isScreen(jobA) ? " (screen)" : ""}</span>
                           <span>B {dataB.fields?.f_hz ? describeFreq(dataB.fields.f_hz, rfBand ? [rfBand.lo_ghz, rfBand.hi_ghz] : null) : "loading"}{isScreen(jobB) ? " (screen)" : ""}</span>
                           <span className="dim">Each field has its own relative scale: compare where the energy goes, not how strong it is.</span>
                         </>
                       ) : (
                         <>
-                          <span className="idx">RADIATION PATTERN, SAME DB SCALE</span>
+                          <span className="idx">Radiation pattern, same dB scale</span>
                           <span>A {dataA.pattern ? `${dataA.pattern.dmax_dbi.toFixed(1)} dBi peak at ${(dataA.pattern.f_hz / 1e9).toFixed(3)} GHz` : "loading"}</span>
                           <span>B {dataB.pattern ? `${dataB.pattern.dmax_dbi.toFixed(1)} dBi peak at ${(dataB.pattern.f_hz / 1e9).toFixed(3)} GHz` : "loading"}</span>
                           <span className="dim">Each pattern is taken at its own deepest S11 dip, so the two frequencies can differ. Screen runs: compare shapes only.</span>
@@ -164,11 +164,11 @@ function CompareLive() {
             </div>
 
             <div className="cmp-side">
-              <Panel className="card" idx="COUNTS" title="Open findings" delay={100}>
-                <div style={{ padding: 14, display: "grid", gap: 10 }}>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}><span className="idx">A v{nA}</span>{cmp.from.counts ? <SevBar counts={cmp.from.counts} size="sm" /> : <span className="dim">no review</span>}</div>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}><span className="idx">B v{nB}</span>{cmp.to.counts ? <SevBar counts={cmp.to.counts} size="sm" /> : <span className="dim">no review</span>}</div>
-                  {!bothSims && <p className="idx" style={{ whiteSpace: "normal", lineHeight: 1.5, margin: 0 }}>{sims.done ? "RESONANCE: NOT COMPARED. BOTH VERSIONS NEED A SIMULATION IN THEIR REVIEWS FOR THAT." : "LOOKING FOR SIMULATIONS."}</p>}
+              <Panel className="card" title="Open findings">
+                <div className="cmp-stack">
+                  <div className="cmp-row"><span className="idx">A, version {nA}</span>{cmp.from.counts ? <SevBar counts={cmp.from.counts} size="sm" /> : <span className="dim">no review</span>}</div>
+                  <div className="cmp-row"><span className="idx">B, version {nB}</span>{cmp.to.counts ? <SevBar counts={cmp.to.counts} size="sm" /> : <span className="dim">no review</span>}</div>
+                  {!bothSims && <p className="idx" style={{ whiteSpace: "normal", lineHeight: 1.5, margin: 0 }}>{sims.done ? "The deepest dip is not compared. Both versions need a simulation in their reviews for that." : "Looking for simulations."}</p>}
                 </div>
               </Panel>
               {cmp.version_change && <VersionChange vc={cmp.version_change} compact />}
@@ -176,7 +176,7 @@ function CompareLive() {
               {bothSims && sims.a && sims.b && (
                 <CompareTuning sourceA={sims.a} sourceB={sims.b} jobA={jobA} jobB={jobB} onPickA={setPickA} onPickB={setPickB} dataA={dataA} dataB={dataB} nA={nA} nB={nB} band={rfBand} />
               )}
-              <Panel className="card" idx="CHANGES" title="Findings" delay={200}>
+              <Panel className="card" title="Findings">
                 {cmp.findings ? (
                   <>
                     {cmp.findings.counts && (
@@ -187,7 +187,7 @@ function CompareLive() {
                       if (!rows.length) return null;
                       return (
                         <div key={g.key}>
-                          <div className="idx" style={{ padding: "10px 14px 4px" }}>{g.label} ({rows.length})</div>
+                          <div className="cmp-group-h">{g.label} ({rows.length})</div>
                           <ul className="cmp-list">
                             {rows.map((r) => (
                               <li key={r.id} className={g.key}>
@@ -207,22 +207,22 @@ function CompareLive() {
                   </>
                 ) : <p className="empty">Both versions need a finished review to compare findings.</p>}
               </Panel>
-              <Panel className="card" idx="BOARD" title="Board differences" delay={300}>
+              <Panel className="card" title="Board differences">
                 {diff ? (
-                  <ul className="cmp-list" style={{ padding: "6px 14px 14px" }}>
-                    <li><span className="idx">PARTS</span><span className="cmp-t">{diff.parts.added.length} added, {diff.parts.removed.length} removed, {diff.parts.moved.length} moved, {diff.parts.value_changed.length} value changed</span></li>
+                  <ul className="cmp-list">
+                    <li><span className="idx">Parts</span><span className="cmp-t">{diff.parts.added.length} added, {diff.parts.removed.length} removed, {diff.parts.moved.length} moved, {diff.parts.value_changed.length} value changed</span></li>
                     {diff.parts.moved.slice(0, 5).map((m) => (<li key={m.ref}><span className="idx">{m.ref}</span><span className="cmp-t">moved {m.distance_mm} mm</span></li>))}
                     {diff.parts.value_changed.slice(0, 5).map((m) => (<li key={m.ref}><span className="idx">{m.ref}</span><span className="cmp-t">{m.from} to {m.to}</span></li>))}
-                    <li><span className="idx">TRACKS</span><span className="cmp-t">+{diff.tracks.added} / -{diff.tracks.removed} ({diff.tracks.length_added_mm} / {diff.tracks.length_removed_mm} mm)</span></li>
-                    <li><span className="idx">VIAS</span><span className="cmp-t">{diff.vias.count_old} to {diff.vias.count_new}</span></li>
-                    <li><span className="idx">ZONES</span><span className="cmp-t">{diff.zones.old} to {diff.zones.new}</span></li>
-                    {diff.nets.added.length + diff.nets.removed.length > 0 && <li><span className="idx">NETS</span><span className="cmp-t">+{diff.nets.added.join(", ") || "none"} / -{diff.nets.removed.join(", ") || "none"}</span></li>}
+                    <li><span className="idx">Tracks</span><span className="cmp-t">+{diff.tracks.added} / -{diff.tracks.removed} ({diff.tracks.length_added_mm} / {diff.tracks.length_removed_mm} mm)</span></li>
+                    <li><span className="idx">Vias</span><span className="cmp-t">{diff.vias.count_old} to {diff.vias.count_new}</span></li>
+                    <li><span className="idx">Zones</span><span className="cmp-t">{diff.zones.old} to {diff.zones.new}</span></li>
+                    {diff.nets.added.length + diff.nets.removed.length > 0 && <li><span className="idx">Nets</span><span className="cmp-t">+{diff.nets.added.join(", ") || "none"} / -{diff.nets.removed.join(", ") || "none"}</span></li>}
                   </ul>
                 ) : <p className="empty">Board differences are not available.</p>}
-                {cmp.notes.length > 0 && <p className="dim" style={{ fontSize: 12, padding: "0 14px 14px", margin: 0 }}>{cmp.notes.join(" ")}</p>}
-                <p className="dim" style={{ fontSize: 12, padding: "0 14px 14px", margin: 0 }}>Blue marks on A are removed copper and parts. Amber marks on B are added or moved ones. Dismissals carry forward by fingerprint.</p>
+                {cmp.notes.length > 0 && <p className="dim" style={{ fontSize: 12.5, margin: "8px 0 0" }}>{cmp.notes.join(" ")}</p>}
+                <p className="dim" style={{ fontSize: 12.5, margin: "8px 0 0" }}>Grey marks on A are removed copper and parts. Amber marks on B are added or moved ones. Dismissals carry forward by fingerprint.</p>
               </Panel>
-              {cmp.to.review_id && <Link className="btn" href={`/reviews/${cmp.to.review_id}`}>Open v{nB} workspace <Icon name="arrow" size={13} /></Link>}
+              {cmp.to.review_id && <Link className="btn primary" href={`/reviews/${cmp.to.review_id}`}><Icon name="board" size={14} /> Open version {nB} in the review</Link>}
             </div>
           </div>
         )}
