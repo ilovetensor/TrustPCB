@@ -10,8 +10,8 @@ export interface BoardModel {
 }
 
 const palette = {
-  substrate: new THREE.MeshPhysicalMaterial({ color: "#14173a", roughness: 0.5, metalness: 0.15, clearcoat: 0.7, clearcoatRoughness: 0.35 }),
-  copper: new THREE.MeshPhysicalMaterial({ color: "#191940", roughness: 0.3, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.18 }),
+  substrate: new THREE.MeshPhysicalMaterial({ color: "#26272a", roughness: 0.5, metalness: 0.15, clearcoat: 0.7, clearcoatRoughness: 0.35 }),
+  copper: new THREE.MeshPhysicalMaterial({ color: "#303236", roughness: 0.3, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.18 }),
   pad: new THREE.MeshStandardMaterial({ color: "#f0d9a0", roughness: 0.2, metalness: 1 }),
   silk: new THREE.MeshStandardMaterial({ color: "#f3efd2", roughness: 0.8, metalness: 0 }),
 };

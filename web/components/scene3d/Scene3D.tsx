@@ -169,10 +169,10 @@ function Env() {
 function Lights() {
   return (
     <>
-      <ambientLight intensity={0.25} color="#8f8cff" />
+      <ambientLight intensity={0.25} color="#ffffff" />
       <directionalLight position={[-60, 120, 70]} intensity={2.3} color="#fff3e0" />
-      <directionalLight position={[90, 40, -90]} intensity={1.7} color="#7a6bff" />
-      <directionalLight position={[40, -60, 40]} intensity={0.5} color="#b54a9a" />
+      <directionalLight position={[90, 40, -90]} intensity={1.7} color="#dcdde2" />
+      <directionalLight position={[40, -60, 40]} intensity={0.5} color="#c8c8c8" />
     </>
   );
 }

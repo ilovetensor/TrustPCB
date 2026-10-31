@@ -16,6 +16,14 @@ const ROLE_COLORS: Record<string, string> = {
 };
 export const roleColor = (role: string) => ROLE_COLORS[role] ?? "#9d9bc0";
 
+const ROLE_ACRONYMS = new Set(["rf", "usb", "swd", "gpio", "adc", "dac"]);
+/** Sentence case for a zone role: "clock" -> "Clock", "usb" -> "USB", "power_in" -> "Power in". */
+export function roleLabel(role: string): string {
+  const t = role.replace(/_/g, " ").trim();
+  if (ROLE_ACRONYMS.has(t.toLowerCase())) return t.toUpperCase();
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
 function useGeometry(board: Board) {
   return useMemo(() => {
     const outline = board.outline.map(ringD).join("");
@@ -147,7 +155,7 @@ export function ZoneLabels({ zones, px, show }: { zones: FunctionZone[]; px: (n:
       {zones.map((z) => {
         const xs = z.ring.map((p) => p[0]), ys = z.ring.map((p) => p[1]);
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = Math.min(...ys);
-        return <text key={`${z.role}-${z.index}`} x={cx} y={cy - px(4)} textAnchor="middle" fontSize={px(9)} fill={roleColor(z.role)} fillOpacity="0.8" style={{ font: `500 ${px(9)}px var(--font-mono)`, letterSpacing: "0.06em", textTransform: "uppercase" }}>{z.role}</text>;
+        return <text key={`${z.role}-${z.index}`} x={cx} y={cy - px(4)} textAnchor="middle" fontSize={px(9)} fill={roleColor(z.role)} fillOpacity="0.8" style={{ font: `500 ${px(9)}px var(--font-mono)`, letterSpacing: "0.02em" }}>{roleLabel(z.role)}</text>;
       })}
     </g>
   );
