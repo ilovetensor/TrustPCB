@@ -17,6 +17,14 @@ test("proxy only accepts contracted paths", () => {
   assert.equal(allowedRoute("POST", "reviews/a/stream"), false);
   assert.equal(allowedRoute("DELETE", "projects/a"), false);
 });
+test("proxy serves a review's simulation list and only the contracted job files", () => {
+  assert.ok(allowedRoute("GET", "reviews/r-1/sims"));
+  assert.ok(allowedRoute("GET", "sim/ab12cd/files/field_xy.bin"));
+  assert.ok(allowedRoute("GET", "sim/ab12cd/files/s11_as_built.json"));
+  assert.ok(allowedRoute("GET", "sim/ab12cd/files/model.png"));
+  for (const path of ["sim/ab/files/scenario.json", "sim/ab/files/progress.jsonl", "sim/ab/files/../s11.json", "sim/ab/files/s11.json/x", "sim/ab/files/pattern.bin"]) assert.equal(allowedRoute("GET", path), false, path);
+  assert.equal(allowedRoute("POST", "reviews/r-1/sims"), false);
+});
 test("proxy requires exact loopback host and mutation origin", () => {
   assert.ok(trustedRequest("127.0.0.1:3118", "http://127.0.0.1:3118", "POST"));
   assert.ok(trustedRequest("127.0.0.1:3118", "http://127.0.0.1:3118", "PATCH"));
@@ -32,4 +40,6 @@ test("only artifact reads may be cached", () => {
   assert.equal(isArtifactRoute("POST", "artifacts/ab12cd"), false);
   assert.equal(isArtifactRoute("GET", "reviews/a/report/1.html"), false);
   assert.equal(isArtifactRoute("GET", "artifacts/ab/../x"), false);
+  assert.ok(isArtifactRoute("GET", "sim/ab12/files/pulse.bin"));
+  assert.equal(isArtifactRoute("GET", "reviews/r/sims"), false);
 });

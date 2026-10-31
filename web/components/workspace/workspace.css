@@ -680,7 +680,8 @@
   min-width: 0;
 }
 .ex-cell {
-  flex: 0 0 148px;
+  flex: 0 0 168px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -690,6 +691,25 @@
 }
 .ex-cell.confirm {
   border-color: var(--paper);
+}
+.ex-cell.link {
+  color: inherit;
+  text-decoration: none;
+}
+.ex-cell.link:hover {
+  background: var(--panel-3);
+  border-color: var(--hair-2);
+}
+.ex-sus {
+  padding: 0 4px;
+  border: 1px solid var(--hair-2);
+  margin-left: 6px;
+  color: var(--paper-2);
+}
+.ex-q {
+  font-size: 8.5px;
+  color: var(--paper-3);
+  letter-spacing: 0.08em;
 }
 .ex-cell.run {
   border-style: dashed;

@@ -200,7 +200,7 @@ export function reviewReducer(state, event) {
       return upsertTrail(next, { id: `sus-${p.suspect_id}-${event.sequence}`, kind: "suspect", status: p.status, text: p.title ?? p.code, detail: p.reason, at, seq: event.sequence });
     }
     case "sim_queued": {
-      const sim = { id: p.ref, label: p.label, kind: p.kind, quality: p.quality, suspect: p.suspect, change: null, status: "queued", pct: 0, step: "queued" };
+      const sim = { id: p.ref, label: p.label, kind: p.kind, quality: p.quality, suspect: p.suspect, hash: p.hash, change: null, status: "queued", pct: 0, step: "queued" };
       next = { ...next, sims: { ...next.sims, [p.ref]: sim } };
       return upsertTrail(next, { id: `sim-${p.ref}`, kind: "sim", simId: p.ref, text: p.label, state: "queued", pct: 0, at, seq: event.sequence });
     }
@@ -214,9 +214,9 @@ export function reviewReducer(state, event) {
     case "sim_done": {
       const sim = next.sims[p.ref] ?? { id: p.ref, label: p.label ?? p.ref, kind: p.kind };
       const trust = p.trust?.status ?? (p.ok ? "ok" : "failed");
-      const done = { ...sim, status: "done", pct: 1, measurements: p.measurements ?? {}, delta: p.delta ?? null, curve: p.curve ?? null, trust, ok: !!p.ok, meetsTarget: p.meets_target, evidence: p.evidence, solveS: p.solve_s };
+      const done = { ...sim, suspect: p.suspect ?? sim.suspect, hash: p.hash ?? sim.hash, quality: p.quality ?? sim.quality, status: "done", pct: 1, measurements: p.measurements ?? {}, delta: p.delta ?? null, curve: p.curve ?? null, trust, ok: !!p.ok, meetsTarget: p.meets_target, evidence: p.evidence, solveS: p.solve_s };
       next = { ...next, sims: { ...next.sims, [p.ref]: done } };
-      const exp = { id: p.ref, label: done.label, kind: done.kind, quality: p.quality, measurements: done.measurements, delta: done.delta, curve: done.curve, trust, ok: done.ok, meetsTarget: p.meets_target, evidence: p.evidence };
+      const exp = { id: p.ref, label: done.label, kind: done.kind, quality: p.quality, suspect: done.suspect, hash: done.hash, solveS: p.solve_s, measurements: done.measurements, delta: done.delta, curve: done.curve, trust, ok: done.ok, meetsTarget: p.meets_target, evidence: p.evidence };
       next = { ...next, experiments: [...next.experiments.filter((e) => e.id !== exp.id), exp] };
       return upsertTrail(next, { id: `sim-${p.ref}`, kind: "sim", simId: p.ref, text: done.label, state: "done", pct: 1, summary: done.measurements, at, seq: event.sequence });
     }

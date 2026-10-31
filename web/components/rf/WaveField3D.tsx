@@ -4,7 +4,7 @@ import { reducedMotion, STILL_PHASE } from "../../lib/hooks";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { buildLut, SIGNED_STOPS, FIELD_STOPS } from "../../lib/ramp.mjs";
-import type { FieldSlice, PulseData } from "../../lib/rf-data";
+import type { CurrentData, FieldSlice, PulseData } from "../../lib/rf-data";
 
 const vert = /* glsl */ `
 varying vec2 vUv;
@@ -124,6 +124,35 @@ export function PulsePlane3D({ pulse, y, frame, fadeOut = 1 }: { pulse: PulseDat
   const w = pulse.u[1] - pulse.u[0], h = pulse.v[1] - pulse.v[0];
   return (
     <mesh position={[(pulse.u[0] + pulse.u[1]) / 2, y, -(pulse.v[0] + pulse.v[1]) / 2]} rotation={[-Math.PI / 2, 0, 0]} material={mat} renderOrder={5}>
+      <planeGeometry args={[w, h]} />
+    </mesh>
+  );
+}
+
+/** Surface current on the top copper: |Js| on a heat ramp, transparent off copper. Sits just above the copper plane. */
+export function CurrentPlane3D({ data, y, glow = 1 }: { data: CurrentData; y?: number; glow?: number }) {
+  const lut = useMemo(() => lutTex(FIELD_STOPS), []);
+  const mat = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: vert,
+    fragmentShader: /* glsl */ `
+      varying vec2 vUv; uniform sampler2D uF; uniform sampler2D uLut; uniform float uGlow;
+      void main(){ float m = texture2D(uF, vUv).r; float s = pow(clamp(m,0.0,1.0), 0.62);
+        vec3 c = texture2D(uLut, vec2(s,0.5)).rgb * (0.9 + 0.5 * uGlow * s);
+        gl_FragColor = vec4(c, smoothstep(0.004, 0.05, m)); }`,
+    transparent: true, depthWrite: false, uniforms: { uF: { value: null }, uLut: { value: lut }, uGlow: { value: glow } },
+  }), [lut, glow]);
+  const tex = useMemo(() => {
+    const d = new Float32Array(data.nx * data.ny * 4);
+    for (let i = 0; i < data.nx * data.ny; i++) d[i * 4] = data.mag[i];
+    const t = new THREE.DataTexture(d, data.nx, data.ny, THREE.RGBAFormat, THREE.FloatType);
+    t.minFilter = t.magFilter = THREE.LinearFilter;
+    t.needsUpdate = true;
+    return t;
+  }, [data]);
+  useEffect(() => { mat.uniforms.uF.value = tex; return () => tex.dispose(); }, [tex, mat]);
+  const w = data.u[1] - data.u[0], h = data.v[1] - data.v[0];
+  return (
+    <mesh position={[(data.u[0] + data.u[1]) / 2, y ?? data.at_mm + 0.05, -(data.v[0] + data.v[1]) / 2]} rotation={[-Math.PI / 2, 0, 0]} material={mat} renderOrder={4}>
       <planeGeometry args={[w, h]} />
     </mesh>
   );

@@ -4,14 +4,15 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Board2D, type ActiveMarkItem, type FindingMeta, type FocusRequest, type Ghost, type Insets } from "../board2d/Board2D";
 import { DEFAULT_LAYERS, LAYER_TOGGLES, type LayerState } from "../board2d/layers";
-import { WaveField3D } from "../rf/WaveField3D";
+import { CurrentPlane3D, WaveField3D } from "../rf/WaveField3D";
 import { CurrentCanvas2D, FieldCanvas2D } from "../rf/FieldCanvas2D";
 import { Icon } from "../ui/icons";
 import type { Board } from "../../lib/types";
 import type { Zone as FunctionZone } from "../../lib/api";
 import { useScene } from "../board2d/useScene";
 import type { SceneInfo } from "../../lib/api";
-import type { RfBundle } from "../../lib/rf-data";
+import type { StageRf } from "../../lib/sims";
+import { QUALITY_NOTE } from "../../lib/sims";
 
 const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false, loading: () => <div className="stage-loading mono idx">LOADING 3D BOARD</div> });
 
@@ -44,7 +45,7 @@ export function BoardStage({
 }: {
   scene?: SceneInfo | null; zones?: FunctionZone[]; onAsk?: (id: string) => void; toolbarTop?: number;
   board: Board; glbUrl: string | null; marks: ActiveMarkItem[]; meta: Record<string, FindingMeta>; selectedId: string | null; onSelect: (id: string | null) => void;
-  insets: Insets; focus?: FocusRequest | null; spotlight?: { targets: string[]; nonce: number } | null; rf?: RfBundle | null; ghost?: Ghost | null;
+  insets: Insets; focus?: FocusRequest | null; spotlight?: { targets: string[]; nonce: number } | null; rf?: StageRf | null; ghost?: Ghost | null;
   pickedId?: string | null; onPick?: (id: string | null) => void; initialMode?: StageMode; toolbarOffset?: number; rfAvailable?: boolean; initialExplode?: number;
 }) {
   const [mode, setMode] = useState<StageMode>(initialMode);
@@ -62,13 +63,13 @@ export function BoardStage({
     if (!rf || (!layers.rf && !layers.heat)) return undefined;
     return () => (
       <>
-        {layers.heat && rf.current && <CurrentCanvas2D data={rf.current} />}
+        {layers.heat && rf.current && <CurrentCanvas2D data={rf.current} opacity={0.8} />}
         {layers.rf && rf.fieldXY && <FieldCanvas2D slice={rf.fieldXY} />}
       </>
     );
   }, [rf, layers.rf, layers.heat]);
 
-  const toggles = mode === "2d" ? LAYER_TOGGLES : LAYER_TOGGLES.filter((t) => ["issues", "regions", "rf"].includes(t.key));
+  const toggles = mode === "2d" ? LAYER_TOGGLES : LAYER_TOGGLES.filter((t) => ["issues", "regions", "rf", "heat"].includes(t.key));
 
   return (
     <div className="stage">
@@ -84,11 +85,20 @@ export function BoardStage({
           board={board} glbUrl={glbUrl} marks={layers.issues ? marks.filter((m) => m.mark.type !== "region" || layers.regions) : []} meta={meta} selectedId={selectedId} onSelect={onSelect}
           explode={explode} view3d={view3d} focus={focus} insets={insets} pickedId={pickedId} onPick={onPick}
         >
-          {layers.rf && rf?.fieldXY && <WaveField3D slice={rf.fieldXY} y={2.4} lift={explode * 20} />}
+          {layers.heat && rf?.current && <CurrentPlane3D data={rf.current} y={1.62 + explode * 9} />}
+          {layers.rf && rf?.fieldXY && <WaveField3D slice={rf.fieldXY} y={rf.fieldXY.at_mm} lift={explode * 20} />}
           {layers.rf && rf?.fieldXZ && <WaveField3D slice={rf.fieldXZ} />}
         </Scene3D>
       ) : (
         <div className="stage-loading mono idx">NO 3D MODEL FOR THIS VERSION</div>
+      )}
+      {rf && (layers.rf || layers.heat) && (
+        <div className="stage-rfchip hair panel mono" style={{ left: insets.l + 12, bottom: insets.b + (pick ? 76 : 12) }} role="status">
+          <span className="idx">{layers.rf && layers.heat ? "FIELD + CURRENT" : layers.heat ? "SURFACE CURRENT" : "FIELD"}</span>
+          <span>{rf.job.ref ?? ""} {rf.job.label ?? "solver run"}{rf.f_hz ? `, at ${(rf.f_hz / 1e9).toFixed(3)} GHz` : ""}</span>
+          {rf.job.quality === "screen" && <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span>}
+          {rf.sample && <span className="stamp fixture">Bundled sample run</span>}
+        </div>
       )}
       {pick && pickedId && (
         <div className="pick-chip hair panel" style={{ left: insets.l + 12, bottom: insets.b + 12 }} role="status">
@@ -104,7 +114,7 @@ export function BoardStage({
         </div>
         <span className="vr" />
         {toggles.filter((t) => (t.key !== "rf" && t.key !== "heat") || rfAvailable).map((t) => (
-          <button key={t.key} className="tog" aria-pressed={layers[t.key]} onClick={() => toggle(t.key)}><i />{t.label}</button>
+          <button key={t.key} className="tog" title={t.key === "rf" ? "Solver field on the board" : t.key === "heat" ? "Surface current on the copper" : undefined} aria-pressed={layers[t.key]} onClick={() => toggle(t.key)}><i />{t.label}</button>
         ))}
         {mode === "3d" && (
           <>

@@ -3,6 +3,7 @@ import { reducedMotion, STILL_PHASE } from "../../lib/hooks";
 import { useEffect, useRef } from "react";
 import { buildLut, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
 import type { CurrentData, FieldSlice, PulseData } from "../../lib/rf-data";
+import { boardYRange } from "../../lib/sim-math.mjs";
 
 const signedLut = buildLut(SIGNED_STOPS);
 const fieldLut = buildLut(FIELD_STOPS);
@@ -41,12 +42,12 @@ export function FieldCanvas2D({ slice, period = 3.4, opacity = 0.9, paused }: { 
   return (
     <canvas
       ref={ref} width={slice.nx} height={slice.ny}
-      style={{ position: "absolute", left: slice.u[0], top: -slice.v[1], width: slice.u[1] - slice.u[0], height: slice.v[1] - slice.v[0], transform: "scaleY(-1)", mixBlendMode: "screen" }}
+      style={{ position: "absolute", left: slice.u[0], top: boardYRange(slice.v)[0], width: slice.u[1] - slice.u[0], height: slice.v[1] - slice.v[0], transform: "scaleY(-1)", mixBlendMode: "screen" }}
     />
   );
 }
 
-/** Surface current heat over copper (|Js| / scale). */
+/** Surface current heat over copper (|Js| / scale). Rows are flipped by the CSS scaleY(-1): row 0 is the largest board y. */
 export function CurrentCanvas2D({ data, opacity = 1 }: { data: CurrentData; opacity?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -61,7 +62,7 @@ export function CurrentCanvas2D({ data, opacity = 1 }: { data: CurrentData; opac
     }
     ctx.putImageData(img, 0, 0);
   }, [data, opacity]);
-  return <canvas ref={ref} width={data.nx} height={data.ny} style={{ position: "absolute", left: data.u[0], top: -data.v[1], width: data.u[1] - data.u[0], height: data.v[1] - data.v[0], transform: "scaleY(-1)" }} />;
+  return <canvas ref={ref} width={data.nx} height={data.ny} style={{ position: "absolute", left: data.u[0], top: boardYRange(data.v)[0], width: data.u[1] - data.u[0], height: data.v[1] - data.v[0], transform: "scaleY(-1)" }} />;
 }
 
 /** One pulse frame in board millimetres. */
@@ -80,5 +81,5 @@ export function PulseCanvas2D({ pulse, frame }: { pulse: PulseData; frame: numbe
     }
     ctx.putImageData(img, 0, 0);
   }, [pulse, frame]);
-  return <canvas ref={ref} width={pulse.nx} height={pulse.ny} style={{ position: "absolute", left: pulse.u[0], top: -pulse.v[1], width: pulse.u[1] - pulse.u[0], height: pulse.v[1] - pulse.v[0], transform: "scaleY(-1)", mixBlendMode: "screen" }} />;
+  return <canvas ref={ref} width={pulse.nx} height={pulse.ny} style={{ position: "absolute", left: pulse.u[0], top: boardYRange(pulse.v)[0], width: pulse.u[1] - pulse.u[0], height: pulse.v[1] - pulse.v[0], transform: "scaleY(-1)", mixBlendMode: "screen" }} />;
 }

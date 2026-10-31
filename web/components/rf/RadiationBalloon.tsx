@@ -11,8 +11,8 @@ import type { PatternData } from "../../lib/rf-data";
  * Antenna-local axes: theta from +z (up), phi from +x toward +y (scenario axes).
  * Scene mapping: scenario (x, y, z) -> scene (x, z, -y).
  */
-export function RadiationBalloon({ pattern, center, scale = 28, spin = false }: {
-  pattern: PatternData; center: [number, number, number]; scale?: number; spin?: boolean;
+export function RadiationBalloon({ pattern, center, scale = 28, spin = false, rangeDb = 28, colorDb = rangeDb, refDbi }: {
+  pattern: PatternData; center: [number, number, number]; scale?: number; spin?: boolean; /** dynamic range shown below the peak: radius follows this window */ rangeDb?: number; /** the window the colour ramp spans (defaults to the radius window) */ colorDb?: number; /** the dBi the windows are measured down from; the pattern's own peak when absent. Give two balloons the same value to compare them. */ refDbi?: number;
 }) {
   const ref = useRef<THREE.Group>(null);
   const { geo, maxPos } = useMemo(() => {
@@ -23,12 +23,14 @@ export function RadiationBalloon({ pattern, center, scale = 28, spin = false }: 
     for (let a = 0; a < nt; a++) {
       for (let b = 0; b < np; b++) {
         const d = pattern.dir_dbi[a][b];
-        const t = Math.max(0, Math.min(1, (d - (pattern.dmax_dbi - 28)) / 28));
-        const r = scale * Math.pow(t, 1.1) + 0.5;
+        const top = refDbi ?? pattern.dmax_dbi;
+        const t = Math.max(0, Math.min(1, (d - (top - rangeDb)) / rangeDb));
+        const r = scale * (0.1 + 0.9 * Math.pow(t, 1.25));
         const T = (th[a] * Math.PI) / 180, P = (ph[b] * Math.PI) / 180;
         const sx = r * Math.sin(T) * Math.cos(P), sy = r * Math.sin(T) * Math.sin(P), sz = r * Math.cos(T);
         pos.push(sx, sz, -sy);
-        const [cr, cg, cb] = sample(FIELD_STOPS, 0.04 + 0.96 * t);
+        const tc = Math.max(0, Math.min(1, (d - (top - colorDb)) / colorDb));
+        const [cr, cg, cb] = sample(FIELD_STOPS, 0.04 + 0.96 * tc);
         col.push(cr / 255, cg / 255, cb / 255);
         if (a === Math.round(pattern.dmax_theta_deg / (th[1] - th[0])) && b === Math.round(pattern.dmax_phi_deg / (ph[1] - ph[0]))) mx = new THREE.Vector3(sx, sz, -sy);
       }
@@ -43,7 +45,7 @@ export function RadiationBalloon({ pattern, center, scale = 28, spin = false }: 
     g.setIndex(idx);
     g.computeVertexNormals();
     return { geo: g, maxPos: mx };
-  }, [pattern, scale]);
+  }, [pattern, scale, rangeDb, colorDb, refDbi]);
   useFrame((_, dt) => { if (spin && !reducedMotion() && ref.current) ref.current.rotation.y += dt * 0.25; });
   return (
     <group ref={ref} position={center}>

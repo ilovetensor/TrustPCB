@@ -68,3 +68,16 @@
   color: var(--paper-3);
   font-size: 12px;
 }
+
+.stage-rfchip {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  font-size: 11px;
+  color: var(--paper-2);
+  max-width: min(640px, 60vw);
+  flex-wrap: wrap;
+}
