@@ -6,6 +6,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { ApiError, createProject, FIXTURE_MODE, getProject, getVersion, startReview, uploadVersion, type Depth, type Goal, type VersionInfo } from "../../lib/api";
 import { DemoNotice, Icon, Panel, TopBar } from "../ui";
 import { useAppEnv } from "../../lib/demo";
+import { buildGoal, depthNote } from "../../lib/goal.mjs";
 
 const DEPTHS: { id: Depth; label: string; note: string }[] = [
   { id: "quick", label: "Quick", note: "About 6 min. KiCad checks and an open review. No simulation." },
@@ -24,14 +25,6 @@ function inspect(files: File[]): Picked {
 }
 
 const bandText = (d: VersionInfo["detection"]) => (d?.band ? `${d.band.low_ghz} to ${d.band.high_ghz} GHz` : "");
-function parseBand(text: string): [number, number] | undefined {
-  const m = text.match(/(\d+(?:\.\d+)?)\s*(?:to|-|–)\s*(\d+(?:\.\d+)?)\s*(GHz|MHz)?/i);
-  if (!m) return undefined;
-  const k = /mhz/i.test(m[3] ?? "") ? 1e6 : 1e9;
-  const lo = parseFloat(m[1]) * k, hi = parseFloat(m[2]) * k;
-  return hi > lo ? [lo, hi] : undefined;
-}
-
 function UploadInner() {
   const { demo } = useAppEnv();
   const router = useRouter();
@@ -97,13 +90,7 @@ function UploadInner() {
     if (!version) return;
     setStarting(true);
     setError(null);
-    const goal: Goal = {};
-    if (purpose.trim()) goal.purpose = purpose.trim();
-    const b = parseBand(band);
-    if (b) goal.band_hz = b;
-    const t = parseFloat(target);
-    if (Number.isFinite(t)) goal.target_s11_db = t;
-    if (focus.trim()) goal.focus = focus.trim();
+    const goal: Goal = buildGoal({ purpose, band, target, focus, wireless: version.detection?.wireless });
     setBusyProject(null);
     try {
       const r = await startReview(version.id, goal, depth);
@@ -116,6 +103,7 @@ function UploadInner() {
   };
 
   const d = version?.detection;
+  const noRadio = !!d && !d.wireless;
   const st = version?.stackup;
   const uploading = progress !== null;
   const ready = !!picked && (!!picked.pcb || picked.zip);
@@ -215,16 +203,20 @@ function UploadInner() {
 
           <Panel className="card" title="What must this board do?">
             <div>
-              <div className="field"><label className="idx" htmlFor="g1">What the board does</label><input id="g1" type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Battery Bluetooth sensor" disabled={!version} /></div>
-              <div className="field"><label className="idx" htmlFor="g2">Band to tune for</label><input id="g2" type="text" value={band} onChange={(e) => setBand(e.target.value)} placeholder="2.4 to 2.4835 GHz" disabled={!version} /></div>
-              <div className="field"><label className="idx" htmlFor="g4">S11 target (dB)</label><input id="g4" type="text" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} disabled={!version} /></div>
-              <div className="field"><label className="idx" htmlFor="g3">Focus</label><input id="g3" type="text" value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Is the antenna OK?" disabled={!version} /></div>
+              <div className="field"><label className="idx" htmlFor="g1">What the board does</label><input id="g1" type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={noRadio ? "USB powered 3.3 V sensor" : "Battery Bluetooth sensor"} disabled={!version} /></div>
+              {noRadio
+                ? <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }} data-testid="no-radio-note">No radio part or antenna was found, so there is no band or S11 target to set. The review covers the rules and the layout.</p>
+                : <>
+                  <div className="field"><label className="idx" htmlFor="g2">Band to tune for</label><input id="g2" type="text" value={band} onChange={(e) => setBand(e.target.value)} placeholder="2.4 to 2.4835 GHz" disabled={!version} /></div>
+                  <div className="field"><label className="idx" htmlFor="g4">S11 target (dB)</label><input id="g4" type="text" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} disabled={!version} /></div>
+                </>}
+              <div className="field"><label className="idx" htmlFor="g3">Focus</label><input id="g3" type="text" value={focus} onChange={(e) => setFocus(e.target.value)} placeholder={noRadio ? "Is the power path OK?" : "Is the antenna OK?"} disabled={!version} /></div>
               <div className="field">
                 <span className="idx">Review depth</span>
                 <div className="seg" role="group" aria-label="Review depth" style={{ width: "100%" }}>
                   {DEPTHS.map((x) => (<button key={x.id} style={{ flex: 1 }} aria-pressed={depth === x.id} onClick={() => setDepth(x.id)}>{x.label}</button>))}
                 </div>
-                <span className="dim" style={{ fontSize: 12 }}>{DEPTHS.find((x) => x.id === depth)!.note}</span>
+                <span className="dim" style={{ fontSize: 12 }}>{depthNote(DEPTHS.find((x) => x.id === depth)!.note, depth, d?.wireless)}</span>
               </div>
               <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }}>The agent does not stop to ask questions mid-review. Fields lock when it starts.</p>
               {error && <p className="chat-err" role="alert" style={{ margin: "0 0 12px" }} data-testid="start-error">{error}{busyProject && <> <Link href={`/projects/${busyProject}`} className="signal">Open the board</Link> to see or stop the running review.</>}</p>}

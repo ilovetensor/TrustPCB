@@ -273,3 +273,17 @@ test("whatif_ready keeps the ghost the server sent", () => {
   assert.equal(s.followup.whatif.ghost.ring.length, 4);
   assert.equal(s.followup.whatif.label, "What-if, not your board");
 });
+
+test("skipped phases keep the server's reason, with a capital letter, for the investigation view", () => {
+  let s = initialReviewState();
+  s = reviewReducer(s, ev(1, "phase_changed", { phase: 6, name: "report", previous: 3, skipped: [
+    { phase: 4, name: "investigate", reason: "no wireless part or antenna was found on this board" },
+    { phase: 5, name: "confirm", reason: "No investigation found an improvement to confirm." }] }));
+  assert.deepEqual(s.skipped.map((x) => x.phase), [4, 5]);
+  assert.equal(s.skipped[0].reason, "No wireless part or antenna was found on this board");
+  const row = s.trail.find((e) => e.text === "Skipped investigate");
+  assert.equal(row.detail, "No wireless part or antenna was found on this board");
+  assert.deepEqual(initialReviewState().skipped, []);
+  const src = fs.readFileSync(new URL("../components/workspace/InvestigationBoard.tsx", import.meta.url), "utf8");
+  assert.match(src, /data-testid="no-investigation"/, "the board explains a skipped investigation instead of promising one");
+});

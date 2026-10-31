@@ -117,10 +117,16 @@ CONFIGS: dict[str, BudgetConfig] = {
 }
 
 
-def config_for(depth: str) -> BudgetConfig:
+def config_for(depth: str, simulatable: bool = True) -> BudgetConfig:
+    """The budget of a depth. A board the RF lab cannot simulate (no radio, a chip antenna) gets no solver time,
+    investigations or confirm runs, so the progress panel does not show a solver limit that can never be used."""
     if depth not in CONFIGS:
         raise ValueError(f'Review depth must be one of {", ".join(DEPTHS)}')
-    return CONFIGS[depth]
+    config = CONFIGS[depth]
+    if simulatable or not config.solver_s:
+        return config
+    return replace(config, solver_s=0, investigations=0, experiments_per_investigation=0, confirm_runs=0, refine_rounds=0,
+                   full_investigation=False, phase_calls={**config.phase_calls, 4: 0, 5: 0})
 
 
 FOLLOWUP_LEVELS = ('answer', 'check', 'test')

@@ -21,6 +21,7 @@ import { VersionChange as VersionChangeCard } from "../rf/VersionChange";
 import { ChatDock, type SelectedChip } from "./Chat";
 import { Experiments, type Band } from "./Experiments";
 import { FindingsPanel } from "./Findings";
+import { simulationsNote } from "../../lib/rf-note.mjs";
 import { RunProgress } from "./RunProgress";
 import { Sidebar, VIEWS, type NavEntry, type ViewId } from "./Sidebar";
 import { Trail } from "./Trail";
@@ -142,7 +143,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
 
   const goalBand = meta?.goal?.band_hz ?? (state.brief?.wireless?.band_hz as [number, number] | undefined);
   const band: Band | null = goalBand ? { lo_ghz: goalBand[0] / 1e9, hi_ghz: goalBand[1] / 1e9, target_db: meta?.goal?.target_s11_db ?? -10 } : null;
-  const rfNote = meta?.rf && meta.rf.status === "not_tested" ? `Not tested. ${meta.rf.reason ?? ""}`.trim() : null;
+  const rfNote = simulationsNote(meta?.rf);
   const pendingApproval = Object.values(state.requests).some((r) => r.status === "pending");
   const topFinding = state.findingOrder.map((id) => state.findings[id]).find((f) => f && f.status !== "dismissed");
   const suggest = topFinding

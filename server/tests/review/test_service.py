@@ -69,6 +69,8 @@ async def test_phase_four_is_skipped_when_rf_is_not_simulatable(env):
     snapshot = env.store.latest_report_revision(review['id'])['snapshot']
     assert snapshot['rf']['status'] == 'not_tested' and 'chip antenna' in snapshot['rf']['reason']
     assert any('Phase 4' in t for t in snapshot['not_tested'])
+    budget = env.events(review['chat_id'], 'budget')[-1]['payload']
+    assert budget['solver_s']['limit'] == 0 and budget['investigations']['limit'] == 0       # no solver limit is shown for a board that cannot be simulated
 
 
 async def test_looping_agent_is_stopped_by_the_server(env):
@@ -221,3 +223,16 @@ async def test_datasheet_numbers_can_be_quoted_and_datasheet_text_is_data(env):
 async def test_every_duplicate_is_counted_in_the_budget_events(env):
     review = await env.review(SCRIPTS / 'looping_agent.json')
     assert env.events(review['chat_id'], 'budget')[-1]['payload']['duplicates'] == 3
+
+
+def test_a_long_closing_thought_is_cut_at_a_line_or_word_never_inside_one():
+    from trustpcb.review.session import clip_text
+    short = 'A short note.'
+    assert clip_text(short, 100) == short
+    lines = '\n'.join(f'- Widen the track number {i} to the class width.' for i in range(60))
+    out = clip_text(lines, 300)
+    assert len(out) <= 300 and out.endswith('…') and out[:-2].endswith('width.')
+    words = ' '.join(['relaxation'] * 200)
+    out = clip_text(words, 100)
+    assert len(out) <= 100 and out[:-2].endswith('relaxation')
+    assert clip_text('x' * 500, 100).endswith('…') and len(clip_text('x' * 500, 100)) <= 100

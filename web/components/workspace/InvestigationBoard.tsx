@@ -85,10 +85,13 @@ export function InvestigationBoard({ state, story, tests = [] }: { state: Review
   const sims: (Test & { suspect?: string })[] = [...live, ...tests.filter((t) => !live.some((x) => x.id === t.id))].sort((a, b) => (parseInt(String(a.id).replace(/\D/g, "")) || 0) - (parseInt(String(b.id).replace(/\D/g, "")) || 0));
   const invs = state.investigationOrder.map((id) => state.investigations[id] as Investigation);
   const clearedTotal = state.cleared.reduce((n, c) => n + c.count, 0);
-  if (!invs.length && !state.cleared.length)
+  // a finished review that skipped the investigation says why, instead of promising a board that will never fill
+  const noInvestigation = state.skipped.find((x) => x.phase === 4);
+  if (!invs.length && !state.cleared.length && !noInvestigation)
     return <p className="empty">The board fills in when the agent opens an investigation: each suspect, what was tested on it, and the verdict. Nothing is shown before then.</p>;
   return (
     <div className="ib">
+      {!invs.length && noInvestigation && <p className="empty" data-testid="no-investigation">No investigation was run. {noInvestigation.reason}{/[.!?]$/.test(noInvestigation.reason) ? "" : "."}</p>}
       {invs.map((inv) => {
         const tally = { ruled_out: 0, confirmed: 0, inconclusive: 0, other: 0 } as Record<string, number>;
         inv.suspects.forEach((s) => { tally[s.status in tally ? s.status : "other"]++; });

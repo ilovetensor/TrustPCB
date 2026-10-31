@@ -200,7 +200,7 @@ def deterministic_summary(store, review_id: str, end_state: str, end_reason: str
         lines.append('Not reviewed: ' + ', '.join(f'{g["rule"]} ({g["count"]})' for g in extra['unreviewed'][:6]) + '.')
     if end_state != 'complete':
         lines.append(f'The review ended early ({end_reason.replace("_", " ")}), so the checks that were not reached are listed as not tested.')
-    if rf_status == 'not_tested':
+    if rf_status == 'not_tested' and extra.get('rf_kind') != 'none':        # a board with no radio has no antenna tuning to be unsure about
         lines.append('RF behaviour was not tested: no simulation ran, so statements about antenna tuning are engineering opinion.')
     actions, seen = [], set()
     if win:
@@ -330,7 +330,7 @@ class ReviewRun:
     async def agent(self, review: dict, version: dict, previous: dict | None) -> None:
         ctx, store = self.ctx, self.store
         depth = review['depth']
-        config = config_for(depth)
+        config = config_for(depth, bool(self.rf.get('simulatable')))
         goal = review['goal'] or {}
         session = ReviewSession(store=store, lab=self.lab, ctx=ctx, review=review, board=self.board, clock=self.clock, config=config, goal=goal,
                                 rf=self.rf, previous=previous, poll_s=self.poll_s)
@@ -455,7 +455,7 @@ class ReviewRun:
                                  'skipped': list(session.refine.skipped), 'open_when_ended': session.refine.active}
         summary['unreviewed_groups'] = unreviewed
         summary['summary'] = agent_summary or deterministic_summary(store, self.review_id, end_state, reason, rf_status,
-                                                                    extra={'brief': summary.get('brief'), 'dismissals': summary.get('dismissals'), 'unreviewed': unreviewed,
+                                                                    extra={'brief': summary.get('brief'), 'dismissals': summary.get('dismissals'), 'unreviewed': unreviewed, 'rf_kind': (summary.get('rf') or {}).get('kind'),
                                                                     'target_db': ev.target_db(review.get('goal') or {}, summary.get('rf') or {}),
                                                                     'version_changes': _safe_changes(store, self.review_id),
                                                                     'version_change': _safe_change(store, self.review_id)})
