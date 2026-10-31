@@ -263,9 +263,14 @@ table{border-collapse:collapse;width:100%;margin:8px 0}th,td{text-align:left;pad
 .card{border:1px solid #d7dbe0;border-radius:8px;padding:14px 16px;margin:14px 0;break-inside:avoid}.card h3{margin-top:0}.notice{border-left:4px solid #ff9f1a;background:#fff8ec;padding:8px 12px;margin:12px 0}
 .changes{border-left:4px solid #22a3d6;background:#eef8fd;padding:8px 12px;margin:12px 0}svg.board{width:100%;height:auto;border:1px solid #d7dbe0;border-radius:6px;background:#fff}
 .counts span{margin-right:8px}td.n,table.vc th{white-space:nowrap}ul{padding-left:20px;margin:4px 0}code{font-family:ui-monospace,Menlo,monospace;font-size:13px}.small{font-size:13px}
-.power{margin:12px 0}.power>div{display:grid;grid-template-columns:minmax(0,190px) 1fr 58px;gap:10px;align-items:center;margin:6px 0;font-size:13px}.power i{height:14px;background:#e6e9ed;display:block}
-.power b{display:block;height:100%;background:#1c2024;print-color-adjust:exact;-webkit-print-color-adjust:exact}.power strong{text-align:right;font-family:ui-monospace,Menlo,monospace}
-@media print{main{padding:0}h2{break-after:avoid}}
+.power{margin:12px 0}.power>div{display:grid;grid-template-columns:minmax(0,190px) 1fr 58px;gap:10px;align-items:center;margin:6px 0;font-size:13px}
+.power i{position:relative;display:block;height:14px;background:#eef0f2;box-shadow:inset 0 0 0 1px #c8ced5;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+.power i::after{content:"";position:absolute;top:-2px;bottom:-2px;left:0;right:0;pointer-events:none;print-color-adjust:exact;-webkit-print-color-adjust:exact;background:linear-gradient(#7d8590,#7d8590) 25% 0/1px 100% no-repeat,linear-gradient(#7d8590,#7d8590) 50% 0/1px 100% no-repeat,linear-gradient(#7d8590,#7d8590) 75% 0/1px 100% no-repeat}
+.power b{position:relative;display:block;height:100%;background:#1c2024;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+.power b.before{background:repeating-linear-gradient(135deg,#3b424a 0 1.5px,transparent 1.5px 4.5px)}
+.power b.now::after{content:"";position:absolute;right:-1px;top:-3px;bottom:-3px;width:2px;background:#ff4a1c;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+.power strong{text-align:right;font-family:ui-monospace,Menlo,monospace}
+@media print{body{font-size:14px;line-height:1.45}main{padding:0}th,td{padding:4px 8px}h2{margin-top:28px}h2,h3,.card h3+p,.card p:has(+ul){break-after:avoid}h2,h3{break-inside:avoid}.card{break-inside:auto}.card.keep,svg.board,img,tr,li,.power,.notice,.changes{break-inside:avoid}svg.board{max-height:120mm}svg.board[width]{display:block;width:auto;max-width:100%;margin:0 auto}table.vc td:first-child{width:36%}table.metrics,table.metrics tbody{display:block}table.metrics tbody{display:grid;grid-template-columns:1fr auto 1fr auto}table.metrics tr{display:contents}table.metrics tr:nth-child(even) td:first-child{padding-left:28px}table.metrics td.n{text-align:right}}
 '''
 
 
@@ -333,7 +338,8 @@ def power_bars(caption: str, rows: list[tuple[str, Any]]) -> str:
     """Accepted power as bars, one per (label, percent). Empty when a value is missing."""
     if any(pct is None for _, pct in rows):
         return ''
-    bars = ''.join(f'<div><span>{esc(label)}</span><i><b style="width:{min(max(float(pct), 0), 100):g}%"></b></i><strong>{float(pct):g} %</strong></div>' for label, pct in rows)
+    # The first row is the earlier value (hatched); the rest are the improved value (solid, with a marker at the end of the fill).
+    bars = ''.join(f'<div><span>{esc(label)}</span><i><b class="{"before" if i == 0 else "now"}" style="width:{min(max(float(pct), 0), 100):g}%"></b></i><strong>{float(pct):g} %</strong></div>' for i, (label, pct) in enumerate(rows))
     return f'<div class="power"><p class="small muted">{esc(caption)}</p>{bars}</div>'
 
 
@@ -347,7 +353,7 @@ def render_headline(h: dict) -> str:
     if base.get('accepted_power_mean_pct') is not None and best.get('accepted_power_mean_pct') is not None:
         rows.append(('Accepted power, mean across the band', f'{base["accepted_power_mean_pct"]} %', f'{best["accepted_power_mean_pct"]} %'))
     table = '<table><tr><th></th><th>Confirmed base</th><th>Best confirm-quality parts</th></tr>' + ''.join(f'<tr><td>{esc(a)}</td><td class="n">{esc(b)}</td><td class="n">{esc(c)}</td></tr>' for a, b, c in rows) + '</table>'
-    return ('<div class="card"><h2 style="margin-top:0;border:0">Improved, target not met</h2>'
+    return ('<div class="card keep"><h2 style="margin-top:0;border:0">Improved, target not met</h2>'
             f'<p>{pill("cls-simulated", "partial win")} Confirm improves the worst S11 in the band by {esc(h.get("gain_db"))} dB, and the tuning target'
             f'{" of " + esc(format(h["target_db"], "g")) + " dB" if h.get("target_db") is not None else ""} is not met.</p>'
             f'<p><strong>Parts to try, in your own tool:</strong> {esc(h["parts_text"])}.</p>{bars}{table}'
@@ -381,7 +387,7 @@ def render_version_change(vc: dict) -> str:
             badges += ' ' + (pill('cls-simulated', 'Same solver run, new parts') if vc.get('consistent') else pill('sev-high', 'Same solver run, not consistent'))
     badges += ' ' + (pill('cls-measured', 'Target met') if vc['target_met'] else pill('sev-medium', 'Target not met'))
     bars = power_bars('Accepted power as built, worst point of the band', [(f'Version {a}', frm.get('accepted_power_worst_pct')), (f'Version {b}', to.get('accepted_power_worst_pct'))])
-    return (f'<div class="card"><h2 style="margin-top:0;border:0">Compared with version {esc(a)}</h2><p>{badges}</p><p>{esc(vc["text"])}</p>{bars}{table}'
+    return (f'<div class="card keep"><h2 style="margin-top:0;border:0">Compared with version {esc(a)}</h2><p>{badges}</p><p>{esc(vc["text"])}</p>{bars}{table}'
             '<p class="small muted">Accepted power is 100 x (1 - |S11|^2) per frequency: a mismatch figure only, not radiated power or efficiency. '
             f'Both results are confirm-quality simulations of the board as built (evidence {esc(frm.get("evidence"))} and {esc(to.get("evidence"))}). '
             + ('Version ' + esc(b) + ' was finalised from the same solver run as version ' + esc(a) + ', with its own matching parts: it is consistent with the prediction, not an independent result. ' if prediction and not vc.get('independent_check') and vc.get('applied') is not False else '')
@@ -576,7 +582,7 @@ def render_rf(rf: dict, images: dict | None = None) -> str:
         parts.append(f'<div class="card"><h3>{esc(title)} ({esc(item["code"])})</h3>')
         if item.get('curve'):
             parts.append(curve_svg(item['curve'], rf.get('band_hz'), target))
-        parts.append('<table>' + ''.join(f'<tr><td>{esc(k.replace("_", " "))}</td><td class="n">{esc(measurement_text(v))}</td></tr>' for k, v in (item.get('measurements') or {}).items()) + '</table></div>')
+        parts.append('<table class="metrics">' + ''.join(f'<tr><td>{esc(k.replace("_", " "))}</td><td class="n">{esc(measurement_text(v))}</td></tr>' for k, v in (item.get('measurements') or {}).items()) + '</table></div>')
     if rf.get('meets_target') is not None:
         parts.append(f'<p>Target ({esc(target)} dB across the band): {pill("cls-measured" if rf["meets_target"] else "sev-high", "met" if rf["meets_target"] else "not met")}</p>')
     if rf.get('screen_runs'):
