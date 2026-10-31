@@ -27,6 +27,10 @@ export function initialReviewState(mode = "review") {
     findingOrder: [],
     marks: [], // loose marks not tied to a finding (marks_changed with finding_id null)
     brief: null,
+    /** the bounded second attempt after a confirm that missed the target: phase stays 5, substep refine */
+    refine: null,
+    /** analyzer results the agent judged harmless: [{rule, count, reason}] */
+    cleared: [],
     candidates: { total: 0, reviewed: 0, byRule: {} },
     investigations: {},
     investigationOrder: [],
@@ -95,6 +99,9 @@ export function toolLabel(tool) {
   return TOOL_LABELS[t] ?? t.replace(/_/g, " ");
 }
 
+/** "Refine round 2: ..." is a suspect added by a refine round. */
+export const roundOf = (title) => { const m = /^Refine round (\d+)/i.exec(title ?? ""); return m ? Number(m[1]) : undefined; };
+
 const TERMINAL_STATUS = { completed: "complete", failed: "failed", canceled: "canceled" };
 
 /** Readable text of a tool_result's content, for the trail detail. */
@@ -122,23 +129,52 @@ export function reviewReducer(state, event) {
       return next;
     }
     case "phase_changed": {
-      next = { ...next, status: "running", phase: p.phase };
-      next = upsertTrail(next, { id: `phase-${p.phase}-${event.sequence}`, kind: "phase", phase: p.phase, text: p.label ?? PHASES[p.phase]?.label ?? p.name ?? "", at, seq: event.sequence });
+      // A refine round keeps the phase at 5 (events stay forward-only) and says so in `substep`.
+      const refine = p.substep === "refine" ? { round: p.round ?? 1, rounds: p.rounds ?? null, investigation: p.investigation ?? null } : null;
+      next = { ...next, status: "running", phase: p.phase, refine };
+      const label = refine ? `Refine round ${refine.round}${refine.rounds ? ` of ${refine.rounds}` : ""}` : p.label ?? PHASES[p.phase]?.label ?? p.name ?? "";
+      next = upsertTrail(next, { id: `phase-${p.phase}-${event.sequence}`, kind: "phase", phase: p.phase, substep: refine ? "refine" : undefined, round: refine?.round, text: label, at, seq: event.sequence });
       for (const s of p.skipped ?? [])
         next = upsertTrail(next, { id: `skip-${s.phase}-${event.sequence}`, kind: "result", text: `Skipped ${s.name ?? PHASES[s.phase]?.label}`, detail: s.reason, at, seq: event.sequence });
       return next;
     }
     case "budget":
       return { ...next, budget: { ...(next.budget ?? {}), ...p } };
-    case "thought":
+    case "thought": {
+      if (thread) {
+        // The thread's reply normally arrives as text_delta. A reply that only exists as a thought still has to be readable.
+        const f = next.followup;
+        if (p.text && !f.messages.some((m) => m.role === "agent" && m.turn === event.turn_id))
+          return { ...next, followup: { ...f, messages: [...f.messages, { id: `m-${event.sequence}`, role: "agent", turn: event.turn_id, text: p.text, closed: true }] } };
+        return next;
+      }
       return upsertTrail(next, { id: `th-${event.sequence}`, kind: "thought", text: p.text, phase: p.phase ?? next.phase, at, seq: event.sequence });
+    }
     case "tool_start": {
       const id = `tool-${p.tool_call_id ?? event.sequence}`;
-      return upsertTrail(next, { id, kind: "tool", tool: p.name, text: p.trail ?? toolLabel(p.name), state: "running", phase: next.phase, at, seq: event.sequence });
+      if (thread) {
+        // Text before a working tool is narration. The reply is what is written after the last one, or what end_followup streams.
+        const msgs = next.followup.messages.slice();
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === "agent" && !last.closed && last.turn === event.turn_id) {
+          msgs[msgs.length - 1] = { ...last, closed: true, narration: p.name !== "end_followup" };
+          next = { ...next, followup: { ...next.followup, messages: msgs } };
+        }
+      }
+      return upsertTrail(next, { id, kind: "tool", tool: p.name, input: p.input, text: p.trail ?? toolLabel(p.name), state: "running", phase: next.phase, at, seq: event.sequence });
     }
     case "tool_result": {
       const id = `tool-${p.tool_call_id ?? event.sequence}`;
       const prev = next.trail.find((e) => e.id === id);
+      const name = p.name ?? prev?.tool;
+      if ((name === "dismiss_rule_group" || name === "dismiss_candidate") && !p.is_error) {
+        let data = null;
+        try { data = JSON.parse(resultText(p.content)); } catch { /* not JSON */ }
+        const input = prev?.input ?? {};
+        const count = typeof data?.count === "number" ? data.count : Array.isArray(input.candidate_ids) ? input.candidate_ids.length : null;
+        const reason = data?.reason ?? input.reason ?? "";
+        if (count) next = { ...next, cleared: [...next.cleared.filter((c) => c.id !== id), { id, rule: data?.dismissed_rule ?? input.rule ?? null, count, reason }] };
+      }
       return upsertTrail(next, {
         id, kind: "tool", tool: p.name ?? prev?.tool, text: prev?.text ?? toolLabel(p.name), state: p.is_error ? "error" : "done",
         result: resultText(p.content).slice(0, 600), phase: next.phase, at: prev?.at ?? at, seq: prev?.seq ?? event.sequence,
@@ -179,7 +215,7 @@ export function reviewReducer(state, event) {
       const prev = next.investigations[id] ?? { id, suspects: [] };
       const suspects = (p.suspects ?? []).map((s) => {
         const old = prev.suspects.find((x) => x.code === s.code);
-        return { ...(old ?? {}), id: old?.id ?? s.code, code: s.code, title: s.title, status: s.status, conclusion: old?.conclusion };
+        return { ...(old ?? {}), id: old?.id ?? s.code, code: s.code, title: s.title, status: s.status, conclusion: old?.conclusion, round: roundOf(s.title) ?? old?.round };
       });
       const inv = { ...prev, id, code: p.code, question: p.question ?? prev.question, status: p.status, outcome: p.outcome ?? prev.outcome, goodEnough: p.good_enough ?? prev.goodEnough, suspects: suspects.length ? suspects : prev.suspects };
       const order = next.investigationOrder.includes(id) ? next.investigationOrder : [...next.investigationOrder, id];
@@ -193,9 +229,9 @@ export function reviewReducer(state, event) {
       const suspects = inv.suspects.map((s) => {
         if (s.code !== p.code && s.id !== p.suspect_id) return s;
         found = true;
-        return { ...s, status: p.status, title: p.title ?? s.title, conclusion: p.reason ?? s.conclusion };
+        return { ...s, status: p.status, title: p.title ?? s.title, conclusion: p.reason ?? s.conclusion, round: roundOf(p.title ?? s.title) ?? s.round };
       });
-      if (!found) suspects.push({ id: p.suspect_id, code: p.code, title: p.title, status: p.status, conclusion: p.reason });
+      if (!found) suspects.push({ id: p.suspect_id, code: p.code, title: p.title, status: p.status, conclusion: p.reason, round: roundOf(p.title) });
       next = { ...next, investigations: { ...next.investigations, [inv.id]: { ...inv, suspects } } };
       return upsertTrail(next, { id: `sus-${p.suspect_id}-${event.sequence}`, kind: "suspect", status: p.status, text: p.title ?? p.code, detail: p.reason, at, seq: event.sequence });
     }
@@ -271,7 +307,7 @@ export function reviewReducer(state, event) {
       const f = next.followup;
       const msgs = f.messages.slice();
       const last = msgs[msgs.length - 1];
-      if (last && last.role === "agent" && !last.error && last.turn === event.turn_id) msgs[msgs.length - 1] = { ...last, text: last.text + p.text };
+      if (last && last.role === "agent" && !last.error && !last.closed && last.turn === event.turn_id) msgs[msgs.length - 1] = { ...last, text: last.text + p.text };
       else msgs.push({ id: `m-${event.sequence}`, role: "agent", turn: event.turn_id, text: p.text });
       return { ...next, followup: { ...f, messages: msgs } };
     }

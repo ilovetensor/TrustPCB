@@ -4,7 +4,7 @@ import { rgb, FIELD_STOPS } from "../../lib/ramp.mjs";
 import type { S11Data, ZinData } from "../../lib/rf-data";
 
 export interface CurveSpec { id: string; label: string; f_ghz: number[]; s11_db: number[]; color?: string; dashed?: boolean; width?: number; opacity?: number }
-export interface DipMark { f_ghz: number; db: number }
+export interface DipMark { f_ghz: number; db: number; /** stayed put when the geometry changed: not the antenna's resonance */ fixed?: boolean }
 export interface VLine { f_ghz: number; label: string }
 interface Band { lo_ghz: number; hi_ghz: number; target_db: number }
 
@@ -67,8 +67,8 @@ export function TuningGraph({ curves, band, marker, onMarker, height = 240, comp
       {!compact && !dips && markMinima && curves.map((c) => { const mn = minOf(c); return (<g key={"mn" + c.id}><circle cx={x(mn.f)} cy={y(mn.db)} r="2.6" fill="var(--stage)" stroke="var(--paper-2)" /></g>); })}
       {!compact && dips?.filter((dp) => dp.f_ghz >= f0 && dp.f_ghz <= f1).map((dp, i) => (
         <g key={"dip" + i}>
-          <circle cx={x(dp.f_ghz)} cy={y(dp.db)} r="2.8" fill="var(--stage)" stroke="var(--paper)" strokeWidth="1.2" />
-          <text x={x(dp.f_ghz)} y={y(dp.db) + 12} textAnchor="middle" className="rl-t" fill="var(--paper)">{i + 1}</text>
+          <circle cx={x(dp.f_ghz)} cy={y(dp.db)} r="2.8" fill="var(--stage)" stroke={dp.fixed ? "var(--paper-3)" : "var(--paper)"} strokeWidth="1.2" strokeDasharray={dp.fixed ? "1.6 1.4" : undefined} />
+          <text x={x(dp.f_ghz)} y={y(dp.db) + 12} textAnchor="middle" className="rl-t" fill={dp.fixed ? "var(--paper-3)" : "var(--paper)"}>{i + 1}{dp.fixed ? " fixed" : ""}</text>
         </g>
       ))}
       {!compact && marker != null && (

@@ -172,3 +172,76 @@ test("a finding changed by the user without a payload finding keeps its card", (
   assert.equal(s.findings.h9.status, "dismissed");
   assert.equal(activeMarks(s).length, 0);
 });
+
+/* ---- refine rounds, cleared candidates, follow-up replies (payload shapes copied from a real Standard review and a real follow-up) ---- */
+
+test("a refine round keeps the phase at 5 and says so; the next phase clears it", () => {
+  const s = replayAll([
+    ev(1, "phase_changed", { phase: 5, name: "confirm", previous: 4, skipped: [] }),
+    ev(2, "phase_changed", { phase: 5, name: "confirm", previous: 5, substep: "refine", round: 1, rounds: 1, investigation: "I1", skipped: [] }),
+  ]);
+  assert.equal(s.phase, 5);
+  assert.deepEqual(s.refine, { round: 1, rounds: 1, investigation: "I1" });
+  const last = s.trail[s.trail.length - 1];
+  assert.equal(last.text, "Refine round 1 of 1");
+  assert.equal(last.substep, "refine");
+  const done = reviewReducer(s, ev(3, "phase_changed", { phase: 6, name: "report", previous: 5, skipped: [] }));
+  assert.equal(done.refine, null);
+  assert.equal(done.phase, 6);
+});
+
+test("a suspect added by a refine round carries the round number", () => {
+  let s = replayAll([ev(1, "investigation_updated", { investigation_id: "i", code: "I1", question: "q", status: "open", suspects: [{ code: "S1", title: "Antenna length detuned", status: "open" }] })]);
+  s = reviewReducer(s, ev(2, "suspect_updated", { suspect_id: "x4", code: "S4", investigation_id: "i", title: "Refine round 1: combine a geometry change with matching", status: "open" }));
+  const sus = s.investigations.i.suspects;
+  assert.equal(sus.find((x) => x.code === "S1").round, undefined);
+  assert.equal(sus.find((x) => x.code === "S4").round, 1);
+});
+
+test("dismissed rule groups are collected as Checked and cleared, with the reason and the count", () => {
+  const s = replayAll([
+    ev(1, "tool_start", { tool_call_id: "a", name: "dismiss_rule_group", input: { rule: "drc_hole_clearance", reason: "Same cause as the shorts." } }),
+    ev(2, "tool_result", { tool_call_id: "a", name: "dismiss_rule_group", content: [{ type: "text", text: JSON.stringify({ dismissed_rule: "drc_hole_clearance", count: 19, reason: "Same cause as the shorts." }) }] }),
+    ev(3, "tool_start", { tool_call_id: "b", name: "dismiss_candidate", input: { candidate_ids: ["candidate:x:1", "candidate:x:2"], reason: "Harmless pad overlap." } }),
+    ev(4, "tool_result", { tool_call_id: "b", name: "dismiss_candidate", content: [{ type: "text", text: "ok" }] }),
+  ]);
+  assert.equal(s.cleared.length, 2);
+  assert.deepEqual(s.cleared[0], { id: "tool-a", rule: "drc_hole_clearance", count: 19, reason: "Same cause as the shorts." });
+  assert.equal(s.cleared[1].count, 2);
+});
+
+test("follow-up chat: narration before a tool stays apart from the reply streamed by end_followup", () => {
+  const T = "t1";
+  const s = replayAll([
+    ev(1, "user_message", { text: "Why?", selected: [] }, T),
+    ev(2, "text_delta", { text: "Let me look at the finding." }, T),
+    ev(3, "tool_start", { tool_call_id: "g", name: "get_finding", input: { code: "F-009" } }, T),
+    ev(4, "tool_result", { tool_call_id: "g", name: "get_finding", content: "x" }, T),
+    ev(5, "tool_start", { tool_call_id: "e", name: "end_followup", input: { reply: "..." } }, T),
+    ev(6, "text_delta", { text: "The antenna resonates at 1.87 GHz, " }, T),
+    ev(7, "text_delta", { text: "far below the band." }, T),
+    ev(8, "tool_result", { tool_call_id: "e", name: "end_followup", content: "{}" }, T),
+    ev(9, "completed", {}, T),
+  ].map((e) => e), initialReviewState("thread"));
+  const agent = s.followup.messages.filter((m) => m.role === "agent");
+  assert.equal(agent.length, 2);
+  assert.equal(agent[0].text, "Let me look at the finding.");
+  assert.equal(agent[0].narration, true);
+  assert.equal(agent[1].text, "The antenna resonates at 1.87 GHz, far below the band.");
+  assert.ok(!agent[1].narration);
+  assert.equal(s.followup.running, false);
+});
+
+test("follow-up chat: a reply that only exists as a thought is still shown, and never twice", () => {
+  const only = replayAll([ev(1, "user_message", { text: "q" }, "a"), ev(2, "thought", { text: "No. TrustPCB never edits a design." }, "a"), ev(3, "completed", {}, "a")], initialReviewState("thread"));
+  assert.deepEqual(only.followup.messages.filter((m) => m.role === "agent").map((m) => m.text), ["No. TrustPCB never edits a design."]);
+  const both = replayAll([ev(1, "user_message", { text: "q" }, "b"), ev(2, "text_delta", { text: "Same text." }, "b"), ev(3, "thought", { text: "Same text." }, "b")], initialReviewState("thread"));
+  assert.equal(both.followup.messages.filter((m) => m.role === "agent").length, 1);
+});
+
+test("whatif_ready keeps the ghost the server sent", () => {
+  const ghost = { ref: "C10", x: 26.34, y: 24.04, rotation: 0, side: "top", ring: [[25.43, 23.58], [27.25, 23.58], [27.25, 24.5], [25.43, 24.5]], pads: [] };
+  const s = replayAll([ev(1, "whatif_ready", { ref: "C10", ghost, new_position: [26.34, 24.04], distances: [{ to: "ref:U3", distance_mm: 0.25, was_mm: 7.194 }], conflicts: [], label: "What-if, not your board" })], initialReviewState("thread"));
+  assert.equal(s.followup.whatif.ghost.ring.length, 4);
+  assert.equal(s.followup.whatif.label, "What-if, not your board");
+});

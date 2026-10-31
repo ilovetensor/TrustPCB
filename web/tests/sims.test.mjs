@@ -101,3 +101,11 @@ test("run choice: the latest confirm run with a field, else the latest run with 
   assert.equal(bestRun(jobs).job_id, "c");
   assert.equal(pickStageJob([job("x", "base", ["s11.json"])]), null);
 });
+
+test("a version is compared by its board as drawn: a confirm of a changed antenna is not that", () => {
+  const job = (id, kind, ops = []) => ({ job_id: id, kind, files: ["s11.json"], status: "done", whatif_ops: ops });
+  const jobs = [job("base", "base"), job("shorter", "whatif", [{ op: "adjust_antenna_length", delta_mm: -4 }]), job("confirm", "confirm"), job("confirm-shorter", "confirm", [{ op: "adjust_antenna_length", delta_mm: -4 }])];
+  assert.equal(bestRun(jobs).job_id, "confirm");
+  assert.equal(bestRun([job("base", "base"), job("confirm-shorter", "confirm", [{ op: "x" }])]).job_id, "base");
+  assert.equal(bestRun([job("only", "confirm", [{ op: "x" }])]).job_id, "only", "nothing as drawn: fall back to what there is");
+});

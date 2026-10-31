@@ -17,7 +17,7 @@ export interface ActiveMarkItem { key: string; findingId: string | null; severit
 export interface FindingMeta { n: number; title: string; severity: Severity; value?: string }
 export interface Insets { l: number; r: number; t: number; b: number }
 export interface FocusRequest { bbox: BBox; nonce: number; maxScale?: number }
-export interface Ghost { ref: string; from: [number, number]; to: [number, number]; size: [number, number]; label: string }
+export interface Ghost { ref: string; from: [number, number]; to: [number, number]; size: [number, number]; label: string; /** the part outline at its new place, as the server sent it */ ring?: [number, number][]; pads?: { id: string; x: number; y: number }[] }
 
 const SEVS: Severity[] = ["critical", "high", "medium", "low", "info"];
 const clampView = (v: View): View => v;
@@ -504,15 +504,18 @@ function PickBox({ index, id, px }: { index: ReturnType<typeof indexBoard>; id: 
 function GhostPart({ ghost, px }: { ghost: Ghost; px: (n: number) => number }) {
   const [w, h] = ghost.size;
   return (
-    <g className="b2-ghost" fill="none" stroke="var(--paper)" strokeWidth={px(1.3)} strokeDasharray={`${px(5)} ${px(4)}`}>
-      <rect x={ghost.to[0] - w / 2} y={ghost.to[1] - h / 2} width={w} height={h} fill="var(--paper)" fillOpacity="0.06" />
+    <g className="b2-ghost" fill="none" stroke="var(--paper)" strokeWidth={px(2)} strokeDasharray={`${px(5)} ${px(3)}`}>
+      {ghost.ring && ghost.ring.length > 2
+        ? <path d={"M" + ghost.ring.map((p) => p.join(" ")).join("L") + "Z"} fill="var(--paper)" fillOpacity="0.28" />
+        : <rect x={ghost.to[0] - w / 2} y={ghost.to[1] - h / 2} width={w} height={h} fill="var(--paper)" fillOpacity="0.06" />}
+      {(ghost.pads ?? []).map((p) => (<circle key={p.id} cx={p.x} cy={p.y} r={px(2.4)} strokeDasharray="none" fill="var(--paper)" fillOpacity="0.5" />))}
       <path d={`M${ghost.from[0]} ${ghost.from[1]}L${ghost.to[0]} ${ghost.to[1]}`} />
     </g>
   );
 }
 function GhostLabel({ view, ghost }: { view: View; ghost: Ghost }) {
   const [sx, sy] = toScreen(view, ghost.to[0], ghost.to[1]);
-  return <div className="b2-ghost-label stamp" style={{ left: sx + 12, top: sy - 26 }}>{ghost.label}</div>;
+  return <div className="b2-ghost-label stamp" style={{ left: sx - 14, top: sy - 30, transform: "translateX(-100%)" }}>{ghost.label}</div>;
 }
 
 function SpotRing({ view, bbox }: { view: View; bbox: BBox }) {

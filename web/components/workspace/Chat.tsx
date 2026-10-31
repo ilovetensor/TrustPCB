@@ -28,9 +28,9 @@ export function ChatDock({ state, selected, onClearSel, onSend, onDecide, busy, 
           </div>
         )}
         {f.messages.map((m) => (
-          <div key={m.id} className={`msg ${m.role}`}>
-            <span className="idx">{m.role === "user" ? "YOU" : `AGENT${f.level ? " / " + f.level.toUpperCase() : ""}`}</span>
-            <p style={m.error ? { color: "var(--sev-high)" } : undefined}>{m.text}</p>
+          <div key={m.id} className={`msg ${m.role}${m.narration ? " narration" : ""}`}>
+            <span className="idx">{m.role === "user" ? "YOU" : m.narration ? "WORKING" : `AGENT${f.level ? " / " + f.level.toUpperCase() : ""}`}</span>
+            <p style={m.error ? { color: "var(--sev-high)" } : { whiteSpace: "pre-wrap" }}>{m.text}</p>
             {m.selected && m.selected.length > 0 && <div className="chat-chips">{m.selected.map((s) => (<span className="stamp" key={s}>{s}</span>))}</div>}
           </div>
         ))}
@@ -54,7 +54,17 @@ export function ChatDock({ state, selected, onClearSel, onSend, onDecide, busy, 
             ) : <span className="stamp">Answer from a connected client</span>}
           </div>
         ))}
-        {f.whatif && <div className="stamp" style={{ alignSelf: "flex-start" }}>What-if, not your board: {f.whatif.ref} ghosted on the board</div>}
+        {f.whatif && (
+          <div className="whatif hair">
+            <span className="stamp">{f.whatif.label ?? "What-if, not your board"}</span>
+            <p><b>{f.whatif.ref}</b> is drawn as a ghost on the board{Array.isArray(f.whatif.new_position) ? <> at <span className="mono">{f.whatif.new_position.map((v: number) => v.toFixed(1)).join(", ")}</span> mm</> : null}. Your design is not changed.</p>
+            {Array.isArray(f.whatif.distances) && f.whatif.distances.length > 0 && (
+              <ul className="whatif-d mono">{(f.whatif.distances as { to: string; distance_mm: number; was_mm?: number }[]).slice(0, 4).map((d) => (<li key={d.to}><span>{d.to.replace(/^ref:/, "")}</span><b>{d.distance_mm} mm</b>{d.was_mm != null && <span className="dim">was {d.was_mm}</span>}</li>))}</ul>
+            )}
+            {Array.isArray(f.whatif.conflicts) && f.whatif.conflicts.length > 0 && <p className="whatif-c">{f.whatif.conflicts.length} conflict{f.whatif.conflicts.length > 1 ? "s" : ""}: {f.whatif.conflicts.slice(0, 3).map((c: any) => (typeof c === "string" ? c : c.text ?? c.kind ?? JSON.stringify(c))).join("; ")}</p>}
+            <p className="dim">RF effect of a moved part: Not tested.</p>
+          </div>
+        )}
         {error && <p className="chat-err">{error}</p>}
         <div ref={end} />
       </div>

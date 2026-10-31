@@ -8,8 +8,8 @@
 
 import { apiGet } from "./live";
 import type { CurrentData, FieldSlice, PatternData, PulseData, S11Data, ZinData } from "./rf-data";
-import { findDips, measurementsOfSummary, pickStageJob } from "./sim-math.mjs";
-export { bestRun, boardYRange, describeFreq, describeOps, findDips, measurementsOfSummary, pickStageJob, zFromGamma } from "./sim-math.mjs";
+import { acceptedFromCurve, acceptedOf, findDips, measurementsOfSummary, pickStageJob } from "./sim-math.mjs";
+export { acceptedFromCurve, acceptedOf, acceptedPct, bestRun, boardYRange, describeFreq, describeOps, findDips, fixedDipsMhz, fmtPct, isFixedDip, measurementsOfSummary, pickStageJob, sameGeometry, zFromGamma } from "./sim-math.mjs";
 export type { Dip } from "./sim-math.mjs";
 import type { Dip } from "./sim-math.mjs";
 
@@ -151,6 +151,16 @@ export const dipsOf = (summary: Summary | null | undefined, curve: { f_ghz: numb
   if (d?.length) return { dips: d.map((x) => ({ f_ghz: x.f_hz / 1e9, db: x.s11_db })), fromSummary: true };
   return { dips: curve ? findDips(curve) : [], fromSummary: false };
 };
+
+/** Accepted power of one run, in percent: the numbers the solver side stored, else worked out here from the run's own S11 curve over the band. */
+export interface AcceptedPower { worst: number | null; mean: number | null; fromCurve: boolean }
+export function acceptedForJob(job: SimJob | null | undefined, curves: Curves | null | undefined, band: [number, number] | null | undefined): { asBuilt: AcceptedPower | null; antenna: AcceptedPower | null } {
+  const m = acceptedOf(job?.measurements);
+  const stored = (s: { worst: number | null; mean: number | null } | null): AcceptedPower | null => (s ? { ...s, fromCurve: false } : null);
+  const calc = (c: { f_ghz: number[]; s11_db: number[] } | null | undefined): AcceptedPower | null => { const r = c && band ? acceptedFromCurve(c, band) : null; return r ? { ...r, fromCurve: true } : null; };
+  // `acceptedOf` folds an unprefixed figure into as-built; the antenna-alone side stays its own
+  return { asBuilt: stored(m.asBuilt) ?? calc(curves?.asBuilt), antenna: stored(m.antenna) ?? calc(curves?.antenna) };
+}
 
 /** The numbers the API sends are in friendly units (resonance in MHz). Missing ones stay missing. */
 export function measure(job: SimJob, name: string): number | null {

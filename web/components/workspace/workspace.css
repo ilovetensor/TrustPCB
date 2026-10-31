@@ -301,6 +301,11 @@
 }
 .trail-filter .seg button {
   flex: 1;
+  padding-left: 4px;
+  padding-right: 4px;
+  min-width: 0;
+  font-size: 9px;
+  letter-spacing: 0.03em;
 }
 .trail-scroll {
   flex: 1;
@@ -1098,3 +1103,61 @@
   gap: 6px;
   align-items: center;
 }
+
+/* refine round on the phase tracker */
+.pt-refine { align-self: center; }
+.pt-round { position: absolute; top: -9px; right: -2px; font: 600 8.5px/1 var(--font-mono); color: var(--on-signal); background: var(--signal); padding: 1px 3px; font-style: normal; }
+
+/* investigation board */
+.ib { display: flex; flex-direction: column; gap: 18px; padding: 12px 12px 18px; }
+.ib-inv header { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.ib-q { font-size: 17px; line-height: 1.25; margin: 6px 0 4px; }
+.ib-tally { margin: 0 0 10px; white-space: normal; }
+.ib-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ib-sus { border: 1px solid var(--hair-2); border-left-width: 3px; background: var(--panel-2); padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
+.ib-sus.confirmed { border-left-color: var(--paper); }
+.ib-sus.ruled_out { border-left-color: var(--paper-4); }
+.ib-sus.inconclusive { border-left-color: var(--sev-medium); }
+.ib-sus.not_tested { border-left-style: dashed; border-left-color: var(--paper-3); }
+.ib-sus.testing { border-left-color: var(--signal); }
+.ib-sus-top { display: flex; align-items: center; gap: 8px; }
+.ib-round { color: var(--paper-3); }
+.ib-verdict { margin-left: auto; }
+.ib-verdict.confirmed { background: var(--paper); color: var(--stage); }
+.ib-verdict.ruled_out { text-decoration: line-through; text-decoration-color: var(--paper-3); }
+.ib-title { margin: 0; font-size: 13px; line-height: 1.35; font-weight: 500; }
+.ib-sus.ruled_out .ib-title { color: var(--paper-2); }
+.ib-what { display: flex; flex-direction: column; gap: 4px; }
+.ib-tests { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ib-test { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; font-size: 11.5px; padding: 4px 0; border-top: 1px dashed var(--hair); }
+.ib-test .ib-tl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ib-test .stamp { justify-self: start; grid-column: 2; }
+.ib-test .ib-tn { grid-column: 2; color: var(--paper-2); }
+.ib-none { font-size: 11.5px; }
+.ib-why { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--paper-2); }
+.ib-why .idx { margin-right: 4px; }
+.ib-story { border: 1px solid var(--hair-2); padding: 10px; margin-top: 10px; display: flex; flex-direction: column; gap: 10px; background: var(--panel-3); }
+.ib-story .idx { white-space: normal; }
+.ib-story-r { display: flex; flex-direction: column; gap: 5px; }
+.ib-pc { margin: 0; font-size: 12px; line-height: 1.5; }
+.ib-meas { color: var(--paper); font-weight: 600; }
+.ib-out { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--paper-2); }
+.ib-compare { margin: 0; color: var(--paper-3); }
+.ib-cleared { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--hair); padding-top: 12px; }
+.ib-cleared .idx { white-space: normal; }
+.ib-clr { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ib-clr li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 11.5px; }
+.ib-clr li .dim { grid-column: 1 / -1; line-height: 1.4; }
+.fc-zones { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0; }
+.fc-sketchnote { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.fp-list > .pwin { margin: 0 0 10px; }
+
+/* follow-up: narration before a tool, and the what-if card */
+.msg.narration p { color: var(--paper-3); font-size: 12px; font-style: italic; }
+.msg.narration .idx { color: var(--paper-4); }
+.whatif { border: 1px dashed var(--hair-2); padding: 10px; display: flex; flex-direction: column; gap: 6px; align-self: stretch; }
+.whatif p { margin: 0; font-size: 12px; line-height: 1.45; }
+.whatif-d { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; }
+.whatif-d li { display: flex; gap: 10px; }
+.whatif-d li span:first-child { min-width: 44px; }
+.whatif-c { color: var(--sev-high); }

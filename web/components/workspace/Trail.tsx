@@ -5,35 +5,43 @@ import { findingLabel, findingNumber } from "../../lib/review-view";
 import { measurementLine } from "../../lib/review-view";
 import { SevGlyph } from "../ui";
 import { Meter } from "../ui";
+import type { StoryRound, StoryTest } from "../../lib/story.mjs";
+import { InvestigationBoard } from "./InvestigationBoard";
 
-type Filter = "all" | "thoughts" | "tests" | "results";
+type Filter = "all" | "board" | "thoughts" | "tests" | "results";
 
 const STATUS: Record<string, string> = { pending: "QUEUED", testing: "TESTING", confirmed: "CONFIRMED", ruled_out: "RULED OUT", inconclusive: "INCONCLUSIVE" };
 
-export function Trail({ state, onSelectFinding }: { state: ReviewState; onSelectFinding: (id: string) => void }) {
+export function Trail({ state, onSelectFinding, story = [], tests = [] }: { state: ReviewState; onSelectFinding: (id: string) => void; story?: StoryRound[]; tests?: StoryTest[] }) {
   const [filter, setFilter] = useState<Filter>("all");
+  // a finished review opens on the board: it is the story, the log is the detail
+  const opened = useRef(false);
+  useEffect(() => { if (!opened.current && state.status === "complete" && state.investigationOrder.length > 0) { opened.current = true; setFilter("board"); } }, [state.status, state.investigationOrder.length]);
   const scroller = useRef<HTMLDivElement>(null);
   const items = state.trail.filter((e) => {
     if (filter === "all") return true;
+    if (filter === "board") return false;
     if (filter === "thoughts") return e.kind === "thought" || e.kind === "phase";
     if (filter === "tests") return e.kind === "tool" || e.kind === "sim" || e.kind === "investigation" || e.kind === "suspect";
     return e.kind === "finding" || e.kind === "result";
   });
   useEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [state.trail.length]);
+    if (el && filter !== "board") el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [state.trail.length, filter]);
+  useEffect(() => { if (filter === "board") scroller.current?.scrollTo({ top: 0 }); }, [filter]);
   return (
     <div className="trail">
       <div className="trail-filter">
         <div className="seg" role="tablist" aria-label="Trail filter">
-          {(["all", "thoughts", "tests", "results"] as Filter[]).map((f) => (
+          {(["all", "board", "thoughts", "tests", "results"] as Filter[]).map((f) => (
             <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}>{f}</button>
           ))}
         </div>
       </div>
       <div className="trail-scroll" ref={scroller}>
-        {items.length === 0 && (
+        {filter === "board" && <InvestigationBoard state={state} story={story} tests={tests} />}
+        {filter !== "board" && items.length === 0 && (
           <p className="empty">The investigation trail fills in as the agent works. Each thought, test and result lands here in order.</p>
         )}
         <ol className="trail-list">
@@ -59,7 +67,7 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
   if (e.kind === "phase")
     return (
       <li className="tr tr-phase">
-        <span className="idx">PHASE {String(e.phase ?? 0).padStart(2, "0")}</span>
+        <span className="idx">PHASE {String(e.phase ?? 0).padStart(2, "0")}{e.substep === "refine" ? " / REFINE" : ""}</span>
         <b>{e.text}</b>
         <hr className="hl" />
       </li>
@@ -117,7 +125,7 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
         <ul>
           {inv?.suspects.map((s, i) => (
             <li key={s.id} className={`sus ${s.status}`}>
-              <span className="idx">S{i + 1}</span><span>{s.title}</span><span className="stamp">{STATUS[s.status] ?? s.status}</span>
+              <span className="idx">{s.code ?? `S${i + 1}`}</span><span>{s.title}</span><span className="stamp">{STATUS[s.status] ?? s.status}</span>
             </li>
           ))}
         </ul>

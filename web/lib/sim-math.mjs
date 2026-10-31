@@ -71,10 +71,15 @@ export function pickStageJob(jobs) {
   const withField = jobs.filter((j) => withFile(j, "field.json", "field_xy.bin"));
   return [...withField].reverse().find((j) => j.kind === "confirm") ?? withField[withField.length - 1] ?? null;
 }
-/** The run a version is compared by: its confirm run, else its latest finished run with a curve. */
+/**
+ * The run a version is compared by: the board as drawn. That is its latest confirm run with no what-if change (a confirm of a changed antenna says
+ * nothing about the version itself), else its latest finished run with a curve and no what-if change, else the latest with a curve.
+ */
 export function bestRun(jobs) {
   const done = jobs.filter((j) => withFile(j, "s11.json"));
-  return [...done].reverse().find((j) => j.kind === "confirm") ?? done[done.length - 1] ?? null;
+  const asDrawn = done.filter((j) => !(j.whatif_ops ?? []).length && !j.material);
+  const latest = (list, pred) => [...list].reverse().find(pred);
+  return latest(asDrawn, (j) => j.kind === "confirm") ?? latest(asDrawn, () => true) ?? latest(done, (j) => j.kind === "confirm") ?? done[done.length - 1] ?? null;
 }
 
 /**
@@ -83,4 +88,72 @@ export function bestRun(jobs) {
  */
 export function boardYRange(v_mm) {
   return [-v_mm[1], -v_mm[0]];
+}
+
+/* ------------------------------ accepted power ------------------------------ */
+
+/** Accepted power in percent at one S11 value: 100 x (1 - |S11|^2). A mismatch figure only. It is not radiated power and not efficiency. */
+export function acceptedPct(s11_db) {
+  if (typeof s11_db !== "number" || !Number.isFinite(s11_db)) return null;
+  return 100 * (1 - Math.pow(10, Math.min(0, s11_db) / 10));
+}
+
+/**
+ * Accepted power over a band, read off a real S11 curve: the worst point of the band (the least power accepted) and the mean over its points.
+ * `band` is [lo_ghz, hi_ghz]. Null when the curve has no point in the band, never a made-up value.
+ */
+export function acceptedFromCurve(curve, band) {
+  if (!curve || !band) return null;
+  let worst = Infinity, sum = 0, n = 0;
+  for (let i = 0; i < curve.f_ghz.length; i++) {
+    const f = curve.f_ghz[i];
+    if (f < band[0] - 1e-9 || f > band[1] + 1e-9) continue;
+    const a = acceptedPct(curve.s11_db[i]);
+    if (a == null) continue;
+    worst = Math.min(worst, a); sum += a; n++;
+  }
+  return n ? { worst, mean: sum / n } : null;
+}
+
+const num = (m, k) => (m && m[k] && typeof m[k].value === "number" ? m[k].value : null);
+/**
+ * The accepted-power numbers a job's measurements carry (contracts.md, "Result fields added for the dashboard"):
+ * `band_worst_accepted_power_pct` and `band_mean_accepted_power_pct`, with `antenna_only_` and `as_built_` prefixes.
+ * Returns {asBuilt, antenna, headline} where each side is {worst, mean} or null. The headline is the as-built figure when there is one.
+ */
+export function acceptedOf(measurements) {
+  const side = (p) => {
+    const worst = num(measurements, `${p}band_worst_accepted_power_pct`), mean = num(measurements, `${p}band_mean_accepted_power_pct`);
+    return worst == null && mean == null ? null : { worst, mean };
+  };
+  const asBuilt = side("as_built_") ?? side(""), antenna = side("antenna_only_");
+  return { asBuilt, antenna, headline: asBuilt ?? antenna };
+}
+
+/** The frequencies (MHz) that stayed put when the geometry changed, from `fixed_dip_N` measurements of every job given. */
+export function fixedDipsMhz(jobs) {
+  const out = [];
+  for (const j of jobs ?? []) {
+    for (const [k, m] of Object.entries(j.measurements ?? {})) {
+      if (/^fixed_dip_\d+$/.test(k) && m && typeof m.value === "number" && !out.some((x) => Math.abs(x - m.value) < 1)) out.push(m.value);
+    }
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** True when a dip (GHz) sits within `tolMhz` of a fixed dip. The solver side uses 12 MHz. */
+export function isFixedDip(f_ghz, fixedMhz, tolMhz = 12) {
+  return (fixedMhz ?? []).some((m) => Math.abs(f_ghz * 1000 - m) <= tolMhz);
+}
+
+/** What the geometry key says about two runs: the part before the first dash is the geometry, the rest is how the matching parts were finalised. */
+export function sameGeometry(hashA, hashB) {
+  if (!hashA || !hashB) return null;
+  return hashA.split("-")[0] === hashB.split("-")[0];
+}
+
+/** Display of a percentage: whole numbers at 10 and above, one decimal below. */
+export function fmtPct(v) {
+  if (v == null || !Number.isFinite(v)) return "-";
+  return v >= 9.95 ? String(Math.round(v)) : v.toFixed(1);
 }
