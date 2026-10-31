@@ -133,3 +133,17 @@ async def test_report_images_survive_a_board_that_cannot_be_drawn(env):
     env.lab.load_board = broken
     html = await html_of(env, review)
     assert '<h2>Findings</h2>' in html and 'F-004' in html and 'Board with numbered issue pins' not in html
+
+
+def test_power_bars_hatch_the_earlier_value_and_mark_the_improved_one():
+    html = report.power_bars('Accepted power', [('Version 1', 11), ('Version 2', 74.1)])
+    assert html.count('<b class="before" style="width:11%">') == 1 and html.count('<b class="now" style="width:74.1%">') == 1
+    assert html.index('Version 1') < html.index('class="before"') < html.index('Version 2') < html.index('class="now"')
+    assert report.power_bars('x', [('a', None), ('b', 5)]) == ''
+    css = report.CSS
+    assert 'repeating-linear-gradient' in css and '25%' in css and '50%' in css and '75%' in css and 'print-color-adjust:exact' in css
+
+
+def test_print_css_lets_long_cards_flow_and_keeps_images_and_rows_whole():
+    printed = report.CSS.split('@media print', 1)[1]
+    assert '.card{break-inside:auto}' in printed and 'svg.board' in printed and 'tr' in printed and 'max-height' in printed
