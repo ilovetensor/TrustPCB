@@ -9,7 +9,7 @@ import asyncio
 import re
 
 from . import evidence as ev
-from .budgets import IMPROVEMENT_DB, Experiment
+from .budgets import IMPROVEMENT_DB, REFINE_MATCHING, REFINE_SCREENS, Experiment
 from .findings import SCREEN_ONLY, FindingRejected, check_numbers, check_wording
 from .handlers import OpError, validate_ops
 from .lab import BadMatchingRequest, LabUnavailable, scenario_hash, scenario_key
@@ -63,7 +63,14 @@ class InvestigationMixin:
     # ---- running ------------------------------------------------------------------------
     async def run_simulation(self, args: dict) -> ToolResult:
         s = self.s
-        suspect = self.find_suspect(args['suspect_id'])
+        refining = s.phase == 5
+        if refining:
+            problem = self.refine_run_checks(args)
+            if problem is not None:
+                return problem
+            suspect = self.refine_suspect()            # a refine screen always belongs to the round's own suspect
+        else:
+            suspect = self.find_suspect(args['suspect_id'])
         if suspect is None:
             return fail('unknown_suspect', f'No suspect {args["suspect_id"]}. Open an investigation first.')
         try:
@@ -74,7 +81,16 @@ class InvestigationMixin:
         kind = 'whatif' if (ops or material) else 'base'
         optimisation = bool(ops)
         label = args.get('label') or ('base' if kind == 'base' else 'what-if')
-        return await self.simulate(suspect, scenario, kind, label, optimisation)
+        result = await self.simulate(suspect, scenario, kind, label, optimisation)
+        if refining and not result.is_error and not (result.structured or {}).get('cached'):
+            s.refine.screens += 1
+            s.refine.shots.append({'ref': result.structured.get('ref'), 'label': label, 'reason': args['reason'].strip(), 'ops': ops})
+            await self.publish_investigation(s.ledger.investigations[s.refine.inv], note=f'Refine screen {s.refine.screens} of {REFINE_SCREENS}: {label}. Reason: {args["reason"].strip()[:200]}')
+            structured = dict(result.structured)
+            structured['refine'] = {'screens_used': s.refine.screens, 'screens_allowed': REFINE_SCREENS, 'matching_used': s.refine.matching, 'matching_allowed': REFINE_MATCHING,
+                                    'next': 'tune_matching on this ref tries the combination; then confirm_result with which=refine confirms the best candidate.'}
+            result = ok(structured)
+        return result
 
     async def gate_decision(self, suspect, inv, decision, sc_hash: str) -> ToolResult | None:
         """Turn a ledger decision into the refusal or the free cached answer; None means go ahead and run."""
@@ -305,12 +321,18 @@ class InvestigationMixin:
             return fail('parts_not_allowed', str(exc))
         source = item.get('exp')
         suspect = None
+        refining = s.phase == 5 and s.refine.active
         if source is not None and source.quality == 'screen' and source.kind in ('base', 'whatif'):
-            suspect = self.find_suspect(args['suspect_id']) if args.get('suspect_id') else s.ledger.suspects.get(source.suspect_id)
-            if args.get('suspect_id') and suspect is None:
-                return fail('unknown_suspect', f'No suspect {args["suspect_id"]}.')
-            if suspect is not None and s.ledger.investigations[suspect.investigation_id].status != 'open':
-                suspect = None                       # the investigation is closed (phase 5): a calculation, not an experiment
+            if refining:
+                suspect = self.refine_suspect()      # matching inside a refine round is an experiment of the round's own suspect
+                if s.refine.matching >= REFINE_MATCHING:
+                    return fail('budget_exhausted', f'The refine round allows {REFINE_MATCHING} matching experiments and they are used. Confirm the best candidate with confirm_result (which: refine).', budget='refine_matching')
+            else:
+                suspect = self.find_suspect(args['suspect_id']) if args.get('suspect_id') else s.ledger.suspects.get(source.suspect_id)
+                if args.get('suspect_id') and suspect is None:
+                    return fail('unknown_suspect', f'No suspect {args["suspect_id"]}.')
+                if suspect is not None and s.ledger.investigations[suspect.investigation_id].status != 'open':
+                    suspect = None                   # the investigation is closed (phase 5): a calculation, not an experiment
         params = {'band_hz': s.rf.get('band_hz') or s.goal.get('band_hz'), 'target_db': s.goal.get('target_s11_db', -10), **({'changes': changes} if changes else {})}
         if suspect is None:
             return await self._matching_calculation(args, item, values_in, params)
@@ -345,6 +367,8 @@ class InvestigationMixin:
         meets = ev.meets_target(metrics, s.goal, s.rf)
         closures = s.ledger.record(suspect, exp, meets_target=meets, base_hash=s.base_hash(), repair=False)
         s.budgets.experiments += 1
+        if refining:
+            s.refine.matching += 1
         for closed, status, why in closures:
             s.add_limit({'no_effect': 'no_progress'}.get(status, status), why, suspect=closed.code)
         await self.publish_suspect(suspect)
@@ -568,21 +592,32 @@ class InvestigationMixin:
         if inv is None:
             return fail('unknown_investigation', f'No investigation {args["investigation_id"]}.')
         which = args['which']
-        screen = inv.base if which == 'base' else s.ledger.winner(inv)
+        refine = which == 'refine'
+        if refine:
+            if s.phase != 5 or not s.refine.active or s.refine.inv != inv.id:
+                return fail('refine_not_active', 'There is no open refine round for this investigation. A refine round opens when advance_phase is called after a confirm that missed the target.')
+            screen = s.ledger.refine_candidate(inv, s.refine.suspect)
+        else:
+            screen = inv.base if which == 'base' else s.ledger.winner(inv)
         if screen is None or not screen.ok:
-            return fail('nothing_to_confirm', 'There is no trusted result to confirm.' if which == 'base' else 'No what-if or matching experiment improved the result enough to confirm.')
-        if which in inv.confirms and inv.confirms[which].ok:
-            exp = inv.confirms[which]
+            return fail('nothing_to_confirm', 'There is no trusted result to confirm.' if which == 'base' else
+                        ('No refine what-if or matching experiment improved the worst in-band S11 by 1 dB against the base. Try another screen, or advance_phase to end the round.' if refine
+                         else 'No what-if or matching experiment improved the result enough to confirm.'))
+        slot = s.refine.key if refine else which                # where this confirm is stored: 'base', 'winner' or 'refine1'
+        if slot in inv.confirms and inv.confirms[slot].ok:
+            exp = inv.confirms[slot]
             s.budgets.duplicates += 1
             data = {'ref': exp.ref, 'cached': True, 'free': True, **s.result_view(exp)}
-            if which == 'winner' and inv.confirmation:
-                data['confirmation'] = inv.confirmation
+            shown = inv.refine_confirmations.get(slot) if refine else (inv.confirmation if which == 'winner' else None)
+            if shown:
+                data['confirmation'] = shown
             return ok(data)
         base_scenario = {**s.refs[inv.base.ref]['scenario'], 'quality': 'confirm'}
         scenario = {**s.refs[screen.ref]['scenario'], 'quality': 'confirm'}
         geometry_is_base = scenario_key(scenario) == scenario_key(base_scenario)
         confirm_base = inv.confirms.get('base')
-        out_of_runs = s.budgets.confirm_runs >= s.config.confirm_runs or len(inv.confirms) >= s.config.confirm_runs_per_investigation
+        original_confirms = [k for k in inv.confirms if not k.startswith('refine')]
+        out_of_runs = s.budgets.confirm_runs >= s.config.confirm_runs + s.budgets.bonus_confirm_runs or (not refine and len(original_confirms) >= s.config.confirm_runs_per_investigation)
 
         if which == 'base':
             if out_of_runs:
@@ -619,10 +654,10 @@ class InvestigationMixin:
                 notices.append('Confirm the base too: a fix needs confirm runs of both the base and the winner.')
             if out_of_runs:
                 return fail('budget_exhausted', 'The confirm-run budget is used.', budget='confirm_runs')
-            result, run_exp = await self._confirm_run(inv, screen, scenario, 'winner', delta_base=confirm_base)
+            result, run_exp = await self._confirm_run(inv, screen, scenario, 'refined candidate' if refine else 'winner', delta_base=confirm_base)
             if run_exp is None:
                 return result
-            inv.confirms['winner'] = run_exp
+            inv.confirms[slot] = run_exp
             data = dict(result.structured or {})
             agree, difference = ev.screen_confirm_agree(screen.metrics, run_exp.metrics)
             data['screen_agreement'] = {'agree': agree, 'confirm_minus_screen': ev.delta_measurements(difference)}
@@ -638,23 +673,25 @@ class InvestigationMixin:
             if locked is None:
                 return fail('nothing_to_confirm', 'The winner is a matching change but its parts could not be applied at confirm quality.', notes=matching['notes'])
             ref = s.next_ref()
-            winner_row = self.store.add_evidence(s.review_id, ev.CONFIRM, 'confirm_result', {**locked['row']['values'], 'ref': ref, 'label': 'confirm winner', 'derived_from': run_exp.ref, 'job_id': None})
-            derived = Experiment(ref, scenario_hash({'confirm_winner_of': run_exp.hash, 'parts': [[p['ref'], p['now']] for p in screen.parts or []]}), '', screen.suspect_id, 'confirm', 'confirm winner',
+            name = 'confirm refined candidate' if refine else 'confirm winner'
+            winner_row = self.store.add_evidence(s.review_id, ev.CONFIRM, 'confirm_result', {**locked['row']['values'], 'ref': ref, 'label': name, 'derived_from': run_exp.ref, 'job_id': None})
+            derived = Experiment(ref, scenario_hash({'confirm_winner_of': run_exp.hash, 'parts': [[p['ref'], p['now']] for p in screen.parts or []]}), '', screen.suspect_id, 'confirm', name,
                                  'confirm', True, locked['metrics'], ev.delta(locked['metrics'], run_exp.metrics), False, winner_row['id'], False,
                                  source_ref=run_exp.ref, parts=screen.parts, ops=list(run_exp.ops))
-            s.refs[ref] = {'exp': derived, 'scenario': s.refs[run_exp.ref]['scenario'], 'run': s.refs[run_exp.ref]['run'], 'evidence': winner_row, 'label': 'confirm winner', 'matching': True}
-            inv.confirms['winner'] = derived
+            s.refs[ref] = {'exp': derived, 'scenario': s.refs[run_exp.ref]['scenario'], 'run': s.refs[run_exp.ref]['run'], 'evidence': winner_row, 'label': name, 'matching': True}
+            inv.confirms[slot] = derived
             data = {'ref': ref, 'cached': False, **s.result_view(derived), 'solver_s': 0}
             final_metrics, final_ref = locked['metrics'], ref
         else:
             winner_row = s.refs[run_exp.ref]['evidence']
             final_metrics, final_ref = (locked['metrics'], locked['ref']) if locked else (run_exp.metrics, run_exp.ref)
-        confirmation, summary_row = self._compare_with_screen(inv, screen, final_metrics, final_ref, locked, free)
+        confirmation, summary_row = self._compare_with_screen(inv, screen, final_metrics, final_ref, locked, free, slot=slot if refine else None)
         attach = [s.refs[confirm_base.ref]['evidence'] if confirm_base else None, winner_row, None if geometry_is_base else (locked and locked['row']), free and free['row'], summary_row]
-        await self._attach_confirmation(inv, [r for r in attach if r], confirmation['outcome'], confirmation['statement'])
+        await self._attach_confirmation(inv, [r for r in attach if r], confirmation['outcome'], ('Refine round: ' + confirmation['statement']) if refine else confirmation['statement'])
         existing = (self.store.get_investigation(inv.id) or {}).get('outcome') or {}
-        self.store.update_investigation(inv.id, outcome={**existing, 'confirmation': confirmation})
-        await self.publish_investigation(inv)
+        if not refine:
+            self.store.update_investigation(inv.id, outcome={**existing, 'confirmation': confirmation})
+        await self.publish_investigation(inv, note=f'Refine candidate confirmed: {confirmation["outcome"].replace("_", " ")}.' if refine else None)
         data['confirmation'] = confirmation
         if summary_row:
             data['confirmation_evidence'] = summary_row['code']
@@ -665,7 +702,7 @@ class InvestigationMixin:
             data.pop('notices')
         return ok(data)
 
-    def _compare_with_screen(self, inv, screen: Experiment, final_metrics: dict, final_ref: str, locked: dict | None, free: dict | None) -> tuple[dict, dict | None]:
+    def _compare_with_screen(self, inv, screen: Experiment, final_metrics: dict, final_ref: str, locked: dict | None, free: dict | None, *, slot: str | None = None) -> tuple[dict, dict | None]:
         """The honest comparison: did the screen's improvement hold at confirm quality? Also returns the evidence row that carries it."""
         s = self.s
         confirm_base = inv.confirms.get('base')
@@ -697,7 +734,10 @@ class InvestigationMixin:
                                     for m, x in (('locked', locked), ('free', free)) if x},
             'confirm_gain_db': gain, 'free_gain_db': free_gain, 'meets_target': meets,
         }
-        inv.confirmation = confirmation
+        if slot:
+            inv.refine_confirmations[slot] = confirmation       # a refine round keeps the first attempt's comparison as it was
+        else:
+            inv.confirmation = confirmation
         if confirm_base is None:
             return confirmation, None
         numbers = {'confirm_base_band_worst': confirm_base.metrics.get('band_worst_s11_db'), 'confirm_winner_band_worst': final_metrics.get('band_worst_s11_db'),
@@ -708,8 +748,8 @@ class InvestigationMixin:
         if free is not None and free_gain is not None:
             measurements['confirm_free_tuning_band_worst'] = {'value': round(free['metrics']['band_worst_s11_db'], 2), 'unit': 'dB'}
             measurements['confirm_free_tuning_gain'] = {'value': free_gain, 'unit': 'dB'}
-        values = {'kind': 'simulated', 'quality': 'confirm', 'trust': {'status': 'ok', 'reasons': []}, 'measurements': measurements, 'label': 'confirm comparison', 'outcome': outcome,
-                  'statement': statement, 'confirm_held': outcome == 'held', 'calculation': True, 'confirmation': confirmation}
+        values = {'kind': 'simulated', 'quality': 'confirm', 'trust': {'status': 'ok', 'reasons': []}, 'measurements': measurements, 'label': 'refine confirm comparison' if slot else 'confirm comparison', 'outcome': outcome,
+                  'statement': ('Refine round: ' + statement) if slot else statement, 'confirm_held': outcome == 'held', 'calculation': True, 'confirmation': confirmation}
         return confirmation, self.store.add_evidence(s.review_id, ev.CALCULATION, 'confirm_result', values)
 
     async def _attach_confirmation(self, inv, rows: list[dict], outcome: str, statement: str) -> None:

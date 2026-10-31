@@ -349,3 +349,89 @@ async def test_cancel_keeps_verified_changes_in_an_incomplete_revision(env):
     revision = env.store.latest_report_revision(review['id'])
     assert revision['number'] == 2 and revision['snapshot']['incomplete'] is True
     assert env.events(thread['chat_id'], 'canceled') and not env.events(thread['chat_id'], 'report_revised')
+
+
+# ---- end_followup: the user always gets a reply, and a second call changes nothing ----------------------------------
+
+def streamed(env, thread):
+    return ''.join(e['payload']['text'] for e in env.events(thread['chat_id'], 'text_delta'))
+
+
+async def test_end_followup_without_any_reply_is_refused_then_accepted_with_one(env):
+    review = await finished_review(env)
+    thread = new_thread(env, review)
+    await say(env, thread, 'Is C14 near U3?', [
+        {'tool': 'get_finding', 'args': {'code': 'F-001'}},
+        {'text': 'Let me look at that.'},                                    # narration before a working tool does not count as the reply
+        {'tool': 'measure', 'args': {'kind': 'distance', 'a': 'ref:C14', 'b': 'ref:U3'}},
+        {'tool': 'end_followup', 'args': {}},
+        {'tool': 'end_followup', 'args': {'reply': 'Too short'}},
+        {'tool': 'end_followup', 'args': {'reply': 'C14 is close to U3, but the edge to edge distance is in the measure result above.'}},
+    ])
+    ends = results(env, thread, 'end_followup')
+    assert [json.loads(r['content']).get('error') for r in ends] == ['reply_required', 'reply_required', None]
+    assert 'C14 is close to U3' in streamed(env, thread)
+    assert json.loads(ends[2]['content'])['ended'] is True
+
+
+async def test_end_followup_reply_numbers_are_checked(env):
+    review = await finished_review(env)
+    thread = new_thread(env, review)
+    await say(env, thread, 'What is the S11?', [
+        {'tool': 'end_followup', 'args': {'reply': 'The worst S11 across the band is -17.3 dB with the change.'}},
+        {'tool': 'end_followup', 'args': {'reply': 'I could not measure the S11 here, so there is no number to give you.'}},
+    ])
+    first, second = [json.loads(r['content']) for r in results(env, thread, 'end_followup')]
+    assert first['error'] == 'number_check_failed' and second.get('ended') is True
+    assert '-17.3' not in streamed(env, thread) and 'no number to give you' in streamed(env, thread)
+
+
+async def test_end_followup_needs_no_reply_when_the_answer_was_streamed_after_the_last_tool(env):
+    review = await finished_review(env)
+    thread = new_thread(env, review)
+    await say(env, thread, 'Hello', [{'tool': 'get_finding', 'args': {'code': 'F-001'}}, {'text': 'F-001 stands as written in the report.'}, {'tool': 'end_followup', 'args': {}}])
+    (end,) = [json.loads(r['content']) for r in results(env, thread, 'end_followup')]
+    assert end['ended'] is True and streamed(env, thread) == 'F-001 stands as written in the report.'
+
+
+async def test_a_second_end_followup_is_a_harmless_no_op(env):
+    review = await finished_review(env)
+    thread = new_thread(env, review)
+    await say(env, thread, 'Hello', [{'text': 'Nothing to change; the finding stands.'}, {'tool': 'end_followup', 'args': {'reply': 'Ignored: text was streamed already.'}},
+                                    {'tool': 'end_followup', 'args': {'reply': 'A different reply that must not appear anywhere.'}}])
+    first, second = [json.loads(r['content']) for r in results(env, thread, 'end_followup')]
+    assert first['ended'] is True and second == {'ended': True, 'already_ended': True}
+    assert streamed(env, thread) == 'Nothing to change; the finding stands.'
+    assert env.names(thread['chat_id']).count('text_delta') == len(env.events(thread['chat_id'], 'text_delta'))
+    assert not env.events(thread['chat_id'], 'report_revised')
+
+
+# ---- try_placement beside a pad or a net ----------------------------------------------------------------------------
+
+def test_placement_beside_a_pad_and_a_net(sample_board):
+    from trustpcb.review.placement import try_placement
+    pad = next(p for p in sample_board.pads if p.ref == 'U3' and p.net)
+    out = try_placement(sample_board, 'C13', pad.id)
+    assert out['target_pad'] == pad.id and out['placed'].startswith(f'beside {pad.id}')
+    assert out['distance_to_target_mm'] == next(r for r in out['distances'] if r['to'] == pad.id)['distance_mm'] and out['distance_to_target_mm'] < 5.0
+    assert out['ghost']['ring'] and out['rf_effect'] == 'Not tested'
+    net = next(p for p in sample_board.pads if p.net and p.ref != 'C13' and p.ref != 'U3' and not p.net.startswith('GND'))
+    by_net = try_placement(sample_board, 'C13', f'net:{net.net}')
+    assert by_net['target_pad'].startswith('pad:') and f'net:{net.net}' in by_net['placed'] and 'distance_to_target_mm' in by_net
+    with pytest.raises(ValueError, match='Pad pad:U3:NOPE is not on this board'):
+        try_placement(sample_board, 'C13', 'pad:U3:NOPE')
+    with pytest.raises(ValueError, match='no pad on another part'):
+        try_placement(sample_board, 'C13', 'net:NO_SUCH_NET')
+    assert try_placement(sample_board, 'C13', 'U3')['placed'].startswith('beside U3')          # a part ref still works
+
+
+async def test_try_placement_accepts_pad_and_net_ids_through_the_tool(env):
+    review = await finished_review(env)
+    thread = new_thread(env, review)
+    await say(env, thread, 'What if C13 sat beside the U3 pad?', [
+        {'tool': 'try_placement', 'args': {'ref': 'C13', 'near': 'pad:U3:A8'}},
+        {'tool': 'try_placement', 'args': {'ref': 'C13', 'near': 'net:ANT_FEED'}},
+        {'text': 'The ghost fits beside that pad; its radio effect is Not tested.'}, {'tool': 'end_followup', 'args': {}}])
+    placements = results(env, thread, 'try_placement')
+    assert [p['is_error'] for p in placements] == [False, False]
+    assert [c[2] for c in env.lab.calls if c[0] == 'try_placement'] == ['pad:U3:A8', 'net:ANT_FEED']

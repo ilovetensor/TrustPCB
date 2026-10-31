@@ -244,6 +244,11 @@ def quantities_of(row: dict) -> list[Quantity]:
         elif kind == 'simulated' and values.get('quality') == 'screen' and not name.startswith('delta_'):
             extra['note'] = 'needs_confirm_run'   # screen runs are for comparing, not for absolute claims
         out.extend(allowed_from_values(item, **extra))
+    for op in values.get('whatif_ops') or []:      # the geometry change that was simulated is an input the finding may state ("shorten by 7 mm")
+        numbers = [op['delta_mm'], abs(op['delta_mm'])] if isinstance(op.get('delta_mm'), (int, float)) else []
+        numbers += [v for v in op.get('bbox') or [] if isinstance(v, (int, float))]
+        for number in numbers:
+            out.extend(allowed_from_values({'value': number, 'unit': 'mm'}))
     for text_key in ('title',):
         if values.get(text_key):
             out.extend(allowed_from_text(str(values[text_key]), **({'note': note} if note else {})))

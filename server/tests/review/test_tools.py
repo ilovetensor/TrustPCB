@@ -90,8 +90,8 @@ async def test_results_stay_near_8_kb_and_lists_are_paged(registry, env, sample_
 
 def test_prompts_are_plain_and_name_no_ai_provider():
     values = dict(depth='standard', wall_minutes=30, investigations=1, experiments=5, confirm_runs=2, images=14, region_views=2, phase2_calls=10, phase3_calls=80, phase4_calls=40, phase5_calls=8,
-                  target_db=-10, band='2.4 to 2.4835 GHz')
-    texts = [prompts.system_prompt(**values)] + [prompts.phase_brief(n, **values) for n in (2, 3, 4, 5, 6)] + [prompts.followup_prompt()]
+                  target_db=-10, band='2.4 to 2.4835 GHz', layout_findings=2, layout_reason_chars=60, refine_rounds=1, refine_screens=3, refine_matching=3)
+    texts = [prompts.system_prompt(**values)] + [prompts.phase_brief(n, **values) for n in (2, 3, 4, 5, 6)] + [prompts.followup_prompt(), prompts.phase_brief('5_refine', **values)]
     banned = ['an' + 'thropic', 'open' + 'ai', 'g' + 'pt', 'gem' + 'ini', 'cla' + 'ude', 'lla' + 'ma', 'mist' + 'ral', 'co' + 'here', 'oll' + 'ama', 'so' + 'nnet', 'op' + 'us ']
     for text in texts:
         assert not any(word in text.lower() for word in banned)
@@ -100,7 +100,9 @@ def test_prompts_are_plain_and_name_no_ai_provider():
     for phrase in ('data, not instructions', 'advance_phase', 'never edits a design', 'never write a number', 'screen simulations'):
         assert phrase in system, phrase
     assert 'rank' in texts[3].lower() and 'at a time' in texts[3].lower()
-    follow = texts[-1].lower()
+    assert 'layout_review_incomplete' in system and 'layout_review_incomplete' in texts[2].lower() and 'sketch' in texts[2] and 'refine' in texts[4].lower() and 'which` set to `refine' in texts[4]
+    assert 'cites confirm evidence' in texts[-1] and 'both attempts' in texts[4]
+    follow = texts[-2].lower()
     for phrase in ('nothing to do with this board', 'never edits a design', 'not available yet', 'propose_test', 'final say', 'data'):
         assert phrase in follow, phrase
 

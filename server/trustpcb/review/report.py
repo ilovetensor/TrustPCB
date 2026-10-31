@@ -71,7 +71,8 @@ def _investigations(store, review_id: str) -> list[dict]:
                              'experiments': data.get('experiments') or []})
         outcome = inv.get('outcome')
         out.append({'code': f'I{index}', 'question': inv['question'], 'status': inv['status'], 'outcome': outcome, 'suspects': suspects,
-                    'confirmation': outcome.get('confirmation') if isinstance(outcome, dict) else None})
+                    'confirmation': outcome.get('confirmation') if isinstance(outcome, dict) else None,
+                    'refine_rounds': (outcome.get('refine_rounds') or []) if isinstance(outcome, dict) else []})
     return out
 
 
@@ -309,7 +310,7 @@ def _cell(row: dict | None, key: str, unit: str) -> str:
     return f'<td class="n">{esc(row[key])} {esc(unit)}</td>'
 
 
-def render_confirmation(c: dict) -> str:
+def render_confirmation(c: dict, title: str = 'Screen against confirm') -> str:
     """Screen against confirm: the honest comparison, with the matching re-tuned at confirm quality."""
     rows = c.get('rows') or {}
     tone = {'held': 'cls-measured', 'held_smaller': 'sev-medium', 'held_after_retune': 'sev-medium', 'not_held': 'sev-high', 'unconfirmed': 'cls-not_tested'}.get(c.get('outcome'), '')
@@ -319,7 +320,7 @@ def render_confirmation(c: dict) -> str:
         change.append('what-if: ' + ', '.join(esc(json.dumps(o)) for o in winner['ops']))
     if winner.get('parts'):
         change.append('matching: ' + ', '.join(esc(f'{p.get("ref")} {p.get("was")} to {p.get("now")}') for p in winner['parts']))
-    out = [f'<h3>Screen against confirm</h3><p>{pill(tone, str(c.get("outcome", "")).replace("_", " "))} {esc(c.get("statement"))}</p>',
+    out = [f'<h3>{esc(title)}</h3><p>{pill(tone, str(c.get("outcome", "")).replace("_", " "))} {esc(c.get("statement"))}</p>',
            '<p class="small">Candidate change, tested in simulation (apply it in your own tool and re-measure): ' + ('; '.join(change) or 'none') + '. Screen columns are for comparing only; confirm columns are the result.</p>',
            '<table><tr><th></th><th>Base, screen</th><th>Base, confirm</th><th>Change, screen</th><th>Change, confirm</th></tr>']
     cols = [(rows.get('base') or {}).get('screen'), (rows.get('base') or {}).get('confirm'), (rows.get('winner') or {}).get('screen'), (rows.get('winner') or {}).get('confirm')]
@@ -400,6 +401,16 @@ def render_html(snap: dict, images: dict | None = None) -> str:
             out.append('</table>')
             if inv.get('confirmation'):
                 out.append(render_confirmation(inv['confirmation']))
+            for round_ in inv.get('refine_rounds') or []:
+                if round_.get('declined'):
+                    out.append(f'<p><strong>Refine round declined.</strong> {esc(round_["declined"])}</p>')
+                elif round_.get('skipped'):
+                    out.append(f'<p><strong>Refine round not possible.</strong> {esc(round_["skipped"])}</p>')
+                else:
+                    shots = '; '.join(f'{esc(x.get("label"))} (reason: {esc(x.get("reason"))})' for x in round_.get('screens') or []) or 'no screen what-if'
+                    out.append(f'<p><strong>Refine round {esc(round_.get("round"))}</strong>, a second attempt after the confirm missed the target: {shots}. Result: {esc(str(round_.get("result", "")).replace("_", " "))}.</p>')
+                    if round_.get('confirmation'):
+                        out.append(render_confirmation(round_['confirmation'], f'Refine round {round_.get("round")}: screen against confirm'))
             out.append('</div>')
     else:
         out.append('<p class="muted">No investigation was run.</p>')
