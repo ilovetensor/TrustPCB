@@ -20,8 +20,10 @@ def bad(board, setup, code, *ops):
 def test_length_limits(nrf_board, nrf_setup):
     ok(nrf_board, nrf_setup, W.AdjustAntennaLength(6.0), )
     ok(nrf_board, nrf_setup, W.AdjustAntennaLength(-6.0))
-    bad(nrf_board, nrf_setup, "out_of_limits", W.AdjustAntennaLength(6.5))
-    bad(nrf_board, nrf_setup, "out_of_limits", W.AdjustAntennaLength(-7))
+    ok(nrf_board, nrf_setup, W.AdjustAntennaLength(-12.0), )
+    assert W.MAX_LENGTH_DELTA_MM == 12.0
+    bad(nrf_board, nrf_setup, "out_of_limits", W.AdjustAntennaLength(12.5))
+    bad(nrf_board, nrf_setup, "out_of_limits", W.AdjustAntennaLength(-13))
     bad(nrf_board, nrf_setup, "duplicate_operation", W.AdjustAntennaLength(1), W.AdjustAntennaLength(2))
 
 
@@ -63,6 +65,18 @@ def test_shorten_reduces_centreline_length(nrf_board, nrf_setup):
     assert _track_length(items) - _track_length(out) == pytest.approx(4.0, abs=0.05) and "shortened" in note[0]
     with pytest.raises(W.WhatIfError):
         W.apply_to_items(list(items), [W.AdjustAntennaLength(-40.0)], nrf_board, nrf_setup)  # not validated here: longer than the antenna
+
+
+@pytest.mark.parametrize("delta", [-9.5, -12.0])
+def test_shorten_up_to_the_limit_keeps_a_valid_model(nrf_board, nrf_setup, delta, tmp_path):
+    """A real 9 to 10 mm shortening reaches the 2.4 GHz band on the nRF board, so the full 12 mm must build."""
+    items = geo.collect_items(nrf_board, nrf_setup)
+    W.validate_ops([W.AdjustAntennaLength(delta)], nrf_board, nrf_setup)
+    out, note = W.apply_to_items(list(items), [W.AdjustAntennaLength(delta)], nrf_board, nrf_setup)
+    assert _track_length(items) - _track_length(out) == pytest.approx(-delta, abs=0.05)
+    from trustpcb.rf import scenario as S
+    S.build_job(nrf_board, nrf_setup, S.scenario_for(nrf_board, nrf_setup, "screen", [W.AdjustAntennaLength(delta)]), tmp_path, debug_png=False)
+    assert (tmp_path / "scenario.json").is_file() and (tmp_path / "meta.json").is_file()
 
 
 def test_extend_goes_somewhere_free_or_is_refused_with_a_typed_error(nrf_board, nrf_setup):

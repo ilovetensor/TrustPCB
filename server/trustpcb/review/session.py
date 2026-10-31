@@ -100,6 +100,22 @@ class ReviewSession:
         values = (item['evidence']['values'] if item else {}) or {}
         out = {'ref': exp.ref, 'label': exp.label, 'kind': exp.kind, 'quality': exp.quality, 'trust': values.get('trust'), 'measurements': values.get('measurements'),
                'meets_target': ev.meets_target(exp.metrics, self.goal, self.rf)}
+        m = exp.metrics or {}
+        detail = {}
+        if m.get('dips'):
+            detail['s11_dips'] = [{'frequency_mhz': round(d['f_hz'] / 1e6, 1), 's11_db': d['s11_db']} for d in m['dips']]
+        for key, name in (('first_series_resonance_hz', 'first_series_resonance_mhz'),):
+            if m.get(key) is not None:
+                detail[name] = round(m[key] / 1e6, 1)
+        for key in ('antenna_only_band_worst_db', 'antenna_only_band_best_db', 'as_built_band_worst_db', 'as_built_band_best_db', 'basis'):
+            if m.get(key) is not None:
+                detail[key] = m[key]
+        if m.get('plausibility'):
+            detail['plausibility_flags'] = m['plausibility']
+        if detail:
+            out['rf_detail'] = detail
+        if m.get('summary_text'):
+            out['rf_summary'] = m['summary_text']
         if exp.quality == 'screen':
             out['compare_only'] = 'Screen runs are for comparing with the base run. Do not quote their absolute values as results.'
         if exp.delta:

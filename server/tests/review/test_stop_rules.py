@@ -116,12 +116,12 @@ async def test_budget_events_report_what_is_left(env):
     budgets = [e['payload'] for e in env.events(review['chat_id'], 'budget')]
     last = budgets[-2]
     assert last['input_tokens']['used'] == 1200 and last['output_tokens']['used'] == 40 and last['tool_calls']['2'] == 2
-    assert last['wall_s']['limit'] == 1800 and last['solver_s']['limit'] == 1200
+    assert last['wall_s']['limit'] == 3600 and last['solver_s']['limit'] == 2400
     assert env.store.get_review(review['id'])['budget']['depth'] == 'standard'
 
 
 async def test_leaving_phase_four_closes_an_investigation_when_a_budget_has_ended(env):
-    env.lab.solve_s['screen'] = 700.0
+    env.lab.solve_s['screen'] = 1400.0
     script = PRE + [BASE, adjust(2.0), {'tool': 'advance_phase'}, {'tool': 'submit_summary', 'args': {'summary': 'The solver time ran out during the investigation.', 'top_actions': ['Rerun the test.']}}]
     review = await env.review(script)
     results = contents(env, review, 'advance_phase')

@@ -226,6 +226,29 @@ async def receive_upload(request: Request, directory: Path) -> UploadSink:
     return sink
 
 
+def install_real_lab(store):
+    """Give new reviews the real RF lab, unless a lab was already installed (tests) or TRUSTPCB_LAB=baseline.
+
+    Jobs an earlier process left queued or running are marked interrupted. The lab checks Docker and the solver image
+    (TRUSTPCB_EMS_IMAGE, default trustpcb-ems:dev) when it is asked, and reports RF as Not tested with the reason when
+    either is missing, so starting the app never needs Docker."""
+    from .review import service
+    if service.CONFIG.lab is not None or os.getenv('TRUSTPCB_LAB', '').lower() == 'baseline':
+        return None
+    from .review.lab_real import RealLab
+    lab = RealLab(store)
+    lab.queue.recover_interrupted()
+    service.CONFIG.lab = lab
+    return lab
+
+
+async def uninstall_real_lab(lab):
+    from .review import service
+    await lab.queue.close()
+    if service.CONFIG.lab is lab:
+        service.CONFIG.lab = None
+
+
 def create_app(data_dir: Path | None = None, token: str | None = None, runner_factory=None,
                poll: float = POLL_SECONDS, keepalive: float = KEEPALIVE_SECONDS) -> FastAPI:
     launch_token = token or os.getenv('TRUSTPCB_TOKEN') or secrets.token_urlsafe(32)
@@ -237,10 +260,13 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
         manager = SessionManager(store, runner_factory=runner_factory)
         app.state.store = store
         app.state.manager = manager
+        lab = install_real_lab(store)
         try:
             yield
         finally:
             await manager.shutdown()
+            if lab is not None:
+                await uninstall_real_lab(lab)
 
     app = FastAPI(title='TrustPCB', lifespan=lifespan)
     app.state.token = launch_token
@@ -418,6 +444,27 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
         review = review_row(id)
         latest = store().latest_report_revision(id)
         return {**review_summary(review), 'threads': store().list_threads(id), 'report_revision': latest['number'] if latest else None}
+
+    @app.get('/api/reviews/{id}/sims')
+    async def review_sims(id: str):
+        review_row(id)
+        function = lane_function('trustpcb.review.sims', 'list_sims')
+        return await call_lane(function, store=store(), review_id=id)
+
+    @app.get('/api/sim/{job_id}/files/{name}')
+    async def sim_file(job_id: str, name: str):
+        """One processed file of a simulation job: only the names in `review.sims.SIM_FILES`."""
+        from .review.sims import MEDIA, SIM_FILES, job_folder
+        if name not in SIM_FILES:
+            raise HTTPException(404, 'Not a simulation file')
+        job = found(store().get_sim_job(job_id), 'Simulation job')
+        folder = job_folder(store(), job)
+        path = folder / name if folder else None
+        if path is None or not path.is_file():
+            raise HTTPException(404, 'Simulation file is not available')
+        cache = 'private, max-age=3600' if job['status'] == 'done' else 'no-store'
+        return FileResponse(path, media_type=MEDIA.get(path.suffix, 'application/octet-stream'), headers={
+            'X-Content-Type-Options': 'nosniff', 'Cache-Control': cache, 'Content-Security-Policy': "sandbox; default-src 'none'"})
 
     @app.get('/api/reviews/{id}/events')
     async def review_events(id: str, after: int = 0):

@@ -49,6 +49,16 @@ def metrics_from_result(run: dict, goal: dict | None = None) -> dict:
         'zin_re': zin.get('re'), 'zin_im': zin.get('im'), 'band_worst_s11_db': worst,
         'trust_status': trust.get('status'), 'trust_reasons': list(trust.get('reasons') or []), 'solve_s': run.get('solve_s') or result.get('solve_s'),
     }
+    # What the real RF lab adds: every dip (the deepest one alone is fragile), the first series resonance, and both band views.
+    dips = [{'f_hz': d['f_hz'], 's11_db': d['s11_db']} for d in (result.get('s11_dips') or []) if isinstance(d, dict) and 'f_hz' in d and 's11_db' in d][:6]
+    if dips:
+        out['dips'] = dips
+    alone, built = s11.get('antenna_only') or {}, s11.get('as_built') or {}
+    out.update(first_series_resonance_hz=result.get('first_series_resonance_hz'),
+               antenna_only_band_worst_db=alone.get('band_worst_db'), antenna_only_band_best_db=alone.get('band_best_db'),
+               as_built_band_worst_db=built.get('band_worst_db'), as_built_band_best_db=built.get('band_best_db'),
+               basis='as_built' if built else ('antenna_only' if alone else None), summary_text=run.get('summary_text'),
+               plausibility=list(run.get('plausibility') or []) or None)
     return {k: v for k, v in out.items() if v is not None or k.startswith('trust')}
 
 
@@ -127,6 +137,15 @@ def measurements_of(metrics: dict) -> dict:
         out['input_resistance'] = {'value': round(metrics['zin_re'], 1), 'unit': 'ohm'}
     if metrics.get('zin_im') is not None:
         out['input_reactance'] = {'value': round(metrics['zin_im'], 1), 'unit': 'ohm'}
+    if metrics.get('antenna_only_band_worst_db') is not None:
+        out['antenna_only_band_worst_s11'] = {'value': round(metrics['antenna_only_band_worst_db'], 2), 'unit': 'dB'}
+    if metrics.get('as_built_band_worst_db') is not None:
+        out['as_built_band_worst_s11'] = {'value': round(metrics['as_built_band_worst_db'], 2), 'unit': 'dB'}
+    if metrics.get('first_series_resonance_hz') is not None:
+        out['first_series_resonance'] = {'value': round(metrics['first_series_resonance_hz'] / 1e6, 1), 'unit': 'MHz'}
+    for index, dip in enumerate(metrics.get('dips') or [], start=1):
+        out[f's11_dip_{index}'] = {'value': round(dip['f_hz'] / 1e6, 1), 'unit': 'MHz'}
+        out[f's11_dip_{index}_depth'] = {'value': round(dip['s11_db'], 2), 'unit': 'dB'}
     return out
 
 

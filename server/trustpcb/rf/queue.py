@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import time
 import uuid
@@ -20,7 +21,10 @@ from typing import Any, Awaitable, Callable
 
 from . import postprocess
 
-IMAGE = "trustpcb-ems:dev"
+IMAGE = "trustpcb-ems:dev"            # TRUSTPCB_EMS_IMAGE overrides it when a queue is made
+#: The repository's worker/ folder. It is mounted read-only over /app in the container, so a change to the worker
+#: needs no image rebuild. Set TRUSTPCB_WORKER_MOUNT=0 to run the copy baked into the image instead.
+WORKER_DIR = Path(__file__).resolve().parents[3] / "worker"
 CONTAINER_PREFIX = "trustpcb-ems-"
 ProgressCb = Callable[[dict[str, Any]], Awaitable[None] | None]
 
@@ -56,10 +60,13 @@ class SimHandle:
 
 
 class SimQueue:
-    def __init__(self, store, *, image: str = IMAGE, cpus: int = 6, memory: str = "6g", timeout_s: float = 1500.0,
-                 docker: str = "docker", poll_s: float = 1.0):
+    def __init__(self, store, *, image: str | None = None, cpus: int = 6, memory: str = "6g", timeout_s: float = 1500.0,
+                 docker: str = "docker", poll_s: float = 1.0, worker_dir: str | Path | None = None):
         self.store = store
-        self.image, self.cpus, self.memory = image, cpus, memory
+        self.image, self.cpus, self.memory = image or os.environ.get("TRUSTPCB_EMS_IMAGE") or IMAGE, cpus, memory
+        if worker_dir is None and os.environ.get("TRUSTPCB_WORKER_MOUNT", "1") != "0" and (WORKER_DIR / "run_scenario.py").is_file():
+            worker_dir = WORKER_DIR
+        self.worker_dir = Path(worker_dir) if worker_dir else None
         self.timeout_s, self.docker, self.poll_s = timeout_s, docker, poll_s
         self._q: asyncio.Queue | None = None
         self._worker: asyncio.Task | None = None
@@ -179,7 +186,8 @@ class SimQueue:
         self.stats["ran"] += 1
         j["running"] = True
         cmd = [self.docker, "run", "--rm", "--name", j["name"], "--cpus", str(self.cpus), "--memory", self.memory, "--network", "none",
-               "--pids-limit", "1024", "-v", f"{d}:/job", self.image, "python3", "/app/run_scenario.py", "/job"]
+               "--pids-limit", "1024", "-v", f"{d}:/job",
+               *(["-v", f"{self.worker_dir}:/app:ro"] if self.worker_dir else []), self.image, "python3", "/app/run_scenario.py", "/job"]
         t0 = time.time()
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         j["proc"] = proc

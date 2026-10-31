@@ -11,8 +11,8 @@ from trustpcb.review.tools import MAX_RESULT_CHARS, ToolResult, bound, ok, page,
 
 @pytest.mark.parametrize('depth,expected', [
     ('quick', (360, 0, 90, 0, 0, 0, 8, 3_000_000, 30_000)),
-    ('standard', (1800, 1200, 160, 1, 5, 2, 14, 4_000_000, 40_000)),
-    ('deep', (4500, 3600, 220, 3, 6, 4, 20, 6_000_000, 60_000)),
+    ('standard', (3600, 2400, 160, 1, 5, 2, 14, 4_000_000, 40_000)),
+    ('deep', (7200, 5400, 220, 3, 6, 4, 20, 6_000_000, 60_000)),
 ])
 def test_default_budgets_match_the_spec(depth, expected):
     c = config_for(depth)
@@ -37,14 +37,14 @@ def test_tracker_counts_time_solver_tokens_and_walls():
     clock = Clock()
     tracker = BudgetTracker(config_for('standard'), clock)
     assert tracker.global_exhausted() is None
-    clock.t = 1739
+    clock.t = 3539
     assert tracker.global_exhausted() is None
-    clock.t = 1741
+    clock.t = 3541
     assert tracker.global_exhausted() == 'wall_clock' and not tracker.deadline_reached()
-    clock.t = 1800
+    clock.t = 3600
     assert tracker.deadline_reached()
     tracker = BudgetTracker(config_for('standard'), Clock())
-    tracker.add_solver(1200)
+    tracker.add_solver(2400)
     assert tracker.global_exhausted() == 'solver_time'
     tracker = BudgetTracker(config_for('standard'), Clock())
     tracker.add_usage({'input_tokens': 3_000_000, 'output_tokens': 10})

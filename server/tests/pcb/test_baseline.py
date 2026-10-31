@@ -56,8 +56,8 @@ def nrf_version(tmp_path_factory):
 def test_baseline_reports_drc_violations_with_project_file(nrf_version):
     vdir, result, base, _ = nrf_version
     assert base["has_project_file"] and not base["default_rules"]
-    # 48 on the reference run; KiCad's default DRC varies a little between runs of the same board
-    assert 40 <= base["drc"]["violations"] <= 60
+    # all-track-errors mode gives the same count on every run; the plain mode varies from 45 to 56
+    assert base["drc"]["violations"] == 111
     assert base["drc"]["schematic_parity"] > 0 and base["erc"]["violations"] == 0
     assert not base["warnings"]
     for step in ("kicad_version", "parse", "drc", "erc", "stats", "glb", "scene", "images"):

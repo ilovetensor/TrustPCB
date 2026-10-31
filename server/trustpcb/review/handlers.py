@@ -17,8 +17,8 @@ from .number_check import allowed_from_text
 from .tools import NUM, ToolResult, arr, fail, obj, ok, page, text
 
 MAX_CLEAR_AREA_MM2 = 120.0       # clear_copper_region: the largest region a what-if may clear
-MAX_LENGTH_MM = 6.0              # adjust_antenna_length: +-6 mm
-NEAR_ANTENNA_MM = 15.0           # clear_copper_region must stay this close to the antenna
+MAX_LENGTH_MM = 12.0             # adjust_antenna_length: +-12 mm (matches rf/whatif.py)
+NEAR_ANTENNA_MM = 12.0           # clear_copper_region must stay this close to the antenna
 EPSILON_RANGE = (3.8, 4.8)
 MAX_OPS = 3
 PAGE = 10

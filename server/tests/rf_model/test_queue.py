@@ -40,6 +40,8 @@ async def test_run_progress_and_cache(env):
     assert out["status"] == "done" and not out["cached"] and out["trust"]["status"] in ("ok", "fail")
     cmd = json.loads((state / "last_cmd.json").read_text())
     assert ["--cpus", "6"] == cmd[cmd.index("--cpus"):cmd.index("--cpus") + 2] and "--memory" in cmd and "--rm" in cmd
+    mounts = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"]
+    assert any(m.endswith(":/app:ro") and m.split(":")[0].endswith("/worker") for m in mounts)   # the repo worker, no rebuild
     fr = [p["fraction"] for p in seen]
     assert fr == sorted(fr) and fr[-1] == 1.0 and any(0 < f < 1 for f in fr)
     row = store.get_sim_job(h.job_id)
