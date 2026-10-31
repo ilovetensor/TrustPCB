@@ -71,7 +71,7 @@ KICAD_DEFAULT_DIELECTRIC_MM = 1.51
 
 
 def typical_stackup(board: Board, total_mm: float, *, epsilon_r: float = DEFAULT_ASSUMED_EPSILON_R, loss_tangent: float = DEFAULT_ASSUMED_LOSS_TANGENT,
-                    outer_dielectric_mm: float | None = None) -> dict[str, Any]:
+                    outer_dielectric_mm: float | None = None, label: str | None = None) -> dict[str, Any]:
     """An assumed stackup for the board's copper layers, with a stated total thickness (the user's stand-in for the real one).
 
     Outer copper 35 um and inner copper 17.5 um. With more than two copper layers the two outer dielectrics (prepreg) are
@@ -101,7 +101,10 @@ def typical_stackup(board: Board, total_mm: float, *, epsilon_r: float = DEFAULT
         if i < n - 1:
             layers.append({"name": f"dielectric {i + 1}", "kind": "dielectric", "thickness_mm": round(thick[i], 4), "epsilon_r": float(epsilon_r),
                            "loss_tangent": float(loss_tangent), "material": "FR4 (assumed)", "user_provided": True})
-    return {"source": "assumed_by_user", "assumed": True, "layers": layers, "total_thickness_mm": float(total_mm)}
+    out = {"source": "assumed_by_user", "assumed": True, "layers": layers, "total_thickness_mm": float(total_mm)}
+    if label:
+        out["label"] = label
+    return out
 
 
 def stackup_check(st: dict[str, Any]) -> list[str]:
@@ -128,7 +131,7 @@ def _stackup(board: Board, override: dict[str, Any] | None = None) -> tuple[dict
     if st.get("source") == "assumed_by_user":
         d = [l for l in layers if l.get("kind") == "dielectric"]
         assumptions.append(
-            f"ASSUMED STACKUP supplied by the user, not read from the board file: {st.get('total_thickness_mm')} mm total, dielectric "
+            f"ASSUMED STACKUP {st.get('label') or 'supplied by the user, not read from the board file'}: {st.get('total_thickness_mm')} mm total, dielectric "
             f"{', '.join(str(l['thickness_mm']) for l in d)} mm (top to bottom), permittivity {d[0]['epsilon_r']}, loss tangent {d[0]['loss_tangent']}; "
             "an antenna's resonant frequency depends strongly on these"
         )
@@ -335,7 +338,7 @@ def plan_setup(
             user_stack = typical_stackup(board, float(assumed_stackup.get("total_thickness_mm") or assumed_stackup.get("total_mm")),
                                          epsilon_r=float(assumed_stackup.get("epsilon_r") or DEFAULT_ASSUMED_EPSILON_R),
                                          loss_tangent=float(assumed_stackup.get("loss_tangent") or DEFAULT_ASSUMED_LOSS_TANGENT),
-                                         outer_dielectric_mm=assumed_stackup.get("outer_dielectric_mm"))
+                                         outer_dielectric_mm=assumed_stackup.get("outer_dielectric_mm"), label=assumed_stackup.get("label"))
         except (TypeError, ValueError) as exc:
             return NotSimulatable("bad_assumed_stackup", f"the assumed stackup cannot be used: {exc}")
     st, err, assumptions = _stackup(board, user_stack)
