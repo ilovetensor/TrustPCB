@@ -31,12 +31,12 @@
   stroke-width: 2;
 }
 .cl-n {
-  font: 600 11px var(--font-mono);
+  font: 600 11px var(--font-ui);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
 .cl-dimtext {
-  font: 500 10.5px var(--font-mono);
+  font: 500 10.5px var(--font-ui);
   font-variant-numeric: tabular-nums;
 }
 .cl-ping {
@@ -61,7 +61,6 @@
   background: var(--panel-solid);
   pointer-events: none;
   animation: rise 0.35s var(--ease) both;
-  --draw: 1;
 }
 .cl-tag-title {
   font: 600 12px/1.25 var(--font-ui);

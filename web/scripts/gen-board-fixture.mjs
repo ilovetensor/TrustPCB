@@ -1,6 +1,6 @@
-// DEV-ONLY fixture generator. Parses a .kicad_pcb into the contracts.md board
-// model (plus a `silk` array used only for drawing) so the web lane can build the
-// 2D viewer before the PCB lane's renderer exists. Not part of the product.
+// DEV-ONLY fixture generator. Parses a .kicad_pcb into the web app's board model
+// (lib/types.ts, plus a `silk` array used only for drawing) so the 2D viewer can be
+// built without the server's renderer. Not part of the product.
 //
 //   node scripts/gen-board-fixture.mjs <in.kicad_pcb> <out.json>
 import fs from "node:fs";
@@ -369,7 +369,7 @@ const out = {
   zones,
   keepouts,
   silk,
-  _fixture: { dev_only: true, note: "Generated from kicad_pcb by scripts/gen-board-fixture.mjs. Replace by PCB lane renderer output." },
+  _fixture: { dev_only: true, note: "Generated from kicad_pcb by scripts/gen-board-fixture.mjs. The server renders live boards." },
 };
 fs.writeFileSync(outFile, JSON.stringify(out));
 console.log(JSON.stringify({ footprints: footprints.length, pads: pads.length, tracks: tracks.length, vias: vias.length, zones: zones.length, keepouts: keepouts.length, bbox: out.bbox, nets: nets.size, silk: silk.length }));

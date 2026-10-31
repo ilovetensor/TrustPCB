@@ -57,11 +57,11 @@ export function CompareFixture() {
   return (
     <div className="pg">
       <TopBar current="compare" />
-      <main className="pg-main" style={{ maxWidth: 1440 }}>
+      <main id="main" tabIndex={-1} className="pg-main" style={{ maxWidth: 1440 }}>
         <div className="pg-head">
           <div>
             <span className="idx">nRF52840 RF IoT node</span>
-            <h1 className="serif">What changed between versions.</h1>
+            <h1 className="heading">What changed between versions.</h1>
           </div>
           <span className="grow" />
           <span className="pg-head-actions"><span className="stamp solid">A: version 1</span><span className="stamp solid">B: version 2</span></span>

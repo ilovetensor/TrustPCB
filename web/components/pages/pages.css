@@ -296,7 +296,6 @@ a.tile:hover {
 }
 .field input:focus,
 .field textarea:focus {
-  outline: none;
   background: var(--hair-2);
 }
 .warn {

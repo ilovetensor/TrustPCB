@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Curve } from "../../lib/curve";
 import { useReducedMotion, reducedMotion } from "../../lib/hooks";
 import { FIXTURE_MODE, listProjects } from "../../lib/api";
+import { loadFixtures } from "../../lib/fixture-loader";
 import { loadPatchSim, scenarioBoard, type PulseData, type RfBundle } from "../../lib/rf-data";
 import { loadField, loadPulse, NRF_BOARD, nrfSampleSource, type Fields } from "../../lib/sims";
 import { normaliseBoard } from "../../lib/api";
@@ -94,7 +95,7 @@ function HowItWorks() {
   const best = n ? acceptedPct(n.bestWorstDb) : null;
   return (
     <section className="ld-sec">
-      <div className="ld-sec-head"><span className="idx">How an investigation works</span><h2 className="serif">Suspects, then evidence.</h2></div>
+      <div className="ld-sec-head"><span className="idx">How an investigation works</span><h2 className="heading">Suspects, then evidence.</h2></div>
       <ol className="ld-steps">
         {HOW.map(([ic, t, d]) => (<li key={t}><span className="ld-step-ic"><Icon name={ic} size={18} /></span><h3>{t}</h3><p>{d}</p></li>))}
       </ol>
@@ -103,9 +104,9 @@ function HowItWorks() {
           <div className="ld-story-copy">
             <span className="idx">Example: the bundled nRF52840 sample run, not your board</span>
             <p>
-              As drawn, this antenna&apos;s deepest dip sits at <b className="mono">{n.dipGhz.toFixed(2)} GHz</b>{n.firstSeriesGhz ? <> and its first series resonance at <b className="mono">{n.firstSeriesGhz.toFixed(2)} GHz</b></> : null}, far below the 2.4 GHz band, so the worst S11 in the band is <b className="mono">{n.asBuiltWorstDb.toFixed(1)} dB</b>.
-              {n.shortenedDipGhz && n.shortenedMm ? <> A screen run with the antenna {n.shortenedMm} mm shorter moves the dip to <b className="mono">{n.shortenedDipGhz.toFixed(2)} GHz</b>, the direction the length says it should.</> : null}
-              {" "}Re-tuning the matching parts alone reaches <b className="mono">{n.bestWorstDb.toFixed(1)} dB</b> worst in the band: better, but not the <span className="mono">-10 dB</span> target. That is reported as improved, target not met, with the parts to try.
+              As drawn, this antenna&apos;s deepest dip sits at <b className="num">{n.dipGhz.toFixed(2)} GHz</b>{n.firstSeriesGhz ? <> and its first series resonance at <b className="num">{n.firstSeriesGhz.toFixed(2)} GHz</b></> : null}, far below the 2.4 GHz band, so the worst S11 in the band is <b className="num">{n.asBuiltWorstDb.toFixed(1)} dB</b>.
+              {n.shortenedDipGhz && n.shortenedMm ? <> A screen run with the antenna {n.shortenedMm} mm shorter moves the dip to <b className="num">{n.shortenedDipGhz.toFixed(2)} GHz</b>, the direction the length says it should.</> : null}
+              {" "}Re-tuning the matching parts alone reaches <b className="num">{n.bestWorstDb.toFixed(1)} dB</b> worst in the band: better, but not the <span className="num">-10 dB</span> target. That is reported as improved, target not met, with the parts to try.
             </p>
           </div>
           <PowerPair size="md" note={false}
@@ -129,14 +130,14 @@ export function Landing() {
   // the patch run is only the fallback when the nRF sample files are missing
   useEffect(() => { if (nrf.hero === null) loadPatchSim().then(setRf); }, [nrf.hero]);
   // illustrative curves exist only in fixture mode
-  useEffect(() => { if (FIXTURE_MODE) void import("../../lib/fixture-api").then((m) => setFx({ curve: m.resolveCurve("base")!, curve2: m.resolveCurve("confirm")!, band: m.TARGET_BAND })); }, []);
+  useEffect(() => { if (process.env.NEXT_PUBLIC_TRUSTPCB_FIXTURES === "1") void loadFixtures().then((m) => setFx({ curve: m.resolveCurve("base")!, curve2: m.resolveCurve("confirm")!, band: m.TARGET_BAND })); }, []);
   const latest = projects.find((p) => p.latest_review_id);
   const sampleHref = FIXTURE_MODE ? "/reviews/r-0042" : latest ? `/reviews/${latest.latest_review_id}` : null;
   const board: Board | null = useMemo(() => (rf ? scenarioBoard(rf) : null), [rf]);
   const empty = useMemo(() => ({ marks: [] as never[], meta: {} }), []);
 
   return (
-    <main className="ld">
+    <main id="main" tabIndex={-1} className="ld">
       <section className="ld-hero">
         <div className="ld-scene" aria-hidden>
           {useRealBoard && nrf.hero ? (
@@ -174,7 +175,7 @@ export function Landing() {
         </header>
         <div className="ld-copy">
           <span className="idx rise" style={{ animationDelay: "100ms" }}>Open-source inspection layer for circuit boards</span>
-          <h1 className="serif">
+          <h1 className="heading">
             <span className="rise l1" style={{ animationDelay: "200ms" }}>Others read your datasheets.</span>
             <span className="rise l2" style={{ animationDelay: "380ms" }}>TrustPCB tests your board.</span>
           </h1>
@@ -199,7 +200,7 @@ export function Landing() {
       </section>
 
       <section className="ld-sec">
-        <div className="ld-sec-head"><span className="idx">Method</span><h2 className="serif">An inspection, not a rewrite.</h2></div>
+        <div className="ld-sec-head"><span className="idx">Method</span><h2 className="heading">An inspection, not a rewrite.</h2></div>
         <ol className="ld-steps">
           {STEPS.map(([ic, t, d]) => (
             <li key={t}>
@@ -213,7 +214,7 @@ export function Landing() {
       <HowItWorks />
 
       {projects.length > 0 && <section className="ld-sec">
-        <div className="ld-sec-head"><span className="idx">{FIXTURE_MODE ? "Sample reviews" : "Your boards"}</span><h2 className="serif">{FIXTURE_MODE ? "See finished reviews." : "Pick up where you left off."}</h2></div>
+        <div className="ld-sec-head"><span className="idx">{FIXTURE_MODE ? "Sample reviews" : "Your boards"}</span><h2 className="heading">{FIXTURE_MODE ? "See finished reviews." : "Pick up where you left off."}</h2></div>
         <div className="ld-cards">
           {projects.slice(0, 3).map((p, i) => (
             <Link key={p.id} href={p.latest_review_id ? `/reviews/${p.latest_review_id}` : `/projects/${p.id}`} className="ld-card">

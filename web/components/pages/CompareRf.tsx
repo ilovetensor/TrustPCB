@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Board } from "../../lib/types";
 import { RadiationBalloon } from "../rf/RadiationBalloon";
 import type { PatternData } from "../../lib/rf-data";
-import { bestRun, useRunData, type RunData } from "../../lib/use-run-data";
+import { bestRun, type RunData } from "../../lib/use-run-data";
 import { acceptedForJob, describeOps, dipsOf, fmtPct, isScreen, listSims, liveSource, QUALITY_NOTE, sameGeometry, type SimJob, type SimSource } from "../../lib/sims";
 import { Panel } from "../ui";
 import { TuningGraph, type CurveSpec } from "../rf/charts";
@@ -44,11 +44,11 @@ function Pick({ source, job, onPick, side }: { source: SimSource; job: SimJob | 
   );
 }
 
-export const SAME_GEOMETRY = "Same geometry, new matching parts";
+const SAME_GEOMETRY = "Same geometry, new matching parts";
 const partsOf = (d: RunData) => (d.summary?.s11?.as_built?.parts ?? []).map((p) => `${p.topology} ${p.text}`);
 
 /** What the two runs share: one solver run of the antenna with different matching parts, or two different antennas. */
-export function geometryNote(jobA: SimJob | null, jobB: SimJob | null): { same: boolean | null; text: string } {
+function geometryNote(jobA: SimJob | null, jobB: SimJob | null): { same: boolean | null; text: string } {
   const same = sameGeometry(jobA?.scenario_hash, jobB?.scenario_hash);
   if (same === true && jobA?.scenario_hash === jobB?.scenario_hash) return { same, text: "Both versions use the very same solver run and the same matching parts." };
   if (same === true) return { same, text: "Both versions use the same solver run of the antenna. Only the matching parts were finalised again, so the antenna alone is identical and the change is the parts and nothing else." };
@@ -126,20 +126,20 @@ export function CompareTuning({ sourceA, sourceB, jobA, jobB, onPickA, onPickB, 
         )}
         {trace === "antenna" && geo.same === true && <p className="dim" style={{ margin: 0, fontSize: 12 }}>The antenna alone is the same in both versions (one solver run), so the two curves lie on each other. Switch to As built to see what the matching parts changed.</p>}
         {specs.length ? <TuningGraph curves={specs} band={band} height={210} dips={undefined} markMinima /> : <p className="dim">No tuning curve for the chosen runs.</p>}
-        <div className="rf-leg mono">
+        <div className="rf-leg num">
           {specs.map((c) => (<span key={c.id}><i style={{ background: c.color }} />{c.label}</span>))}
           {band && <span><i style={{ background: "var(--signal)" }} />Band {band.lo_ghz.toFixed(2)} to {band.hi_ghz.toFixed(2)} GHz</span>}
         </div>
         <div className="cmp-scroll"><table className="rp-tbl cmp-rf-tbl">
           <thead><tr><th /><th>A v{nA}</th><th>B v{nB}</th><th>Change</th></tr></thead>
           <tbody>
-            <tr><td>Deepest dip</td><td className="mono">{ma ? `${ghz(ma.f_ghz)} GHz, ${ma.db.toFixed(1)} dB` : "-"}</td><td className="mono">{mb ? `${ghz(mb.f_ghz)} GHz, ${mb.db.toFixed(1)} dB` : "-"}</td>
-              <td className="mono">{ma && mb ? `${mb.f_ghz >= ma.f_ghz ? "+" : "−"}${Math.abs((mb.f_ghz - ma.f_ghz) * 1000).toFixed(0)} MHz` : "-"}</td></tr>
-            <tr><td>Dips</td><td className="mono">{da.length}</td><td className="mono">{db.length}</td><td /></tr>
-            <tr><td>Band worst S11</td><td className="mono">{ra != null ? `${ra.toFixed(1)} dB` : "-"}</td><td className="mono">{rb != null ? `${rb.toFixed(1)} dB` : "-"}</td><td className="mono">{ra != null && rb != null ? `${rb - ra >= 0 ? "+" : "−"}${Math.abs(rb - ra).toFixed(1)} dB` : "-"}</td></tr>
-            <tr><td title="Accepted power (mismatch only, not radiated power or efficiency)">Accepted, worst</td><td className="mono">{wa != null ? `${fmtPct(wa)} %` : "-"}</td><td className="mono">{wb != null ? `${fmtPct(wb)} %` : "-"}</td><td className="mono">{wa != null && wb != null ? `${wb - wa >= 0 ? "+" : "−"}${fmtPct(Math.abs(wb - wa))} pts` : "-"}</td></tr>
-            <tr><td>Accepted, mean</td><td className="mono">{meanA != null ? `${fmtPct(meanA)} %` : "-"}</td><td className="mono">{meanB != null ? `${fmtPct(meanB)} %` : "-"}</td><td className="mono">{meanA != null && meanB != null ? `${meanB - meanA >= 0 ? "+" : "−"}${fmtPct(Math.abs(meanB - meanA))} pts` : "-"}</td></tr>
-            {(pa.length > 0 || pb.length > 0) && <tr><td>Matching parts</td><td className="mono cmp-parts">{pa.length ? pa.map((x) => <span key={x}>{x}</span>) : "-"}</td><td className="mono cmp-parts">{pb.length ? pb.map((x) => <span key={x}>{x}</span>) : "-"}</td><td /></tr>}
+            <tr><td>Deepest dip</td><td className="num">{ma ? `${ghz(ma.f_ghz)} GHz, ${ma.db.toFixed(1)} dB` : "-"}</td><td className="num">{mb ? `${ghz(mb.f_ghz)} GHz, ${mb.db.toFixed(1)} dB` : "-"}</td>
+              <td className="num">{ma && mb ? `${mb.f_ghz >= ma.f_ghz ? "+" : "−"}${Math.abs((mb.f_ghz - ma.f_ghz) * 1000).toFixed(0)} MHz` : "-"}</td></tr>
+            <tr><td>Dips</td><td className="num">{da.length}</td><td className="num">{db.length}</td><td /></tr>
+            <tr><td>Band worst S11</td><td className="num">{ra != null ? `${ra.toFixed(1)} dB` : "-"}</td><td className="num">{rb != null ? `${rb.toFixed(1)} dB` : "-"}</td><td className="num">{ra != null && rb != null ? `${rb - ra >= 0 ? "+" : "−"}${Math.abs(rb - ra).toFixed(1)} dB` : "-"}</td></tr>
+            <tr><td title="Accepted power (mismatch only, not radiated power or efficiency)">Accepted, worst</td><td className="num">{wa != null ? `${fmtPct(wa)} %` : "-"}</td><td className="num">{wb != null ? `${fmtPct(wb)} %` : "-"}</td><td className="num">{wa != null && wb != null ? `${wb - wa >= 0 ? "+" : "−"}${fmtPct(Math.abs(wb - wa))} pts` : "-"}</td></tr>
+            <tr><td>Accepted, mean</td><td className="num">{meanA != null ? `${fmtPct(meanA)} %` : "-"}</td><td className="num">{meanB != null ? `${fmtPct(meanB)} %` : "-"}</td><td className="num">{meanA != null && meanB != null ? `${meanB - meanA >= 0 ? "+" : "−"}${fmtPct(Math.abs(meanB - meanA))} pts` : "-"}</td></tr>
+            {(pa.length > 0 || pb.length > 0) && <tr><td>Matching parts</td><td className="num cmp-parts">{pa.length ? pa.map((x) => <span key={x}>{x}</span>) : "-"}</td><td className="num cmp-parts">{pb.length ? pb.map((x) => <span key={x}>{x}</span>) : "-"}</td><td /></tr>}
           </tbody>
         </table></div>
         {opsB && <p className="dim" style={{ margin: 0, fontSize: 12 }}>B's run changed: {opsB}.</p>}

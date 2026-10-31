@@ -7,8 +7,9 @@
 // The canvases in rf/FieldCanvas2D and the planes in rf/WaveField3D do exactly that.
 
 import { apiGet } from "./live";
+import { decodePulseFrames } from "./pulse-codec.mjs";
 import type { CurrentData, FieldSlice, PatternData, PulseData, S11Data, ZinData } from "./rf-data";
-import { acceptedFromCurve, acceptedOf, findDips, measurementsOfSummary, pickStageJob } from "./sim-math.mjs";
+import { acceptedFromCurve, acceptedOf, findDips, measurementsOfSummary } from "./sim-math.mjs";
 export { acceptedFromCurve, acceptedOf, acceptedPct, bestRun, boardYRange, describeFreq, describeOps, findDips, fixedDipsMhz, fmtPct, isFixedDip, measurementsOfSummary, pickStageJob, sameGeometry, zFromGamma } from "./sim-math.mjs";
 export type { Dip } from "./sim-math.mjs";
 import type { Dip } from "./sim-math.mjs";
@@ -32,12 +33,12 @@ export interface SimSource {
   sample?: { note: string };
 }
 
-export const liveFileUrl = (job: SimJob, name: string) => `/api/sim/${encodeURIComponent(job.job_id)}/files/${name}`;
+const liveFileUrl = (job: SimJob, name: string) => `/api/sim/${encodeURIComponent(job.job_id)}/files/${name}`;
 export const listSims = (reviewId: string) => apiGet<SimJob[]>(`reviews/${reviewId}/sims`);
 export const liveSource = (reviewId: string, jobs: SimJob[]): SimSource => ({ id: `review:${reviewId}`, jobs, fileUrl: liveFileUrl });
 
 /** Jobs a viewer can look at: finished with at least the tuning curve. */
-export const hasFile = (job: SimJob, name: string) => job.files.includes(name);
+const hasFile = (job: SimJob, name: string) => job.files.includes(name);
 export const isDone = (job: SimJob) => job.status === "done";
 
 /* ------------------------------ fetching, cached per url ------------------------------ */
@@ -50,6 +51,7 @@ function cached<T>(url: string, load: () => Promise<T>): Promise<T> {
 }
 const getJson = <T,>(url: string) => cached<T>(url, async () => { const r = await fetch(url); if (!r.ok) throw new Error(`${r.status} ${url}`); return r.json() as Promise<T>; });
 const getF32 = (url: string) => cached<Float32Array>(url, async () => { const r = await fetch(url); if (!r.ok) throw new Error(`${r.status} ${url}`); return new Float32Array(await r.arrayBuffer()); });
+const getBytes = (url: string) => cached<ArrayBuffer>(url, async () => { const r = await fetch(url); if (!r.ok) throw new Error(`${r.status} ${url}`); return r.arrayBuffer(); });
 const optional = async <T,>(job: SimJob, name: string, run: () => Promise<T>): Promise<T | null> => {
   if (!hasFile(job, name)) return null;
   try { return await run(); } catch { return null; }
@@ -84,7 +86,6 @@ export interface SimMeta {
 
 export const loadSummary = (src: SimSource, job: SimJob) => optional(job, "summary.json", () => getJson<Summary>(src.fileUrl(job, "summary.json")));
 export const loadMeta = (src: SimSource, job: SimJob) => optional(job, "meta.json", () => getJson<SimMeta>(src.fileUrl(job, "meta.json")));
-export const loadResult = (src: SimSource, job: SimJob) => optional(job, "result.json", () => getJson<Record<string, any>>(src.fileUrl(job, "result.json")));
 
 interface RawS11 { freq_hz: number[]; s11_db: number[]; s11_re?: number[]; s11_im?: number[] }
 export interface Curves {
@@ -138,9 +139,9 @@ export function loadPulse(src: SimSource, job: SimJob): Promise<PulseData | null
   return optional(job, "pulse.json", async () => {
     const p = await getJson<any>(src.fileUrl(job, "pulse.json"));
     if (!hasFile(job, "pulse.bin")) return null;
-    const [fr, rows, cols] = p.shape as number[];
-    const buf = await getF32(src.fileUrl(job, "pulse.bin"));
-    return { nx: cols, ny: rows, u: p.u_mm, v: p.v_mm, at_mm: p.plane_mm, times_s: p.times_s, frames: Array.from({ length: fr }, (_, i) => buf.subarray(i * rows * cols, (i + 1) * rows * cols)) };
+    const [, rows, cols] = p.shape as number[];
+    const frames = await decodePulseFrames(await getBytes(src.fileUrl(job, "pulse.bin")), p);
+    return frames && { nx: cols, ny: rows, u: p.u_mm, v: p.v_mm, at_mm: p.plane_mm, times_s: p.times_s, frames };
   });
 }
 
@@ -174,8 +175,8 @@ export const QUALITY_NOTE = "Screen run: compare only, do not read these as abso
 
 /* ------------------------------ the bundled sample ------------------------------ */
 
-export const NRF_SIM_BASE = "/fixtures/nrf-sim";
-export const NRF_BOARD = { board: "/fixtures/nrf/board.json", glb: "/fixtures/nrf/board.glb" };
+const NRF_SIM_BASE = "/fixtures/nrf-sim";
+export const NRF_BOARD = { board: "/fixtures/nrf/board.json", glb: "/fixtures/nrf/board.glb.gz" };
 const SAMPLE_DIRS: { id: string; dir: string; kind: SimJob["kind"]; quality: "screen" | "confirm"; label: string; ref: string }[] = [
   { id: "sample-screen", dir: "screen", kind: "base", quality: "screen", label: "Base, antenna as drawn", ref: "R1" },
   { id: "sample-whatif", dir: "whatif_shorten_6mm_screen", kind: "whatif", quality: "screen", label: "Shorten the antenna by 6 mm", ref: "R2" },

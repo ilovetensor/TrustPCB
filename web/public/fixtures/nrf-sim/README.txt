@@ -25,6 +25,10 @@ s11_as_built.json (L1 2.2 nH cascaded onto the antenna S11 with scikit-rf), meta
 assumptions), scenario.json (exactly what the solver read), model.png (the model that was simulated),
 progress.jsonl, tune_matching.json (E24 search on this result, no solver time),
 compare_screen_confirm.json.
+pulse.bin is packed to keep the first page load small: the run's 80 frames of 212 x 257 values, one byte per value on
+the square-root curve the viewer draws with (largest change 1/255 of the colour ramp), then gzip compressed. The solver wrote
+17,434,880 bytes of float32; this file is 662,050. Frames, rows, columns and times are unchanged. See web/lib/pulse-codec.mjs
+and web/scripts/pack-pulse.py. board.glb is stored as board.glb.gz in ../nrf (the same GLB bytes, gzip compressed).
 screen/ holds the summary, S11, impedance, pattern and meta of the screen run of the same board.
 whatif_shorten_6mm_screen/ holds a screen run with adjust_antenna_length -6 mm (what-if, model only).
 

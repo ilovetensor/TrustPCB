@@ -122,7 +122,7 @@ export function acceptedFromCurve(curve, band) {
 
 const num = (m, k) => (m && m[k] && typeof m[k].value === "number" ? m[k].value : null);
 /**
- * The accepted-power numbers a job's measurements carry (contracts.md, "Result fields added for the dashboard"):
+ * The accepted-power numbers a job's measurements carry:
  * `band_worst_accepted_power_pct` and `band_mean_accepted_power_pct`, with `antenna_only_` and `as_built_` prefixes.
  * Returns {asBuilt, antenna, headline} where each side is {worst, mean} or null. The headline is the as-built figure when there is one.
  */

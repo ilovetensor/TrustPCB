@@ -1,4 +1,4 @@
-// Client reducer over review and thread events (spec sections 14 and 17).
+// Client reducer over review and thread events.
 // Pure and deterministic so a live stream, a replay and a page reload agree.
 // Payload shapes follow what the backend emits (server/trustpcb/review/*.py).
 

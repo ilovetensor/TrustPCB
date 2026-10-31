@@ -1,7 +1,7 @@
 "use client";
 import "./rf.css";
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BoardBundle } from "../../lib/api";
 import {
   acceptedForJob, acceptedOf, describeFreq, describeOps, dipsOf, fixedDipsMhz, fmtPct, isDone, isFixedDip, isScreen, loadCurrent, loadCurves, loadField, loadMeta, loadPattern, loadPulse, loadSummary, measure,
@@ -11,7 +11,7 @@ import type { Headline, VersionChange as VC } from "../../lib/story.mjs";
 import { VersionChange } from "./VersionChange";
 import { useAsync } from "../../lib/use-async";
 import { cssGradient, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
-import { reducedMotion, useNarrow, useReducedMotion } from "../../lib/hooks";
+import { reducedMotion, tabProps, tablistKeys, useNarrow, useReducedMotion } from "../../lib/hooks";
 import { Icon, Panel } from "../ui";
 import { SimStage, type SimView } from "./SimStage";
 import { SmithChart, TuningGraph, type CurveSpec } from "./charts";
@@ -43,15 +43,15 @@ function JobCard({ job, active, overlaid, onActive, onOverlay }: { job: SimJob; 
     <div className={`rf-job ${active ? "on" : ""} ${done ? "" : "wait"}`}>
       <button className="rf-job-main" onClick={onActive} disabled={!done} aria-pressed={active} title={done ? "Show this run" : `This run is ${job.status}`}>
         <span className="rf-job-top">
-          {job.ref && <b className="mono">{job.ref}</b>}
+          {job.ref && <b className="num">{job.ref}</b>}
           <span className="idx">{kindLabel(job.kind)}</span>
           {job.suspect && <span className="idx">{job.suspect}</span>}
           <span style={{ flex: 1 }} />
           {isScreen(job) ? <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span> : job.quality === "confirm" ? <span className="stamp solid">Confirm</span> : null}
         </span>
         <span className="rf-job-name">{job.label ?? "Simulation"}</span>
-        {ops && <span className="rf-job-ops mono">{ops}</span>}
-        <span className="rf-job-num mono">
+        {ops && <span className="rf-job-ops num">{ops}</span>}
+        <span className="rf-job-num num">
           {done && f != null && depth != null ? <>dip <b>{(f / 1000).toFixed(3)}</b> GHz <b>{depth.toFixed(1)}</b> dB</> : done ? "no numbers recorded" : job.status}
           {done && acc != null && <span className="rf-acc" title={ACCEPTED_LABEL}><b>{fmtPct(acc)}</b> % accepted</span>}
           {job.trust && <span className={`stamp ${job.trust.status === "ok" ? "" : "sig"}`} title={job.trust.reasons.join("; ") || undefined}>Trust {job.trust.status === "ok" ? "ok" : "failed"}</span>}
@@ -134,7 +134,6 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
     if (antenna && (trace === "both" || trace === "antenna" || !asBuilt)) out.push({ id: "antenna", label: `${active?.ref ?? ""} antenna only`.trim(), f_ghz: antenna.f_ghz, s11_db: antenna.s11_db, color: "var(--paper)", dashed: false, width: 1.9 });
     return out;
   }, [overlayCurves, antenna, asBuilt, trace, active]);
-  const mainCurve = specs[specs.length - 1] ?? null;
 
   const { dips: rawDips, fromSummary } = useMemo(() => dipsOf(trace === "as_built" ? null : summary, trace === "as_built" ? asBuilt : antenna), [summary, antenna, asBuilt, trace]);
   // dips that stayed put when the geometry changed are not the antenna's resonance (a `fixed_dip_N` measurement of any run of this review)
@@ -197,16 +196,16 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   const ramp = view === "wave" ? SIGNED_STOPS : FIELD_STOPS;
   const controls = (
     <Panel className="rf-ctl" title="On the board" bodyClass="rf-body">
-      <div className="seg rf-views" role="tablist" aria-label="Simulation view">
+      <div className="seg rf-views" role="tablist" aria-label="Simulation view" onKeyDown={tablistKeys()}>
         {VIEWS.map((v) => (
-          <button key={v.key} role="tab" aria-selected={view === v.key} disabled={!canShow(active, v.key)} title={canShow(active, v.key) ? undefined : `This run kept no ${v.why} files`}
+          <button key={v.key} {...tabProps(view === v.key)} disabled={!canShow(active, v.key)} title={canShow(active, v.key) ? undefined : `This run kept no ${v.why} files`}
             onClick={() => { setView(v.key); if (v.key === "pulse") { setFrame(0); setPulsePlay(true); } }}><Icon name={v.icon} size={13} /> {v.label}</button>
         ))}
       </div>
       <div className="rf-legend">
         <span className="idx">{view === "wave" ? "E-field, instantaneous, Ez" : view === "pulse" ? "Pulse, |E|" : view === "pattern" ? "Directivity" : "Surface current, |Js|"}</span>
         <div className="rf-ramp" style={{ background: cssGradient(ramp) }} />
-        <div className="rf-ramp-l mono">
+        <div className="rf-ramp-l num">
           {view === "wave" ? <><span>negative</span><span>0</span><span>positive</span></> : view === "pattern" ? <><span>{pattern.data ? `${(pattern.data.dmax_dbi - 10).toFixed(0)} dBi` : ""}</span><span>{pattern.data ? `${pattern.data.dmax_dbi.toFixed(1)} dBi max` : ""}</span></> : <><span>0</span><span>{view === "current" ? "99.5th pct" : "peak"}</span></>}
         </div>
         <p className="dim">{freqNote || "Real openEMS output drawn on this version's board model."}</p>
@@ -246,10 +245,10 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
         <section className="rf-band" aria-label="In-band S11 and accepted power">
           <div className="rf-band-s11">
             <span className="idx">S11 in the band, worst point</span>
-            <div className="rf-band-big mono">{sumBand.asBuilt != null ? <>{sumBand.asBuilt.toFixed(1).replace("-", "−")}<small> dB</small></> : sumBand.antenna != null ? <>{sumBand.antenna.toFixed(1).replace("-", "−")}<small> dB</small></> : "-"}</div>
+            <div className="rf-band-big num">{sumBand.asBuilt != null ? <>{sumBand.asBuilt.toFixed(1).replace("-", "−")}<small> dB</small></> : sumBand.antenna != null ? <>{sumBand.antenna.toFixed(1).replace("-", "−")}<small> dB</small></> : "-"}</div>
             <span className="idx">{sumBand.asBuilt != null ? "As built" : "Antenna alone"}</span>
-            {sumBand.asBuilt != null && sumBand.antenna != null && <span className="mono rf-band-small">{sumBand.antenna.toFixed(1).replace("-", "−")} dB antenna alone</span>}
-            {band && <span className="mono rf-band-small">target {band.target_db} dB</span>}
+            {sumBand.asBuilt != null && sumBand.antenna != null && <span className="num rf-band-small">{sumBand.antenna.toFixed(1).replace("-", "−")} dB antenna alone</span>}
+            {band && <span className="num rf-band-small">target {band.target_db} dB</span>}
           </div>
           <div className="rf-band-acc">
             {accepted.asBuilt && <PowerBar value={accepted.asBuilt.worst} label="Accepted power, as built" sub={accepted.asBuilt.mean != null ? `worst point, mean ${fmtPct(accepted.asBuilt.mean)} %` : "worst point"} size="md" />}
@@ -271,7 +270,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
       {specs.length ? (
         <TuningGraph curves={specs} band={band} marker={marker} onMarker={setMarker} height={214} dips={dips} vlines={fsr ? [{ f_ghz: fsr / 1e9, label: "1st series res. (length)" }] : undefined} />
       ) : <p className="dim">{curves === null ? "Loading the S11 curve." : "This run has no S11 curve."}</p>}
-      <div className="rf-leg mono">
+      <div className="rf-leg num">
         {specs.slice().reverse().map((c) => (<span key={c.id}><i style={{ background: c.color, opacity: c.dashed ? 0.8 : 1 }} />{c.label}</span>))}
         {band && <span><i style={{ background: "var(--signal)" }} />Band {band.lo_ghz.toFixed(2)} to {band.hi_ghz.toFixed(2)} GHz, target {band.target_db} dB</span>}
       </div>
@@ -283,7 +282,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
         <div className="rf-dipcol">
           <span className="idx">S11 dips{fromSummary ? "" : ", found on the curve"}</span>
           {dips.length > 0 ? (
-            <ol className="rf-dips mono" aria-label="S11 dips">
+            <ol className="rf-dips num" aria-label="S11 dips">
               {dips.map((d, i) => (
                 <li key={i} className={d.fixed ? "fixed" : undefined}>
                   <b>{i + 1}</b><span>{d.f_ghz.toFixed(3)}</span><span>{d.db.toFixed(1)} dB</span>
@@ -293,13 +292,13 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
               ))}
             </ol>
           ) : <p className="dim" style={{ margin: 0, fontSize: 12 }}>No dip below -3 dB.</p>}
-          {fsr ? <p className="dim rf-fsr mono"><i /><b>Length indicator:</b> 1st series resonance {ghz(fsr)} GHz, where the reactance crosses zero. It moves with the antenna length.</p> : null}
+          {fsr ? <p className="dim rf-fsr num"><i /><b>Length indicator:</b> 1st series resonance {ghz(fsr)} GHz, where the reactance crosses zero. It moves with the antenna length.</p> : null}
         </div>
       </div>
       {summary?.plausibility?.map((p, i) => (<p key={i} className="rf-warn">{p}</p>))}
       {screen && <p className="rf-warn quiet">{QUALITY_NOTE} A confirm run is the one to quote.</p>}
       <div className="rf-stats">
-        {numbers.map(([a, b]) => (<div key={a}><span className="idx">{a}</span><b className="mono">{b}</b></div>))}
+        {numbers.map(([a, b]) => (<div key={a}><span className="idx">{a}</span><b className="num">{b}</b></div>))}
       </div>
       <p className="idx rf-note">Simulated. Not a substitute for a real antenna measurement.</p>
     </Panel>
@@ -318,7 +317,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   );
 
   return (
-    <main className="rf">
+    <main id="main" tabIndex={-1} className="rf">
       {stage}
       <header className="rf-top">
         <Link className="btn sm" href={sample ? "/" : `/reviews/${reviewId}`}><Icon name="back" size={13} /> {sample ? "Back to home" : "Back to review"}</Link>
@@ -329,7 +328,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
         <span style={{ flex: 1 }} />
         <span className="stamp sim" title="Computed by the openEMS solver"><i />Simulated</span>
       </header>
-      {notice && <div className="rf-banner mono"><span className="stamp fixture">Bundled sample</span> {notice}</div>}
+      {notice && <div className="rf-banner num"><span className="stamp fixture">Bundled sample</span> {notice}</div>}
       <div className="rf-left">{runs}{controls}</div>
       {charts}
       {dock}

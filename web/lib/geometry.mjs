@@ -3,7 +3,7 @@
 
 /** @typedef {[number, number]} Pt */
 
-export function bboxOfPoints(points) {
+function bboxOfPoints(points) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [x, y] of points) {
     if (x < x0) x0 = x;
@@ -27,10 +27,6 @@ export function bboxUnion(boxes) {
 
 export function bboxCenter(b) {
   return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
-}
-
-export function padBBox(b, m) {
-  return [b[0] - m, b[1] - m, b[2] + m, b[3] + m];
 }
 
 /** Sample a three-point arc (start, mid, end) into a polyline. */
@@ -88,7 +84,7 @@ function trackPoints(t) {
 }
 
 /**
- * Resolve a server-issued target id into geometry (contracts.md `Board.resolve`).
+ * Resolve a server-issued target id into geometry (the API's `Board.resolve`).
  * Returns null when the id is unknown or not resolvable on the client.
  */
 export function resolveTarget(index, id) {
@@ -130,17 +126,13 @@ export function resolveTarget(index, id) {
   return null;
 }
 
-export function geometryCenter(g) {
-  return bboxCenter(g.bbox);
-}
-
 /** Resolve all targets of a mark. Uses server `resolved` when present. */
 export function resolveMark(index, mark) {
   if (mark.resolved?.length) return mark.resolved;
   return mark.targets.map((t) => resolveTarget(index, t)).filter(Boolean);
 }
 
-export function pointOnPolyline(points, t = 0.5) {
+function pointOnPolyline(points, t = 0.5) {
   let total = 0;
   const segs = [];
   for (let i = 1; i < points.length; i++) {
@@ -186,11 +178,6 @@ export function markAnchor(mark, geoms) {
   return bboxCenter(g.bbox);
 }
 
-/** Merge several geometries' bbox, padded. */
-export function geometriesBBox(geoms) {
-  return bboxUnion(geoms.map((g) => g.bbox));
-}
-
 /* ----------------------------- view maths ----------------------------- */
 
 /** View: screen = board * scale + (tx, ty). */
@@ -221,35 +208,6 @@ export function zoomAt(view, sx, sy, factor, min = 0.5, max = 400) {
   const next = Math.min(max, Math.max(min, view.scale * factor));
   const k = next / view.scale;
   return { scale: next, tx: sx - (sx - view.tx) * k, ty: sy - (sy - view.ty) * k };
-}
-
-/* ------------------------------- rulers ------------------------------- */
-
-const STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500];
-
-/** Pick major and minor spacing (mm) so majors are at least `minPx` apart. */
-export function rulerSteps(pxPerMm, minPx = 70) {
-  let major = STEPS[STEPS.length - 1];
-  for (const s of STEPS) {
-    if (s * pxPerMm >= minPx) { major = s; break; }
-  }
-  const mant = Number((major / 10 ** Math.floor(Math.log10(major))).toFixed(3));
-  const minor = mant === 1 ? major / 10 : mant === 2 ? major / 4 : major / 5;
-  return { major, minor: Math.max(minor, 0.01) };
-}
-
-/** Tick positions in mm across [min,max] for a step. */
-export function tickRange(min, max, step) {
-  const out = [];
-  const first = Math.ceil(min / step - 1e-9);
-  const last = Math.floor(max / step + 1e-9);
-  for (let i = first; i <= last; i++) out.push(+(i * step).toFixed(6));
-  return out;
-}
-
-export function formatMm(v, step) {
-  const d = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
-  return v.toFixed(d);
 }
 
 /* ------------------------- clustering and callouts ------------------------- */
@@ -371,7 +329,7 @@ export function layoutCallouts(items, { width, height, obstacles = [], radius = 
 }
 
 /** Arrowhead polygon points at `tip` pointing along direction (dx,dy). */
-export function arrowhead(tip, dx, dy, len = 7, half = 2.2) {
+function arrowhead(tip, dx, dy, len = 7, half = 2.2) {
   const l = Math.hypot(dx, dy) || 1;
   const ux = dx / l, uy = dy / l;
   const bx = tip[0] - ux * len, by = tip[1] - uy * len;
@@ -381,7 +339,7 @@ export function arrowhead(tip, dx, dy, len = 7, half = 2.2) {
 /* --------------------------- nearest pair (links) --------------------------- */
 
 /** Flatten a geometry to line segments [[x,y],[x,y]] (points become degenerate). */
-export function geometrySegments(g) {
+function geometrySegments(g) {
   const out = [];
   const walk = (x) => {
     if (x.parts) x.parts.forEach(walk);

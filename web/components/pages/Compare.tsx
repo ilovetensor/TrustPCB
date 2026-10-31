@@ -4,15 +4,18 @@ import "./compare.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { FIXTURE_MODE, getBoardBundle, getCompare, getProject, type BoardBundle, type CompareResult, type FindingBrief } from "../../lib/api";
+import { getBoardBundle, getCompare, getProject, type BoardBundle, type CompareResult, type FindingBrief } from "../../lib/api";
 import { bboxUnion } from "../../lib/geometry.mjs";
 import type { BBox, Mark, Severity } from "../../lib/types";
 import { Board2D, type ActiveMarkItem } from "../board2d/Board2D";
 import { useScene } from "../board2d/useScene";
 import { DEFAULT_LAYERS } from "../board2d/layers";
-import { CompareFixture } from "./CompareFixture";
+import dynamic from "next/dynamic";
+
+// The fixture compare page is a design aid. The flag is read in this file so the build can drop it from production.
+const CompareFixture = process.env.NEXT_PUBLIC_TRUSTPCB_FIXTURES === "1" ? dynamic(() => import("./CompareFixture").then((m) => m.CompareFixture)) : null;
 import { VersionChange } from "../rf/VersionChange";
-import { CompareHeadline, CompareTuning, PatternLayer, useCompareSims, A_COLOR, B_COLOR, PATTERN_VIEWS, type PatternViewKey } from "./CompareRf";
+import { CompareHeadline, CompareTuning, PatternLayer, useCompareSims, PATTERN_VIEWS, type PatternViewKey } from "./CompareRf";
 import { FieldCanvas2D } from "../rf/FieldCanvas2D";
 import { bestRun, useRunData } from "../../lib/use-run-data";
 import { describeFreq, isScreen } from "../../lib/sims";
@@ -98,11 +101,11 @@ function CompareLive() {
   return (
     <div className="pg">
       <TopBar current="compare" />
-      <main className="pg-main" style={{ maxWidth: 1440 }}>
+      <main id="main" tabIndex={-1} className="pg-main" style={{ maxWidth: 1440 }}>
         <div className="pg-head">
           <div>
             <span className="idx">{cmp ? `Version ${nA} against version ${nB}` : "Compare versions"}</span>
-            <h1 className="serif">What changed between versions.</h1>
+            <h1 className="heading">What changed between versions.</h1>
           </div>
           <span className="grow" />
           {bothSims && (
@@ -232,6 +235,6 @@ function CompareLive() {
 }
 
 export function Compare() {
-  if (FIXTURE_MODE) return <CompareFixture />;
+  if (CompareFixture) return <CompareFixture />;
   return (<Suspense fallback={null}><CompareLive /></Suspense>);
 }

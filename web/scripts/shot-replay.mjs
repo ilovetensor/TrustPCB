@@ -7,7 +7,8 @@ import path from "node:path";
 const [, , out, review, eventsFile, last, size = "1440x900"] = process.argv;
 const events = JSON.parse(fs.readFileSync(eventsFile)).filter((e) => e.sequence <= Number(last));
 const [w, h] = size.split("x").map(Number);
-const exe = path.join(os.homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell");
+// CHROME_BIN overrides the Playwright cache location (the default is the macOS headless shell)
+const exe = process.env.CHROME_BIN ?? path.join(os.homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell");
 const browser = await chromium.launch({ executablePath: exe, args: ["--use-gl=angle", "--use-angle=metal", "--enable-webgl", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"] });
 const page = await browser.newPage({ viewport: { width: w, height: h } });
 await page.route(`**/api/reviews/${review}/stream*`, (r) => r.fulfill({ status: 200, contentType: "text/event-stream", body: events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") }));

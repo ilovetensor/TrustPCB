@@ -13,7 +13,10 @@ test("real solver sidecars match their binary sizes", () => {
     assert.equal(fs.statSync(new URL(field[k].file, dir)).size, n, k);
   }
   const pulse = read("pulse.json");
-  assert.equal(fs.statSync(new URL("pulse.bin", dir)).size, pulse.shape.reduce((a, b) => a * b, 1) * 4);
+  // the bundled pulse is packed (uint8, gzip): the file is far smaller than float32, and decodes to exactly shape values
+  assert.equal(pulse.dtype, "uint8");
+  assert.equal(pulse.encoding, "gzip");
+  assert.ok(fs.statSync(new URL("pulse.bin", dir)).size < pulse.shape.reduce((a, b) => a * b, 1));
   const cur = read("current.json");
   assert.equal(fs.statSync(new URL("current.bin", dir)).size, cur.shape.reduce((a, b) => a * b, 1) * 4);
 });

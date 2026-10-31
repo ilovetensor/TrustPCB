@@ -1,5 +1,6 @@
 "use client";
 import { useAppEnv } from "../../lib/demo";
+import { tabProps, tablistKeys } from "../../lib/hooks";
 import { useEffect, useRef, useState } from "react";
 import { SEVERITY_ORDER, sortFindings, type ReviewState } from "../../lib/review-reducer.mjs";
 import { findingLabel, findingNumber } from "../../lib/review-view";
@@ -37,10 +38,10 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
   return (
     <div className="fp">
       <div className="fp-top">
-        <div className="pills" role="tablist" aria-label="Severity filter">
-          <button role="tab" aria-selected={sev === "all"} onClick={() => setSev("all")}>All <span className="num">{live.length}</span></button>
+        <div className="pills" role="tablist" aria-label="Severity filter" onKeyDown={tablistKeys()}>
+          <button {...tabProps(sev === "all")} onClick={() => setSev("all")}>All <span className="num">{live.length}</span></button>
           {SEVERITY_ORDER.filter((s) => counts[s] > 0 || sev === s).map((s) => (
-            <button key={s} role="tab" aria-selected={sev === s} onClick={() => setSev(s)}>
+            <button key={s} {...tabProps(sev === s)} onClick={() => setSev(s)}>
               {cap(s)} <span className="num">{counts[s]}</span>
             </button>
           ))}
@@ -99,14 +100,14 @@ function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, 
           {(ev.length > 0 || evCodes.length > 0) && (
             <div className="fc-ev">
               <span className="idx">Evidence</span>
-              {ev.length === 0 && <div className="fc-evrow"><span className="mono">{evCodes.join(", ")}</span></div>}
+              {ev.length === 0 && <div className="fc-evrow"><span className="num">{evCodes.join(", ")}</span></div>}
               {ev.map((e) => {
                 const l = evidenceLine(e);
                 return (
                   <div key={e.id} className="fc-evrow">
-                    <span className="idx">{e.code ?? e.id}</span><span className="mono dim">{l.tool}</span>
+                    <span className="idx">{e.code ?? e.id}</span><span className="num dim">{l.tool}</span>
                     {l.text && <span className="fc-evt">{l.text}</span>}
-                    {l.vals && <span className="mono fc-vals">{l.vals}</span>}
+                    {l.vals && <span className="num fc-vals">{l.vals}</span>}
                   </div>
                 );
               })}

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
-  indexBoard, resolveTarget, fitView, toScreen, toBoard, zoomAt, rulerSteps, tickRange,
+  indexBoard, resolveTarget, fitView, toScreen, toBoard, zoomAt,
   clusterAnchors, layoutCallouts, markAnchor, resolveMark, arcPoints,
 } from "../lib/geometry.mjs";
 
@@ -37,13 +37,6 @@ test("view round trip and zoom keep the cursor point fixed", () => {
   const after = toBoard(z, 400, 300);
   assert.ok(Math.abs(before[0] - after[0]) < 1e-9);
   assert.ok(Math.abs(before[1] - after[1]) < 1e-9);
-});
-
-test("ruler steps adapt to zoom", () => {
-  assert.equal(rulerSteps(4).major, 20);
-  assert.equal(rulerSteps(40).major, 2);
-  assert.equal(rulerSteps(400).major, 0.2);
-  assert.deepEqual(tickRange(-0.5, 5.5, 2), [0, 2, 4]);
 });
 
 test("arc sampling passes through the middle point", () => {

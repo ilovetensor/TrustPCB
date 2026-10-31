@@ -2,7 +2,7 @@ patch-sim: real solver output, nothing synthetic
 
 What this is
   The processed output of one run of worker/run_scenario.py (openEMS v0.37.0, FDTD, built
-  from source) on the 50 x 60 mm probe-fed patch from spec section 10: FR-4 1.6 mm,
+  from source) on the 50 x 60 mm probe-fed patch: FR-4 1.6 mm,
   Er 4.3, tan d 0.02, patch 36.83 (y) x 28.54 (x) mm, 50 ohm lumped port as the probe 8 mm
   from the patch centre along -x, ground plane on the bottom face.
   Mesh 1.9 mm (screen quality), 64 x 67 x 38 = 162,944 cells, MUR boundaries.
@@ -47,3 +47,8 @@ Files
 Note: the field and current planes are at the excitation centre frequency f0 = 2.5 GHz, which is
 about 140 MHz above this patch's resonance. That is the scenario's target frequency, not the
 resonance.
+
+Note on pulse.bin: it is packed in this repository to keep page loads small. It holds the same 80 frames of 133 x 122
+values as one byte per value on the square-root curve the viewer draws with (largest change 1/255 of the colour ramp),
+gzip compressed: 213,430 bytes instead of the solver's 5,192,320 bytes of float32. Frames, rows, columns and times are
+unchanged. The sidecar pulse.json says so (dtype, encoding); see web/lib/pulse-codec.mjs and web/scripts/pack-pulse.py.

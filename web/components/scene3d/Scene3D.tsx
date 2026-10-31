@@ -2,7 +2,7 @@
 import "./scene3d.css";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls, useGLTF } from "@react-three/drei";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { bboxCenter, indexBoard, markAnchor, nearestPair, resolveMark } from "../../lib/geometry.mjs";
@@ -11,7 +11,7 @@ import type { ActiveMarkItem, FindingMeta, FocusRequest, Insets } from "../board
 import { CalloutLayer, type CalloutAnchor, type DimLine, type Rect } from "../callouts/CalloutLayer";
 import { buildBoardModel, type BoardModel, type LayerGroupKey } from "./boardModel";
 
-export const EXPLODE_SPREAD = 9; // mm between layers when fully exploded
+const EXPLODE_SPREAD = 9; // mm between layers when fully exploded
 const GROUP_LIFT: Record<LayerGroupKey, number> = { botCu: -1, substrate: 0, topCu: 1, components: 2 };
 const SEVS: Severity[] = ["critical", "high", "medium", "low", "info"];
 
@@ -21,7 +21,7 @@ interface Anchor3 {
 interface Dim3 { id: string; a: THREE.Vector3; b: THREE.Vector3; text: string; sev: Severity; top: boolean }
 
 /** Heights of each exploded layer at a given explode amount. */
-export function layerY(group: LayerGroupKey, explode: number) {
+function layerY(group: LayerGroupKey, explode: number) {
   const base = { botCu: -0.04, substrate: 0, topCu: 1.55, components: 1.6 }[group];
   return base + GROUP_LIFT[group] * EXPLODE_SPREAD * explode;
 }
@@ -140,7 +140,7 @@ export function Scene3D({
         </Canvas>
       )}
       {proj.tags.map((t) => (
-        <div key={t.k} className="layer-tag mono" style={{ left: t.x, top: t.y, flexDirection: t.side === 1 ? "row" : "row-reverse", transform: `translate(${t.side === 1 ? 0 : "-100%"}, -50%)` }}>
+        <div key={t.k} className="layer-tag num" style={{ left: t.x, top: t.y, flexDirection: t.side === 1 ? "row" : "row-reverse", transform: `translate(${t.side === 1 ? 0 : "-100%"}, -50%)` }}>
           <i />{LAYER_NAMES[t.k]}
         </div>
       ))}
@@ -177,12 +177,40 @@ function Lights() {
   );
 }
 
-function BoardScene({
-  board, glbUrl, explode, marks, index, selectedId, showMarks, pickedId, onPick, onReady,
-}: {
+/**
+ * The bundled sample board model ships gzip compressed (board.glb.gz, 7.2 MB down to about 0.8 MB) because static hosting
+ * does not compress it. This inflates it in the browser and hands the loader a blob URL for the very same GLB bytes.
+ * Any other url (the API's own board.glb) is used as it is. Suspends until ready; "" when this browser cannot inflate.
+ */
+const inflated = new Map<string, Promise<string>>();
+function useGlbUrl(url: string): string {
+  if (!url.endsWith(".gz")) return url;
+  let p = inflated.get(url);
+  if (!p) {
+    p = (async () => {
+      const r = await fetch(url);
+      if (!r.ok || typeof DecompressionStream === "undefined" || !r.body) return "";
+      const buf = await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+      return URL.createObjectURL(new Blob([buf], { type: "model/gltf-binary" }));
+    })().catch(() => "");
+    inflated.set(url, p);
+  }
+  return use(p);
+}
+
+function BoardScene(props: BoardSceneProps) {
+  const url = useGlbUrl(props.glbUrl);
+  return url ? <BoardModelScene {...props} glbUrl={url} /> : null;
+}
+
+interface BoardSceneProps {
   board: Board; glbUrl: string; explode: number; marks: ActiveMarkItem[]; index: ReturnType<typeof indexBoard>;
   selectedId: string | null; showMarks: boolean; pickedId: string | null; onPick: (id: string | null, finding: string | null) => void; onReady?: () => void;
-}) {
+}
+
+function BoardModelScene({
+  board, glbUrl, explode, marks, index, selectedId, showMarks, pickedId, onPick, onReady,
+}: BoardSceneProps) {
   const gltf = useGLTF(glbUrl);
   const refs = useMemo(() => new Set(board.footprints.map((f) => f.ref)), [board]);
   const model: BoardModel = useMemo(() => buildBoardModel(gltf.scene.clone(true), refs), [gltf, refs]);

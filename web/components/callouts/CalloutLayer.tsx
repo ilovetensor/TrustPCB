@@ -21,7 +21,7 @@ export function CalloutLayer({
 }) {
   const prev = useRef(new Map<string, { bx: number; by: number }>());
 
-  const { balloons, placed, clusters } = useMemo(() => {
+  const { balloons, placed } = useMemo(() => {
     const visible = anchors.filter((a) => (a.opacity ?? 1) > 0.02 && a.ax > -40 && a.ay > -40 && a.ax < width + 40 && a.ay < height + 40);
     const keep = new Set(selectedId ? [selectedId] : []);
     const cl = clusterAnchors(visible.map((a) => ({ ...a, priority: a.priority ?? 0 })), clusterRadius, keep);
@@ -31,32 +31,44 @@ export function CalloutLayer({
     }));
     const placedMap = layoutCallouts(items, { width, height, obstacles, radius: R, prev: prev.current });
     prev.current = new Map([...placedMap].map(([k, v]) => [k, { bx: v.bx, by: v.by }]));
-    return { balloons: cl, placed: placedMap, clusters: cl };
+    return { balloons: cl, placed: placedMap };
   }, [anchors, width, height, obstacles, selectedId, clusterRadius]);
-  void clusters;
-  // dimension labels sit on their lines; when two would overlap, the later one steps up or down until it is clear
+  // dimension labels sit on their lines; when one would cover a balloon or another label it steps up, down or sideways until it is clear
   const labelShift = useMemo(() => {
     const taken: Rect[] = [];
-    const out = new Map<string, number>();
+    // balloons (and the dashed ring of a cluster) are placed first and are not moved for a label
+    for (const p of placed.values()) taken.push({ x: p.bx - R - 5, y: p.by - R - 5, w: 2 * (R + 5), h: 2 * (R + 5) });
+    const overlap = (a: Rect, b: Rect) => {
+      const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      return ox > -2 && oy > -2 ? (Math.max(ox, 0) + 2) * (Math.max(oy, 0) + 2) : 0;
+    };
+    const out = new Map<string, { dx: number; dy: number }>();
     for (const d of dims) {
       const g = dimensionGeometry(d.a, d.b, 18);
       const w = d.text.length * 6.6 + 12;
-      let chosen = 0, rect = { x: g.mid[0] - w / 2, y: g.mid[1] - 8, w, h: 16 };
-      for (const step of [0, 19, -19, 38, -38, 57, -57]) {
-        const r = { x: g.mid[0] - w / 2, y: g.mid[1] + step - 8, w, h: 16 };
-        chosen = step; rect = r;
-        if (!taken.some((t) => r.x < t.x + t.w + 2 && t.x < r.x + r.w + 2 && r.y < t.y + t.h + 2 && t.y < r.y + r.h + 2)) break;
+      const side = w / 2 + R + 12;
+      const tries: [number, number][] = [[0, 0], [0, 19], [0, -19], [0, 38], [0, -38], [0, 57], [0, -57],
+        [side, 0], [-side, 0], [side, 19], [-side, 19], [side, -19], [-side, -19]];
+      let best = { dx: 0, dy: 0, cost: Infinity, rect: { x: 0, y: 0, w, h: 16 } };
+      for (const [dx, dy] of tries) {
+        const r = { x: g.mid[0] + dx - w / 2, y: g.mid[1] + dy - 8, w, h: 16 };
+        // keep the label on the stage
+        let cost = r.x < 2 || r.x + w > width - 2 || r.y < 2 || r.y + 16 > height - 2 ? 5000 : 0;
+        for (const t of taken) cost += overlap(r, t);
+        cost += (Math.abs(dy) / 19) * 0.5 + (dx ? 1 : 0);
+        if (cost < best.cost) best = { dx, dy, cost, rect: r };
+        if (cost < 1) break;
       }
-      taken.push(rect);
-      out.set(d.id, chosen);
+      taken.push(best.rect);
+      out.set(d.id, { dx: best.dx, dy: best.dy });
     }
     return out;
-  }, [dims]);
+  }, [dims, placed, width, height]);
 
   return (
     <div className="cl-root" style={{ width, height }}>
       <svg className="cl-svg" width={width} height={height} aria-hidden={false}>
-        {dims.map((d) => (<Dimension key={d.id} d={d} dy={labelShift.get(d.id) ?? 0} />))}
+        {dims.map((d) => (<Dimension key={d.id} d={d} shift={labelShift.get(d.id)} />))}
         {balloons.map((c) => {
           const single = c.count === 1;
           const m = c.members[0] as CalloutAnchor;
@@ -119,7 +131,8 @@ export function CalloutLayer({
 const order: Severity[] = ["critical", "high", "medium", "low", "info"];
 const rank = (s: Severity) => order.indexOf(s);
 
-function Dimension({ d, dy = 0 }: { d: DimLine; dy?: number }) {
+function Dimension({ d, shift }: { d: DimLine; shift?: { dx: number; dy: number } }) {
+  const dx = shift?.dx ?? 0, dy = shift?.dy ?? 0;
   const g = dimensionGeometry(d.a, d.b, 18);
   const col = `var(--sev-${d.sev})`;
   const tw = d.text.length * 6.6 + 12;
@@ -128,9 +141,9 @@ function Dimension({ d, dy = 0 }: { d: DimLine; dy?: number }) {
       {g.ext.map((e, i) => (<line key={i} x1={e[0][0]} y1={e[0][1]} x2={e[1][0]} y2={e[1][1]} strokeDasharray="0" />))}
       <line x1={g.line[0][0]} y1={g.line[0][1]} x2={g.line[1][0]} y2={g.line[1][1]} className="cl-dimline" pathLength={1} />
       {g.arrows.map((a, i) => (<polygon key={i} points={a.map((p) => p.join(",")).join(" ")} fill={col} stroke="none" />))}
-      {dy !== 0 && <line x1={g.mid[0]} y1={g.mid[1]} x2={g.mid[0]} y2={g.mid[1] + dy} strokeWidth="0.8" strokeDasharray="2 2" />}
-      <rect x={g.mid[0] - tw / 2} y={g.mid[1] + dy - 9} width={tw} height="18" rx="9" fill="var(--panel-solid)" stroke="none" />
-      <text x={g.mid[0]} y={g.mid[1] + dy} textAnchor="middle" dy="0.34em" className="cl-dimtext" fill="var(--paper)" stroke="none">{d.text}</text>
+      {(dx !== 0 || dy !== 0) && <line x1={g.mid[0]} y1={g.mid[1]} x2={g.mid[0] + dx} y2={g.mid[1] + dy} strokeWidth="0.8" strokeDasharray="2 2" />}
+      <rect x={g.mid[0] + dx - tw / 2} y={g.mid[1] + dy - 9} width={tw} height="18" rx="9" fill="var(--panel-solid)" stroke="none" />
+      <text x={g.mid[0] + dx} y={g.mid[1] + dy} textAnchor="middle" dy="0.34em" className="cl-dimtext" fill="var(--paper)" stroke="none">{d.text}</text>
     </g>
   );
 }

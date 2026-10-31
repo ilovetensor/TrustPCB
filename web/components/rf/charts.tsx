@@ -2,11 +2,11 @@
 import "../board2d/board2d.css";
 import { useMemo, useRef, useState } from "react";
 import { rgb, FIELD_STOPS } from "../../lib/ramp.mjs";
-import type { S11Data, ZinData } from "../../lib/rf-data";
+import type { ZinData } from "../../lib/rf-data";
 
 export interface CurveSpec { id: string; label: string; f_ghz: number[]; s11_db: number[]; color?: string; dashed?: boolean; width?: number; opacity?: number }
-export interface DipMark { f_ghz: number; db: number; /** stayed put when the geometry changed: not the antenna's resonance */ fixed?: boolean }
-export interface VLine { f_ghz: number; label: string }
+interface DipMark { f_ghz: number; db: number; /** stayed put when the geometry changed: not the antenna's resonance */ fixed?: boolean }
+interface VLine { f_ghz: number; label: string }
 interface Band { lo_ghz: number; hi_ghz: number; target_db: number }
 
 const interp = (xs: number[], ys: number[], x: number) => {
@@ -127,4 +127,3 @@ export function SmithChart({ zin, band, marker, size = 320, second }: { zin: Zin
   );
 }
 
-export function s11Of(s: S11Data): CurveSpec { return { id: "s", label: "S11", f_ghz: s.f_ghz, s11_db: s.s11_db }; }

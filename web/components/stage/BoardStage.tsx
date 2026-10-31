@@ -1,7 +1,7 @@
 "use client";
 import "./stage.css";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Board2D, type ActiveMarkItem, type FindingMeta, type FocusRequest, type Ghost, type Insets } from "../board2d/Board2D";
 import { DEFAULT_LAYERS, LAYER_TOGGLES, type LayerState } from "../board2d/layers";
 import { CurrentPlane3D, WaveField3D } from "../rf/WaveField3D";
@@ -16,7 +16,7 @@ import { QUALITY_NOTE } from "../../lib/sims";
 
 const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false, loading: () => <div className="stage-loading idx">Loading the 3D board</div> });
 
-export type StageMode = "2d" | "3d";
+type StageMode = "2d" | "3d";
 
 /** A short description of a picked board object for the "Ask about this" chip. */
 export function describePick(board: Board, id: string): { title: string; sub: string } {
@@ -147,4 +147,3 @@ export function BoardStage({
   );
 }
 
-export function StageSlot({ children }: { children: ReactNode }) { return <>{children}</>; }

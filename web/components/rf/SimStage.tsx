@@ -54,7 +54,7 @@ function Outline2D({ meta }: { meta: SimMeta | null | undefined }) {
   );
 }
 
-export interface SimStageProps {
+interface SimStageProps {
   board: Board; glbUrl: string | null; sceneInfo?: SceneInfo | null;
   view: SimView; mode: "2d" | "3d"; meta: SimMeta | null | undefined;
   fields?: Fields | null; current?: CurrentData | null; pulse?: PulseData | null; pattern?: PatternData | null;

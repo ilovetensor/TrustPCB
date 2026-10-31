@@ -1,4 +1,4 @@
-// Domain types. Mirrors docs/specs/contracts.md (snake_case, millimetres, KiCad board coords: x right, y down).
+// Domain types. Mirrors the API's JSON (snake_case, millimetres, KiCad board coords: x right, y down).
 
 export type Pt = [number, number];
 export type Ring = Pt[];

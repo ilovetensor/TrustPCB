@@ -5,7 +5,7 @@ import { acceptedPct } from "../../lib/sims";
 import { Icon } from "../ui";
 import { PowerPair } from "./PowerPair";
 
-export const PARTIAL_BADGE = "Improved, target not met";
+const PARTIAL_BADGE = "Improved, target not met";
 
 /** Accepted power at the worst point of the band: the stored figure, else the exact value of the stored worst S11 (the worst S11 is the worst accepted power). */
 const worstOf = (c: BestCandidate) => c.accepted_power_worst_pct ?? acceptedPct(c.band_worst_s11_db);
@@ -31,14 +31,14 @@ export function PartialWin({ h, compact = false, wide = false, onFinding }: { h:
         after={{ value: a, label: "Best parts", sub: h.best.ref ? `${h.best.ref}, worst point of the band` : "worst point of the band" }}
       />
       <dl className="pwin-facts">
-        <div><dt className="idx">Parts to try, in your own tool</dt><dd className="mono">{h.partsText || "no change to the board"}</dd></div>
+        <div><dt className="idx">Parts to try, in your own tool</dt><dd className="num">{h.partsText || "no change to the board"}</dd></div>
         <div>
           <dt className="idx">Worst S11 in the band</dt>
-          <dd className="mono">{db(h.base.band_worst_s11_db)} <span className="pwin-arrow">to</span> {db(h.best.band_worst_s11_db)}{h.gainDb != null && <span className="pwin-gain"> a gain of {h.gainDb.toFixed(1)} dB</span>}</dd>
+          <dd className="num">{db(h.base.band_worst_s11_db)} <span className="pwin-arrow">to</span> {db(h.best.band_worst_s11_db)}{h.gainDb != null && <span className="pwin-gain"> a gain of {h.gainDb.toFixed(1)} dB</span>}</dd>
         </div>
-        <div><dt className="idx">Target</dt><dd className="mono">{h.targetDb != null ? `${db(h.targetDb)} across the band` : "the tuning target"} <b>not met</b></dd></div>
+        <div><dt className="idx">Target</dt><dd className="num">{h.targetDb != null ? `${db(h.targetDb)} across the band` : "the tuning target"} <b>not met</b></dd></div>
         {h.base.accepted_power_mean_pct != null && h.best.accepted_power_mean_pct != null && (
-          <div><dt className="idx">Mean across the band</dt><dd className="mono">{h.base.accepted_power_mean_pct} % to {h.best.accepted_power_mean_pct} %</dd></div>
+          <div><dt className="idx">Mean across the band</dt><dd className="num">{h.base.accepted_power_mean_pct} % to {h.best.accepted_power_mean_pct} %</dd></div>
         )}
       </dl>
       </div>

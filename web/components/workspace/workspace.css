@@ -559,7 +559,6 @@
 }
 .fc-dismiss input {
   height: 36px;
-  outline: none;
 }
 .fc-dismiss input:focus-visible {
   background: var(--panel-3);
@@ -750,7 +749,7 @@
   font-size: 12.5px;
 }
 .msg.narration .idx {
-  color: var(--paper-4);
+  color: var(--paper-3);
 }
 .proposal {
   padding: 12px 14px;
@@ -841,7 +840,6 @@
   line-height: 1.4;
 }
 .chat-box textarea:focus {
-  outline: none;
   background: var(--panel-3);
 }
 .chat-foot {

@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
-  ApiError, cancelReview, cancelThread, FIXTURE_MODE, getReview, patchFinding, respondRequest, sendThreadMessage, startThread, type ReviewMeta,
+  ApiError, cancelReview, cancelThread, getReview, patchFinding, respondRequest, sendThreadMessage, startThread, type ReviewMeta,
 } from "./api";
+import { loadFixtures } from "./fixture-loader";
 import { followEvents, type StreamState } from "./live";
 import { initialReviewState, reviewReducer, type ReviewState } from "./review-reducer.mjs";
 
@@ -181,7 +182,7 @@ function useFixtureReview(reviewId: string, opts: { startAt?: number; autoplay?:
 
   useEffect(() => {
     let live = true;
-    void import("./fixture-api").then(async (m) => {
+    void loadFixtures().then(async (m) => {
       const [s, mt] = await Promise.all([m.getReviewReplay(reviewId), getReview(reviewId)]);
       if (live) { setSrc(s); setMeta(mt); }
     });
@@ -233,7 +234,7 @@ function useFixtureReview(reviewId: string, opts: { startAt?: number; autoplay?:
     dispatchThread({ type: "events", events: [{ sequence: fx.current, type, payload, turn_id: "fx-turn", created_at: new Date().toISOString() }] });
   }, []);
   const send = useCallback(async (text: string, selected: Selected[]) => {
-    const { askFollowup } = await import("./fixture-api");
+    const { askFollowup } = await loadFixtures();
     emit("user_message", { text, selected: selected.map((s) => s.id) });
     let delay = 0;
     for (const c of askFollowup(text, selected.map((s) => s.id))) {
@@ -258,6 +259,6 @@ function useFixtureReview(reviewId: string, opts: { startAt?: number; autoplay?:
 }
 
 /** Review state from the event source. Live by default; the fixture replay only when explicitly enabled. */
-export const useReview: (reviewId: string, opts?: { startAt?: number; autoplay?: boolean }) => ReviewHandle = FIXTURE_MODE
+export const useReview: (reviewId: string, opts?: { startAt?: number; autoplay?: boolean }) => ReviewHandle = process.env.NEXT_PUBLIC_TRUSTPCB_FIXTURES === "1"
   ? (id, opts = {}) => useFixtureReview(id, opts)
   : (id) => useLiveReview(id);
