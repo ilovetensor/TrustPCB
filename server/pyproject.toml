@@ -34,8 +34,7 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "--import-mode=importlib"
 markers = [
-  "slow: long-running tests (solver benchmarks, full pipelines); skipped by scripts/test-all.sh unless --slow is given",
-]
+  "slow: long-running tests (solver benchmarks, full pipelines); skipped by scripts/test-all.sh unless --slow is given", "default_image_mode: keep the runner default image mode"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["trustpcb"]

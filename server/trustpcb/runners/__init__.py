@@ -16,7 +16,7 @@ from .base import RunRequest, Runner
 # its own model and effort; nothing in tracked code names it.
 PROFILES = {
     'local_agent': {'runner': 'local_agent', 'model': None, 'effort': None, 'static_tool_list': True, 'description': 'Local development runner (git-ignored)'},
-    'muse_api': {'runner': 'muse_api', 'model': 'muse-spark-1.3', 'effort': None, 'static_tool_list': True, 'description': 'Muse via the Messages API'},
+    'muse_api': {'runner': 'muse_api', 'model': 'muse-spark-1.3', 'effort': None, 'static_tool_list': False, 'description': 'Muse via the Messages API'},
     'scripted': {'runner': 'scripted', 'model': None, 'effort': None, 'description': 'Deterministic scripted runner; calls no model'},
 }
 __all__ = ['PROFILES', 'RunRequest', 'Runner', 'available', 'load_runner', 'resolve_profile']
