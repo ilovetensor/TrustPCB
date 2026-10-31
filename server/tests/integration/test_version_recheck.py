@@ -1,5 +1,5 @@
 """A version recheck on the real boards: nrf52840-node-v2 is the sample after the engineer's hand edits for the confirmed free re-tune
-(L1 becomes a 0.47 pF series capacitor, C20 is fitted with 0.3 pF). The copper is unchanged, so the earlier solver run is reused and only
+(L1 becomes a 0.51 pF series capacitor, C20 and C19 are fitted with 0.3 pF and 0.36 pF). The copper is unchanged, so the earlier solver run is reused and only
 the matching parts differ. The solver results come from the repository's fixtures; no solver runs."""
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ def payload(result):
 async def test_the_same_copper_in_a_new_version_is_the_same_cache_key_and_the_new_parts_are_read(store, version, two_versions):
     lab, queue, hashes = two_versions
     rf2 = await lab.rf_status(version_id='v-nrf-2', goal=GOAL)
-    assert {e['ref']: (e['kind'], e['fitted'], e['value']) for e in rf2['matching_network']} == {'C20': ('C', True, '0.3pF'), 'L1': ('C', True, '0.47pF'), 'C19': ('C', False, 'DNP 0.5pF')}
+    assert {e['ref']: (e['kind'], e['fitted'], e['value']) for e in rf2['matching_network']} == {'C20': ('C', True, '0.3pF'), 'L1': ('C', True, '0.51pF'), 'C19': ('C', True, '0.36pF')}
     for quality in ('screen', 'confirm'):
         assert (await lab._prepare('v-nrf-2', {'version_id': 'v-nrf-2', **scenario_of(rf2, quality)}))[3] == hashes[quality]
 
@@ -109,9 +109,9 @@ async def test_the_v2_as_built_result_comes_from_the_stored_solver_output_with_n
     assert queue.stats['ran'] == 0 and queue.stats['cache_hits'] == 1
     alone, built = run['s11']['antenna_only'], run['s11']['as_built']
     assert alone['band_worst_db'] == pytest.approx(-0.82, abs=0.01)                      # the antenna is the same
-    assert built['band_worst_db'] == pytest.approx(-6.05, abs=0.02) and built['band_covered_10db'] is False       # the free re-tune: about 6 dB at worst in band, as the review's matching search predicted
-    assert [(p['topology'], p['kind'], p['text']) for p in built['parts']] == [('shunt', 'C', '0.3 pF'), ('series', 'C', '0.47 pF')]
-    assert built['band_worst_accepted_power_pct'] == pytest.approx(75.2, abs=0.2) and alone['band_worst_accepted_power_pct'] == pytest.approx(17.2, abs=0.2)
+    assert built['band_worst_db'] == pytest.approx(-6.12, abs=0.02) and built['band_covered_10db'] is False       # the free re-tune: about 6 dB at worst in band, as the review's matching search predicted
+    assert [(p['topology'], p['kind'], p['text']) for p in built['parts']] == [('shunt', 'C', '0.3 pF'), ('series', 'C', '0.51 pF'), ('shunt', 'C', '0.36 pF')]
+    assert built['band_worst_accepted_power_pct'] == pytest.approx(75.5, abs=0.2) and alone['band_worst_accepted_power_pct'] == pytest.approx(17.2, abs=0.2)
     assert built['band_mean_accepted_power_pct'] > built['band_worst_accepted_power_pct']
     # the stored run of version 1 is untouched: its own parts, its own as-built result
     again = await lab.run_scenario(version_id='v-nrf', scenario={'version_id': 'v-nrf', **scenario_of(rf2, 'confirm')}, scenario_hash='y', **kwargs)
@@ -119,7 +119,7 @@ async def test_the_v2_as_built_result_comes_from_the_stored_solver_output_with_n
     assert queue.stats['ran'] == 0
     # matching tools work on the derived result with the new parts as the starting point
     out = await lab.tune_matching(review_id=None, version_id='v-nrf-2', result=run, params={'band_hz': rf2['band_hz'], 'target_db': -10})
-    assert out['as_built_before']['band_worst_db'] == pytest.approx(-6.05, abs=0.02) and out['as_built_before']['band_worst_accepted_power_pct'] == pytest.approx(75.2, abs=0.2)
+    assert out['as_built_before']['band_worst_db'] == pytest.approx(-6.12, abs=0.02) and out['as_built_before']['band_worst_accepted_power_pct'] == pytest.approx(75.5, abs=0.2)
     assert out['predicted']['band_worst_db'] <= out['as_built_before']['band_worst_db']
 
 
@@ -138,10 +138,10 @@ async def test_a_v2_review_starts_from_the_v1_findings_and_sees_the_new_parts_fo
     assert status['recheck']['previous_review_id'] == first['id'] and [f['title'] for f in status['recheck']['not_recorded_again']] == ['The matching network leaves the antenna out of band']
     summary = payload(tool_results(store, second, 'get_board_summary')[0])
     changes = summary['previous_version']['board_changes']
-    assert {p['ref']: (p['from'], p['to']) for p in changes['parts']['value_changed']} == {'L1': ('2.2nH', '0.47pF'), 'C20': ('DNP 0.5pF', '0.3pF')}
+    assert {p['ref']: (p['from'], p['to']) for p in changes['parts']['value_changed']} == {'L1': ('2.2nH', '0.51pF'), 'C20': ('DNP 0.5pF', '0.3pF'), 'C19': ('DNP 0.5pF', '0.36pF')}
     assert changes['tracks'] == {'added': 0, 'removed': 0} and changes['vias'] == {'added': 0, 'removed': 0} and summary['previous_version']['previous_review_id'] == first['id']
     briefing = run_review.runners[-1].requests[0].user_text
-    assert 'You are reviewing version 2' in briefing and 'previous version is version 1' in briefing and first['id'] in briefing and 'F-001' in briefing and 'L1 2.2nH to 0.47pF' in briefing and 'C20 DNP 0.5pF to 0.3pF' in briefing and 'the antenna model is unchanged' in briefing
+    assert 'You are reviewing version 2' in briefing and 'previous version is version 1' in briefing and first['id'] in briefing and 'F-001' in briefing and 'L1 2.2nH to 0.51pF' in briefing and 'C20 DNP 0.5pF to 0.3pF' in briefing and 'the antenna model is unchanged' in briefing
     classified = report.version_changes(store, second['id'])
     assert classified['against']['review_id'] == first['id'] and [f['code'] for f in classified['fixed']] == ['F-001']
 
@@ -163,8 +163,8 @@ async def test_the_drc_findings_carry_forward_as_still_present_and_only_the_fitt
         fingerprints[name] = {fingerprint(c.get('rule') or '', c.get('targets') or [], index) for c in candidates}
         assert any(c['source'] == 'kicad' for c in candidates) or any((c.get('rule') or '').startswith('drc_') for c in candidates)
     v1, v2 = fingerprints['nrf52840-node'], fingerprints['nrf52840-node-v2']
-    assert len(v1 & v2) >= len(v1) - 1 and v2 <= v1
-    assert v1 - v2 <= {'parity_footprint_symbol_mismatch||ref:C20'}
+    assert len(v1 & v2) >= len(v1) - 2 and all(item.startswith('parity_') for item in v2 ^ v1), sorted(v2 ^ v1)
+    assert v1 - v2 <= {'parity_footprint_symbol_mismatch||ref:C20', 'parity_footprint_symbol_mismatch||ref:C19'}
 
 
 async def test_a_v2_summary_that_does_not_open_with_the_change_since_v1_is_refused_and_code_writes_the_lead(store, version, two_versions):
