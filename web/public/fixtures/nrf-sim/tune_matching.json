@@ -1,0 +1,231 @@
+{
+ "ok": true,
+ "target_db": -10.0,
+ "band_hz": [
+  2400000000.0,
+  2483500000.0
+ ],
+ "as_built": {
+  "f_min_hz": 1886251875.0,
+  "s11_min_db": -19.871,
+  "band_worst_db": -0.503,
+  "band_best_db": -0.611,
+  "band_mean_db": -0.533,
+  "band_covered_10db": false,
+  "minus10db_range": {
+   "f_low_hz": 1864886562.5,
+   "f_high_hz": 1911890250.0
+  }
+ },
+ "best_single_change": {
+  "parts": [
+   {
+    "ref": "C20",
+    "topology": "shunt",
+    "was": "0.5 pF (not fitted)",
+    "now": "leave empty",
+    "kind": null,
+    "value": null
+   },
+   {
+    "ref": "L1",
+    "topology": "series",
+    "was": "2.2 nH (fitted)",
+    "now": "0.82 pF",
+    "kind": "C",
+    "value": 8.199999999999999e-13
+   },
+   {
+    "ref": "C19",
+    "topology": "shunt",
+    "was": "0.5 pF (not fitted)",
+    "now": "leave empty",
+    "kind": null,
+    "value": null
+   }
+  ],
+  "result": {
+   "f_min_hz": 2343469562.5,
+   "s11_min_db": -4.188,
+   "band_worst_db": -3.491,
+   "band_best_db": -3.58,
+   "band_mean_db": -3.538,
+   "band_covered_10db": false,
+   "minus10db_range": null
+  },
+  "meets_target": false,
+  "fitted_parts": 1
+ },
+ "best": {
+  "parts": [
+   {
+    "ref": "C20",
+    "topology": "shunt",
+    "was": "0.5 pF (not fitted)",
+    "now": "0.3 pF",
+    "kind": "C",
+    "value": 3.0000000000000003e-13
+   },
+   {
+    "ref": "L1",
+    "topology": "series",
+    "was": "2.2 nH (fitted)",
+    "now": "0.51 pF",
+    "kind": "C",
+    "value": 5.1e-13
+   },
+   {
+    "ref": "C19",
+    "topology": "shunt",
+    "was": "0.5 pF (not fitted)",
+    "now": "0.36 pF",
+    "kind": "C",
+    "value": 3.6000000000000003e-13
+   }
+  ],
+  "result": {
+   "f_min_hz": 2441750000.0,
+   "s11_min_db": -12.475,
+   "band_worst_db": -6.116,
+   "band_best_db": -12.475,
+   "band_mean_db": -9.013,
+   "band_covered_10db": false,
+   "minus10db_range": {
+    "f_low_hz": 2428930812.5,
+    "f_high_hz": 2458842250.0
+   }
+  },
+  "meets_target": false,
+  "fitted_parts": 3
+ },
+ "top": [
+  {
+   "parts": [
+    {
+     "ref": "C20",
+     "topology": "shunt",
+     "was": "0.5 pF (not fitted)",
+     "now": "0.3 pF",
+     "kind": "C",
+     "value": 3.0000000000000003e-13
+    },
+    {
+     "ref": "L1",
+     "topology": "series",
+     "was": "2.2 nH (fitted)",
+     "now": "0.51 pF",
+     "kind": "C",
+     "value": 5.1e-13
+    },
+    {
+     "ref": "C19",
+     "topology": "shunt",
+     "was": "0.5 pF (not fitted)",
+     "now": "0.36 pF",
+     "kind": "C",
+     "value": 3.6000000000000003e-13
+    }
+   ],
+   "result": {
+    "f_min_hz": 2441750000.0,
+    "s11_min_db": -12.475,
+    "band_worst_db": -6.116,
+    "band_best_db": -12.475,
+    "band_mean_db": -9.013,
+    "band_covered_10db": false,
+    "minus10db_range": {
+     "f_low_hz": 2428930812.5,
+     "f_high_hz": 2458842250.0
+    }
+   },
+   "meets_target": false,
+   "fitted_parts": 3
+  },
+  {
+   "parts": [
+    {
+     "ref": "C20",
+     "topology": "shunt",
+     "was": "0.5 pF (not fitted)",
+     "now": "0.3 pF",
+     "kind": "C",
+     "value": 3.0000000000000003e-13
+    },
+    {
+     "ref": "L1",
+     "topology": "series",
+     "was": "2.2 nH (fitted)",
+     "now": "0.47 pF",
+     "kind": "C",
+     "value": 4.7e-13
+    },
+    {
+     "ref": "C19",
+     "topology": "shunt",
+     "was": "0.5 pF (not fitted)",
+     "now": "leave empty",
+     "kind": null,
+     "value": null
+    }
+   ],
+   "result": {
+    "f_min_hz": 2441750000.0,
+    "s11_min_db": -11.159,
+    "band_worst_db": -6.049,
+    "band_best_db": -11.159,
+    "band_mean_db": -8.566,
+    "band_covered_10db": false,
+    "minus10db_range": {
+     "f_low_hz": 2433203875.0,
+     "f_high_hz": 2454569187.5
+    }
+   },
+   "meets_target": false,
+   "fitted_parts": 2
+  },
+  {
+   "parts": [
+    {
+     "ref": "C20",
+     "topology": "shunt",
+     "was": "0.5 pF (not fitted)",
+     "now": "0.3 pF",
+     "kind": "C",
+     "value": 3.0000000000000003e-13
+    },
+    {
+     "ref": "L1",
+     "topology": "series",
+     "was": "2.2 nH (fitted)",
+     "now": "0.51 pF",
+     "kind": "C",
+     "value": 5.1e-13
+    },
+    {
+     "ref": "C19",
+     "topology": "shunt",
+     "was": "0.5 pF (not fitted)",
+     "now": "0.39 pF",
+     "kind": "C",
+     "value": 3.9e-13
+    }
+   ],
+   "result": {
+    "f_min_hz": 2441750000.0,
+    "s11_min_db": -12.791,
+    "band_worst_db": -6.014,
+    "band_best_db": -12.791,
+    "band_mean_db": -9.1,
+    "band_covered_10db": false,
+    "minus10db_range": {
+     "f_low_hz": 2428930812.5,
+     "f_high_hz": 2458842250.0
+    }
+   },
+   "meets_target": false,
+   "fitted_parts": 3
+  }
+ ],
+ "searched": 912673,
+ "note": "Ideal lumped parts, 50 ohm source, no tolerance or parasitics. Apply any change in your own tool and re-measure."
+}

@@ -1,0 +1,192 @@
+{
+ "scenario_hash": "bab402ebe2af42f60ca6",
+ "quality": "screen",
+ "note": "Simulated. Not a substitute for a real antenna measurement.",
+ "setup": {
+  "kind": "trace",
+  "antenna_id": "net:ANT_FEED",
+  "antenna_net": "ANT_FEED",
+  "port_xy": [
+   32.485,
+   12.8
+  ],
+  "port_on": "pad:L1:2",
+  "band_ghz": [
+   2.4,
+   2.4835
+  ],
+  "region": [
+   0.0,
+   0.0,
+   66.0,
+   43.8144
+  ],
+  "narrowest_mm": 0.3,
+  "assumptions": [
+   "stackup is a default (the board file has no stackup): FR4, no measured permittivity",
+   "copper is modelled as zero-thickness sheets; solder mask, silkscreen and component bodies are ignored",
+   "only the copper of components is modelled (pads); part bodies, shields and cables are not",
+   "outside the fine zone only pours and ground/antenna copper are kept, and they are simplified",
+   "50 ohm lumped port between the feed copper and the ground layer; matching parts are added afterwards as ideal lumped parts",
+   "the board edge is cut to a rectangle at the simulated region; absorbing boundary instead of an open field"
+  ],
+  "warnings": [
+   "3 gaps between antenna copper and other copper are under 0.25 mm (smallest 0.15 mm: component pad gaps and pour clearance); they are not resolved by the mesh and are not part of the 2-cell rule"
+  ]
+ },
+ "mesh": {
+  "quality": "screen",
+  "cells": 655340,
+  "nx": 155,
+  "ny": 151,
+  "nz": 28,
+  "thirds_edges": 14,
+  "max_growth_ratio": 1.476,
+  "min_cell_mm": 0.086,
+  "max_cell_substrate_mm": 1.9674,
+  "cells_per_wavelength_substrate": 21.79,
+  "substrate_eps_r": 4.5,
+  "lambda_substrate_mm": 42.873,
+  "narrowest_feature_mm": 0.3,
+  "narrowest_feature": "antenna track width on F.Cu (track:05bc5591)",
+  "min_cells_across_feature": 2.09,
+  "min_cells_across_where": "track:bb7be672 at (32.0, 12.0)",
+  "required_cells_across": 2.0,
+  "unresolved_small_gaps": [
+   "3 gaps between antenna copper and other copper are under 0.25 mm (smallest 0.15 mm: component pad gaps and pour clearance); they are not resolved by the mesh and are not part of the 2-cell rule"
+  ],
+  "rule_ok": true,
+  "rule_reasons": [],
+  "notes": [],
+  "narrow_refinements": 0
+ },
+ "whatif": [
+  {
+   "delta_mm": -6.0,
+   "op": "adjust_antenna_length"
+  }
+ ],
+ "whatif_notes": [
+  "shortened the antenna by 6.00 mm from its open end"
+ ],
+ "material": null,
+ "trust": {
+  "status": "ok",
+  "checks": [
+   {
+    "check": "energy_decayed",
+    "ok": true,
+    "detail": "energy decayed to -41.64 dB, target -40.0 dB"
+   },
+   {
+    "check": "passive",
+    "ok": true,
+    "detail": "S11 never above 0 dB"
+   },
+   {
+    "check": "mesh_wavelength",
+    "ok": true,
+    "detail": "21.79 cells per wavelength in the substrate (solver), 21.79 (model); need 20"
+   },
+   {
+    "check": "mesh_across_feature",
+    "ok": true,
+    "detail": "2.09 cells across the narrowest antenna feature (0.3 mm, antenna track width on F.Cu (track:05bc5591)); need 2"
+   },
+   {
+    "check": "port_on_copper_with_ground",
+    "ok": true,
+    "detail": "port on copper, ground reference below"
+   }
+  ],
+  "reasons": []
+ },
+ "s11": {
+  "antenna_only": {
+   "f_min_hz": 2253735250.0,
+   "s11_min_db": -6.948,
+   "band_worst_db": -1.431,
+   "band_best_db": -1.702,
+   "band_mean_db": -1.529,
+   "band_covered_10db": false,
+   "minus10db_range": null
+  },
+  "as_built": {
+   "f_min_hz": 3296362500.0,
+   "s11_min_db": -5.707,
+   "band_worst_db": -0.787,
+   "band_best_db": -0.998,
+   "band_mean_db": -0.867,
+   "band_covered_10db": false,
+   "minus10db_range": null,
+   "parts": [
+    {
+     "topology": "series",
+     "kind": "L",
+     "value": 2.2000000000000003e-09,
+     "text": "2.2 nH"
+    }
+   ]
+  },
+  "network_note": null
+ },
+ "sim": {
+  "f_res": 2253735250.0,
+  "s11_min_db": -6.948,
+  "bandwidth": {
+   "threshold_db": -10.0,
+   "f_low_hz": null,
+   "f_high_hz": null,
+   "width_hz": 0.0
+  },
+  "zin_at_res": {
+   "re": 28.919,
+   "im": 31.925
+  },
+  "dmax_dbi": 5.456,
+  "efficiency_est": 0.4635,
+  "cells": 655340,
+  "timesteps": 78292,
+  "solve_s": 203.9,
+  "nf2ff_s": 2.4,
+  "total_s": 207.38,
+  "s11_dips": [
+   {
+    "f_hz": 2253735250.0,
+    "s11_db": -6.95
+   }
+  ],
+  "first_series_resonance_hz": 1805107612.7559812
+ },
+ "zin_at_band_centre": {
+  "f_hz": 2441750000.0,
+  "re": 13.8843,
+  "im": 73.1958
+ },
+ "plausibility": [],
+ "pattern": {
+  "f_hz": 2253735250.0,
+  "dmax_dbi": 5.456,
+  "dmax_theta_deg": 165.0,
+  "dmax_phi_deg": 195.0,
+  "note": "scenario axes: z up, phi from +x toward +y where scenario y is minus board y"
+ },
+ "files": [
+  "current.bin",
+  "current.json",
+  "field.json",
+  "field_xy.bin",
+  "field_xz.bin",
+  "meta.json",
+  "model.png",
+  "pattern.json",
+  "progress.jsonl",
+  "pulse.bin",
+  "pulse.json",
+  "result.json",
+  "s11.json",
+  "s11_as_built.json",
+  "scenario.json",
+  "zin.json"
+ ]
+}

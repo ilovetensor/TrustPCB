@@ -1,0 +1,1 @@
+{"file":"current.bin","shape":[212,257],"layout":"float32 [rows(y), cols(x)], row-major, zero outside copper","u_axis":"x","v_axis":"y","u_mm":[-30.69443,96.69443],"v_mm":[-74.50883,30.69443],"plane_mm":1.565,"metal":"F_Cu","f_hz":2441750000.0,"scale":5.1459873670709836e-12,"normalization":"|Js| / scale, scale = 99.5th percentile over copper; values above 1 are edge peaks"}

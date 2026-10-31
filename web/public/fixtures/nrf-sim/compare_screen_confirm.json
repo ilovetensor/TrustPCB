@@ -1,0 +1,20 @@
+{
+ "agree": false,
+ "deltas": {
+  "band_worst_db": 1.3599999999999999,
+  "zin_rel": 0.3669656136575998,
+  "first_resonance_rel": 0.01555216412248698,
+  "dmax_db": 0.4950000000000001,
+  "deepest_dip_hz": 2848708.333333254
+ },
+ "limits": {
+  "band_worst_db": 2.0,
+  "zin_rel": 0.35,
+  "first_resonance_rel": 0.06,
+  "dmax_db": 1.0
+ },
+ "reasons": [
+  "zin_rel differs by 0.367 (limit 0.35)"
+ ],
+ "verdict": "confirm result replaces the screen result"
+}
