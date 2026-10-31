@@ -103,7 +103,7 @@ The web app runs on port 3118 and the backend on port 8118, both bound to `127.0
 - [KiCad](https://www.kicad.org/) 9 or newer, for `kicad-cli`. It is found automatically in the standard install locations, or set `KICAD_CLI_PATH`.
 - Docker, only for RF simulation. Without it every other feature works and RF shows as **Not tested**.
 - A Muse API key, only for real agent reviews (see below).
-- Chrome or Chromium, only for PDF export of reports (set `TRUSTPCB_BROWSER` to point at it). The HTML report needs nothing extra.
+- PDF export of reports prints through Playwright. It uses Chrome, Chromium, Edge or Brave if you have one (set `TRUSTPCB_BROWSER` to choose), otherwise the small Chromium that `npm run setup` installs. The HTML report needs nothing extra.
 
 ## Quick start
 

@@ -15,6 +15,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "scikit-rf>=1.5,<2",
   "pypdf>=6,<7",
+  "playwright>=1.64,<2",
 ]
 
 [dependency-groups]

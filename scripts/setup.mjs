@@ -14,4 +14,9 @@ if (existsSync(path.join(root, 'web', 'package.json'))) {
   jobs.push(run('npm', ['install', '--no-audit', '--no-fund'], path.join(root, 'web')));
 }
 await Promise.all(jobs);
+try {
+  await run('uv', ['run', 'playwright', 'install', 'chromium', '--only-shell'], path.join(root, 'server'));
+} catch {
+  console.warn('\nCould not install Chromium. PDF export will use Chrome, Chromium, Edge or Brave if you have one.');
+}
 console.log('\nTrustPCB is ready. Run npm run dev.');
