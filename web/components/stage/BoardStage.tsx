@@ -92,7 +92,7 @@ export function BoardStage({
         />
       ) : glbUrl ? (
         <Scene3D
-          board={board} glbUrl={glbUrl} marks={layers.issues ? marks.filter((m) => m.mark.type !== "region" || layers.regions) : []} meta={meta} selectedId={selectedId} onSelect={onSelect}
+          board={board} glbUrl={glbUrl} marks={layers.issues ? marks : []} meta={meta} selectedId={selectedId} onSelect={onSelect}
           explode={explode} view3d={view3d} focus={focus} insets={insets} pickedId={pickedId} onPick={onPick}
         >
           {layers.heat && rf?.current && <CurrentPlane3D data={rf.current} y={1.62 + explode * 9} />}

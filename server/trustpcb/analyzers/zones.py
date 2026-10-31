@@ -38,6 +38,13 @@ def _clusters(parts: list[tuple[str, Polygon]], gap: float) -> list[list[tuple[s
     return out
 
 
+def _inside_board(hull: Polygon, board: Board) -> Polygon:
+    """The hull trimmed to the board, so a connector overhanging the edge does not draw a zone off the board."""
+    from ..rf.geometry import board_outline_polygon
+    trimmed = hull.intersection(board_outline_polygon(board))
+    return trimmed if trimmed.geom_type == "Polygon" and not trimmed.is_empty else hull
+
+
 def compute_regions(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
     """Regions as ``{role, index, refs, polygon (shapely), ring, area}`` in a stable order."""
     roles = classify_parts(board, ctx)
@@ -60,6 +67,7 @@ def compute_regions(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             hull = unary_union([c[1] for c in cluster]).convex_hull
             hull = hull.buffer(pad, join_style=2) if pad > 0 else hull
             hull = hull.convex_hull if hull.geom_type != "Polygon" else hull
+            hull = _inside_board(hull, board)
             ring = [[round(x, 4), round(y, 4)] for x, y in list(hull.exterior.coords)[:-1]]
             regions.append({"role": role, "index": i, "of": len(clusters), "refs": [c[0] for c in cluster], "polygon": hull, "ring": ring, "area": hull.area})
     return regions
