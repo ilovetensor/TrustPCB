@@ -5,8 +5,9 @@ would change and never writes anything: not the board file, not the database. Th
 never simulated; the answer says so.
 
 Rotation is the part's new absolute rotation in KiCad degrees (counter-clockwise on screen, board y pointing down).
-`target` is a part reference (the ghost is placed beside that part, on the free side nearest to where it is now)
-or an `[x, y]` position for the part origin.
+`target` is a part reference (the ghost is placed beside that part, on the free side nearest to where it is now), a pad id such as
+`pad:U3:E24` (beside that pad, as close as the courtyards allow), a net id such as `net:ANT_FEED` (beside the pad of that net nearest
+to the part's current place), or an `[x, y]` position for the part origin.
 """
 from __future__ import annotations
 
@@ -55,21 +56,44 @@ def _is_ground(name: str | None) -> bool:
     return bool(name) and is_ground_name(name)
 
 
-def _parse_target(target: Any) -> tuple[str | None, tuple[float, float] | None]:
+def _parse_target(target: Any) -> tuple[str, Any]:
+    """(kind, value): point (x, y), part (ref), pad (pad id) or net (net name)."""
     if isinstance(target, (list, tuple)) and len(target) == 2 and all(isinstance(v, (int, float)) for v in target):
-        return None, (float(target[0]), float(target[1]))
+        return 'point', (float(target[0]), float(target[1]))
     if isinstance(target, dict) and 'x' in target and 'y' in target:
-        return None, (float(target['x']), float(target['y']))
+        return 'point', (float(target['x']), float(target['y']))
     if isinstance(target, str) and target.strip():
-        return target.strip().removeprefix('ref:'), None
-    raise ValueError('Give near (a part reference) or position [x, y].')
+        text = target.strip()
+        if text.startswith('pad:'):
+            return 'pad', text
+        if text.startswith('net:'):
+            return 'net', text.removeprefix('net:')
+        return 'part', text.removeprefix('ref:')
+    raise ValueError('Give near (a part reference, a pad id such as pad:U3:E24, or a net id) or position [x, y].')
+
+
+def _find_pad(board, pad_id: str):
+    return next((p for p in board.pads if p.id == pad_id), None)
 
 
 def try_placement(board, ref: str, target: Any, rotation: float | None = None, extra: dict | None = None) -> dict:
     fp = board.footprint(ref)
     if fp is None:
         raise ValueError(f'Part {ref} is not on this board.')
-    near_ref, point = _parse_target(target)
+    kind, value = _parse_target(target)
+    point = value if kind == 'point' else None
+    anchor_pad = None
+    if kind == 'pad':
+        anchor_pad = _find_pad(board, value)
+        if anchor_pad is None:
+            raise ValueError(f'Pad {value} is not on this board.')
+    elif kind == 'net':
+        mates = [p for p in board.pads if p.net == value and p.ref != ref]
+        if not mates:
+            raise ValueError(f'Net {value} has no pad on another part, so there is nothing to place the part beside.')
+        anchor_pad = min(mates, key=lambda p: math.hypot(p.x - fp.x, p.y - fp.y))
+    if anchor_pad is not None and anchor_pad.ref == ref:
+        raise ValueError('A part cannot be placed beside its own pad.')
     new_rot = fp.rotation if rotation is None else float(rotation)
     turn = -(new_rot - fp.rotation)                      # shapely turns counter-clockwise in a y-up frame; the board is y-down
     base = _shape(fp)
@@ -133,37 +157,51 @@ def try_placement(board, ref: str, target: Any, rotation: float | None = None, e
     if point is not None:
         x, y = point
     else:
-        anchor = board.footprint(near_ref)
-        if anchor is None:
-            raise ValueError(f'Part {near_ref} is not on this board.')
-        if anchor.ref == ref:
-            raise ValueError('A part cannot be placed beside itself.')
-        ashape = _shape(anchor)
+        if anchor_pad is not None:
+            ashape = _poly(anchor_pad.ring) if anchor_pad.ring and len(anchor_pad.ring) >= 3 else box(anchor_pad.x - anchor_pad.w / 2, anchor_pad.y - anchor_pad.h / 2,
+                                                                                                          anchor_pad.x + anchor_pad.w / 2, anchor_pad.y + anchor_pad.h / 2)
+            offsets = [0.0] + [0.25 * k for k in range(1, 17)]       # a pad sits inside its part's courtyard: widen the gap until the courtyards clear
+        else:
+            anchor = board.footprint(value)
+            if anchor is None:
+                raise ValueError(f'Part {value} is not on this board.')
+            if anchor.ref == ref:
+                raise ValueError('A part cannot be placed beside itself.')
+            ashape = _shape(anchor)
+            offsets = [0.0]
         g0 = affinity.rotate(base, turn, origin=(fp.x, fp.y))
         gx0, gy0, gx1, gy1 = g0.bounds
         ax0, ay0, ax1, ay1 = ashape.bounds
         cx, cy = fp.x - gx0, fp.y - gy0                   # the origin relative to the ghost's bounds
         w, h = gx1 - gx0, gy1 - gy0
         candidates = []
-        for side in ('right', 'left', 'below', 'above'):
-            for align in (-1, 0, 1):
-                if side in ('right', 'left'):
-                    left = ax1 + GAP_MM if side == 'right' else ax0 - GAP_MM - w
-                    top = (ay0 + ay1) / 2 - h / 2 + align * (ay1 - ay0 - h) / 2
-                else:
-                    top = ay1 + GAP_MM if side == 'below' else ay0 - GAP_MM - h
-                    left = (ax0 + ax1) / 2 - w / 2 + align * (ax1 - ax0 - w) / 2
-                candidates.append((left + cx, top + cy, side))
+        for offset in offsets:
+            gap = GAP_MM + offset
+            for side in ('right', 'left', 'below', 'above'):
+                for align in (-1, 0, 1):
+                    if side in ('right', 'left'):
+                        left = ax1 + gap if side == 'right' else ax0 - gap - w
+                        top = (ay0 + ay1) / 2 - h / 2 + align * (ay1 - ay0 - h) / 2
+                    else:
+                        top = ay1 + gap if side == 'below' else ay0 - gap - h
+                        left = (ax0 + ax1) / 2 - w / 2 + align * (ax1 - ax0 - w) / 2
+                    candidates.append((left + cx, top + cy, side, offset))
         best = None
-        for cxn, cyn, side in candidates:
+        for cxn, cyn, side, offset in candidates:
             ev = evaluate(cxn, cyn)
-            key = (ev['score'], math.hypot(cxn - fp.x, cyn - fp.y))
+            key = (ev['score'], offset, math.hypot(cxn - fp.x, cyn - fp.y))
             if best is None or key < best[0]:
                 best = (key, cxn, cyn, side, ev)
         _, x, y, chosen, result = best
     if point is not None:
         result = evaluate(x, y)
     g = result['ghost']
+    to_target = None
+    if anchor_pad is not None:
+        pad_shape = _poly(anchor_pad.ring) if anchor_pad.ring and len(anchor_pad.ring) >= 3 else box(anchor_pad.x - anchor_pad.w / 2, anchor_pad.y - anchor_pad.h / 2,
+                                                                                                        anchor_pad.x + anchor_pad.w / 2, anchor_pad.y + anchor_pad.h / 2)
+        to_target = {'to': anchor_pad.id, 'distance_mm': round(g.distance(pad_shape), 3), 'was_mm': round(base.distance(pad_shape), 3)}
+        result['rows'] = sorted([to_target] + result['rows'], key=lambda r: r['distance_mm'])
 
     # a rough straight-line change of each signal connection of the part, pad centre to the nearest other pad on the net
     zone_nets = {z.net for z in board.zones if z.net and not z.is_keepout}
@@ -186,7 +224,10 @@ def try_placement(board, ref: str, target: Any, rotation: float | None = None, e
     ghost = {'ref': ref, 'x': round(x, 4), 'y': round(y, 4), 'rotation': round(new_rot, 3), 'side': fp.side, 'ring': _ring(g),
              'pads': [{'id': p.id, 'x': round(px, 4), 'y': round(py, 4)} for p, px, py in moved][:40]}
     return {
-        'ref': ref, 'target': target, 'placed': chosen and f'beside {near_ref}, {chosen} side' or 'at the given position',
+        'ref': ref, 'target': target,
+        'placed': (f'beside {anchor_pad.id}' + (f' (the pad of net:{value} nearest to {ref})' if kind == 'net' else '') + f', {chosen} side') if chosen and anchor_pad is not None
+        else chosen and f'beside {value}, {chosen} side' or 'at the given position',
+        **({'distance_to_target_mm': to_target['distance_mm'], 'target_pad': anchor_pad.id} if to_target else {}),
         'from': [round(fp.x, 4), round(fp.y, 4)], 'new_position': [round(x, 4), round(y, 4)], 'rotation': round(new_rot, 3),
         'moved_mm': round(math.hypot(x - fp.x, y - fp.y), 3),
         'distances': result['rows'][:MAX_ROWS], 'edge_distance_mm': None if result['edge'] is None else round(result['edge'], 3),

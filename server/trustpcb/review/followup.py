@@ -17,7 +17,7 @@ from ..runners.base import RunRequest
 from . import evidence as ev
 from . import report
 from .budgets import FOLLOWUP_CALLS, FOLLOWUP_INPUT_TOKENS, FOLLOWUP_LEVELS, Clock, followup_config
-from .findings import SEVERITIES, FindingRejected
+from .findings import SEVERITIES, FindingRejected, check_numbers, check_wording
 from .handlers import MARK_SCHEMA
 from .lab import LabUnavailable
 from .machine import PhaseMachine
@@ -28,6 +28,7 @@ from .tools import NUM, ToolDef, ToolRegistry, ToolResult, arr, fail, obj, ok, p
 LEVEL_ORDER = {'answer': 0, 'check': 1, 'test': 2}
 QUIET_RUNS_LIMIT = 2
 MAX_TEST_PROPOSALS = 2
+MIN_REPLY_CHARS = 20        # end_followup needs this much text for the user, streamed or given as reply
 
 EDIT_REQUEST = re.compile(r"\b(fix (it|this|that|them|the board)( for me)?|export (the )?(fixed|corrected|updated|modified)|apply (the |this )?fix|"
                           r"edit (my|the) (board|design|layout)|change (my|the) (board|layout)|(send|give) me the (fixed|updated|corrected) (board|file|gerbers?)|make the (change|fix) for me)\b", re.I)
@@ -158,6 +159,7 @@ class FollowupSession(ReviewSession):
         self.quiet_runs = int((thread.get('digest') or {}).get('quiet_runs', 0)) if isinstance(thread.get('digest'), dict) else 0
         self.evidence_made = 0
         self.speaking = False
+        self.reply_chars = 0               # text streamed since the last working tool call: the visible reply
 
     @property
     def phase(self):                       # handlers and the budget code read this as "where are we"
@@ -362,7 +364,7 @@ class FollowupHandlers(AllHandlers):
             return fail('unknown_part', f'Part {args["ref"]} is not on this board.')
         target = args['near'] if args.get('near') else args.get('position')
         if target is None:
-            return fail('invalid_arguments', 'Give near (a part reference) or position [x, y].')
+            return fail('invalid_arguments', 'Give near (a part, a pad id such as pad:U3:E24, or a net id) or position [x, y].')
         try:
             out = await s.lab.try_placement(version_id=s.version_id, ref=args['ref'], target=target, rotation=args.get('rotation'))
         except LabUnavailable as exc:
@@ -519,7 +521,25 @@ class FollowupHandlers(AllHandlers):
                    'found_in_followup': updated.get('source') == 'followup', 'note': 'A new report revision is created when this run ends.'})
 
     async def end_followup(self, args: dict) -> ToolResult:
-        self.s.mark_finished()
+        """Finish the reply. The user must have something to read: text streamed after the last working tool call, or a `reply` given here
+        (checked like other follow-up prose, then streamed as the reply). A second call is a no-op."""
+        s = self.s
+        if s.finished:
+            return ok({'ended': True, 'already_ended': True})
+        reply = (args.get('reply') or '').strip()
+        if s.reply_chars < MIN_REPLY_CHARS:
+            if len(reply) < MIN_REPLY_CHARS:
+                return fail('reply_required', f'The user has not seen an answer yet. Call end_followup again with reply: your answer in a few sentences, stating the results with the '
+                            f'measurements from the tools (at least {MIN_REPLY_CHARS} characters).')
+            allowed = [q for row in s.engine.evidence_rows() for q in ev.quantities_of(row)] + s.context()
+            try:
+                check_wording({'reply': reply})
+                check_numbers({'reply': reply}, allowed, compare_only=True)
+            except FindingRejected as exc:
+                return fail(exc.code, exc.message + ' Fix the reply and call end_followup again.', **exc.data)
+            await s.emit('text_delta', {'text': reply})
+            s.reply_chars += len(reply)
+        s.mark_finished()
         return ok({'ended': True, 'reason': args.get('reason')})
 
 
@@ -546,8 +566,9 @@ def build_followup_tools(h: FollowupHandlers) -> list[ToolDef]:
         define('measure', 'Measure on the board. kind distance: edge-to-edge and centre distance between targets a and b. kind net_length: routed length of net a.',
                obj({'kind': {'type': 'string', 'enum': ['distance', 'net_length']}, 'a': text(1, 80), 'b': text(1, 80)}, ['kind', 'a']), h.measure,
                levels=CHECK_UP, trail=lambda a: f'Measuring {a.get("kind", "").replace("_", " ")} of {a.get("a")}' + (f' and {a["b"]}' if a.get('b') else '')),
-        define('try_placement', 'Placement what-if on a ghost copy: new distances, overlaps and conflicts. Never changes the board; the RF effect is Not tested.',
-               obj({'ref': text(1, 20), 'near': text(1, 20), 'position': arr(NUM, 2, 2), 'rotation': {'type': 'number', 'minimum': -360, 'maximum': 360}}, ['ref']), h.try_placement,
+        define('try_placement', 'Placement what-if on a ghost copy: new distances, overlaps and conflicts. near is a part (C12), a pad (pad:U3:E24) or a net (net:ANT_FEED); '
+               'position is [x, y]. Never changes the board; the RF effect is Not tested.',
+               obj({'ref': text(1, 20), 'near': text(1, 80), 'position': arr(NUM, 2, 2), 'rotation': {'type': 'number', 'minimum': -360, 'maximum': 360}}, ['ref']), h.try_placement,
                levels=CHECK_UP, trail=lambda a: f'Trying {a.get("ref")} near {a.get("near") or a.get("position")} as a what-if'),
         _with_levels(pick('tune_matching'), CHECK_UP),
         define('propose_test', 'Ask the user to approve a simulation test. Nothing simulates without their click. Gives what will run, why and the estimated time.',
@@ -562,7 +583,7 @@ def build_followup_tools(h: FollowupHandlers) -> list[ToolDef]:
         define('propose_finding_change', 'Create (new), change (update), replace (supersede) or dismiss a finding. Same checks as the review: evidence, anchors, numbers.',
                obj(FINDING_PROPS | {'action': {'type': 'string', 'enum': ['new', 'update', 'supersede', 'dismiss']}, 'finding_code': text(1, 12), 'reason': text(3, 600), 'opinion': {'type': 'boolean'}},
                    ['action']), h.propose_finding_change, levels=ALL_LEVELS, trail=lambda a: f'Proposing to {a.get("action")} a finding' + (f' ({a["finding_code"]})' if a.get('finding_code') else '')),
-        define('end_followup', 'Finish the reply. Call when the answer is complete.', obj({'reason': text(1, 300)}), h.end_followup, levels=ALL_LEVELS, free=True, closing=True,
+        define('end_followup', 'Finish the reply. Call when the answer is complete. If you wrote no answer text since your last tool call, pass reply: the answer, with the measurements, in a few sentences.', obj({'reason': text(1, 300), 'reply': text(1, 2400)}), h.end_followup, levels=ALL_LEVELS, free=True, closing=True,
                trail=lambda a: 'Finishing the reply'),
     ]
     return tools
@@ -639,8 +660,11 @@ class FollowupRun:
         async def tap(kind: str, payload: dict) -> None:
             if kind == 'text_delta':
                 session._text += payload.get('text', '')
+                session.reply_chars += len(payload.get('text', ''))
                 await session.emit(kind, payload)     # the chat shows the reply as it streams
                 return
+            if kind == 'tool_start' and payload.get('name') != 'end_followup':
+                session.reply_chars = 0            # text before a working tool is narration; the reply is what follows the last one
             await session.tap(kind, payload)
 
         task = asyncio.ensure_future(runner.run(request, tap, ctx.interact))

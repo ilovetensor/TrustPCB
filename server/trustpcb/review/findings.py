@@ -22,6 +22,7 @@ MAX_GROUP_PARTS = 80          # a net can hold hundreds of pads: keep the stored
 SEVERITIES = ('critical', 'high', 'medium', 'low', 'info')
 MARK_TYPES = ('pin', 'object', 'path', 'region', 'link', 'sketch')
 TEXT_FIELDS = ('title', 'what', 'why_it_matters', 'recommendation')
+MAX_AUTO_MARKS = 10           # analyzer marks drawn automatically on a finding made from candidates
 SCREEN_ONLY = 'Result is from screen-quality simulation runs only; no confirm run supports it.'
 
 _VERBS = (r'(?:moved|changed|edited|updated|fixed|removed|added|rerouted|re-routed|modified|widened|narrowed|deleted|replaced|'
@@ -145,6 +146,42 @@ class FindingEngine:
                 raise
             raise FindingRejected('anchor_unresolved', f'Target {target} does not exist on this board. Use ids returned by the tools.', target=target) from None
 
+    def candidate_marks(self, candidate_ids: list[str], known: dict[str, dict]) -> list[dict]:
+        """The analyzers' own marks for the candidates a finding covers (worst first, duplicates dropped), plus a `region` mark for each zone
+        they touch, so a finding made from candidates is drawn on the board without the agent repeating the geometry."""
+        order = {name: i for i, name in enumerate(SEVERITIES)}
+        ranked = sorted(candidate_ids, key=lambda c: (order.get((known.get(c) or {}).get('severity_hint'), 9), c))
+        out: list[dict] = []
+        seen: set = set()
+
+        def add(mark: dict) -> None:
+            key = (mark['type'], tuple(mark['targets']))
+            if key in seen or mark['type'] not in MARK_TYPES or len(out) >= MAX_AUTO_MARKS:
+                return
+            resolved = mark.get('resolved')
+            if not resolved:
+                resolved = []
+                for target in mark['targets']:
+                    try:
+                        resolved.append(self.resolve_target(target))
+                    except FindingRejected:
+                        continue
+            if not resolved:
+                return
+            seen.add(key)
+            out.append({**{k: mark[k] for k in ('type', 'targets', 'label', 'value', 'role') if mark.get(k) is not None}, 'resolved': resolved})
+
+        for cid in ranked:
+            candidate = known.get(cid) or {}
+            marks = candidate.get('marks') or [{'type': 'object', 'targets': (candidate.get('targets') or [])[:4]}]
+            for mark in marks:
+                if mark.get('targets'):
+                    add(mark)
+            for target in candidate.get('targets') or []:
+                if target.startswith(('zone:', 'zone_role:')):
+                    add({'type': 'region', 'targets': [target]})
+        return out
+
     # ---- the checks -------------------------------------------------------------------
     def prepare(self, args: dict, *, existing: dict | None = None, candidates: dict[str, dict] | None = None) -> Prepared:
         merged = {**(existing or {}), **{k: v for k, v in args.items() if v is not None}}
@@ -185,18 +222,26 @@ class FindingEngine:
         if class_ == 'opinion' and merged['severity'] == 'critical':
             raise FindingRejected('severity_not_supported', 'Engineering opinion cannot be critical. Choose high or lower, or link evidence from a tool.')
         # anchors -------------------------------------------------------------------------
-        marks_in = list(args.get('marks') or merged.get('marks') or [])
+        fresh_marks = list(args.get('marks') or [])
+        marks_in = fresh_marks or list(merged.get('marks') or [])
         targets_in = list(args.get('targets') or [])
         candidate_targets = [t for cid in candidate_ids for t in (known[cid].get('targets') or [])]
-        if not marks_in and (targets_in or candidate_targets):
+        auto_marks = self.candidate_marks(candidate_ids, known) if candidate_ids else []
+        if not marks_in and not auto_marks and (targets_in or candidate_targets):
             marks_in = [{'type': 'object', 'targets': targets_in or candidate_targets[:8]}]
         board_wide = (args.get('scope') or ('board' if existing and not existing.get('marks') else 'targets')) == 'board'
         marks: list[dict] = []
         for mark in marks_in:
             mark = {k: v for k, v in mark.items() if k != 'resolved'}
             marks.append(self.resolve_mark(mark))
+        checked = {id(m) for m in marks} if fresh_marks else set()      # marks the agent wrote now; stored and analyzer marks were checked already
         for target in targets_in:
             self.resolve_target(target)
+        taken = {(m['type'], tuple(m['targets'])) for m in marks}
+        for mark in auto_marks:
+            if (mark['type'], tuple(mark['targets'])) not in taken and len(marks) < MAX_AUTO_MARKS + len(fresh_marks):
+                marks.append(mark)
+                taken.add((mark['type'], tuple(mark['targets'])))
         if not marks and not board_wide:
             raise FindingRejected('needs_anchor', 'A finding must point at something on the board. Pass targets or marks, or set scope to "board" if it truly applies to the whole board.')
         all_targets = [t for m in marks for t in m['targets']] + targets_in
@@ -209,13 +254,13 @@ class FindingEngine:
         for index, item in enumerate(args.get('assumptions') or []):
             texts[f'assumptions[{index}]'] = str(item)
         for index, mark in enumerate(marks):
-            if mark.get('label'):
+            if mark.get('label') and id(mark) in checked:
                 texts[f'marks[{index}].label'] = str(mark['label'])
         check_wording(texts)
         allowed = [q for row in rows for q in ev.quantities_of(row)] + list(self.context())
         for index, mark in enumerate(marks):
             value = mark.get('value')
-            if isinstance(value, dict) and isinstance(value.get('value'), (int, float)):
+            if id(mark) in checked and isinstance(value, dict) and isinstance(value.get('value'), (int, float)):
                 texts[f'marks[{index}].value'] = f"{value['value']} {value.get('unit', '')}"
         check_numbers(texts, allowed)
         # identity ------------------------------------------------------------------------

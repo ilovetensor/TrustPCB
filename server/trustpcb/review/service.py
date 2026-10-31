@@ -360,6 +360,9 @@ class ReviewRun:
         # close what the agent left open, so the report never shows a running investigation
         if session:
             for inv in store.list_investigations(self.review_id):
+                for suspect in store.list_suspects(inv['id']):      # a refine round the review ended inside leaves its suspect open
+                    if suspect['status'] == 'open' and inv['status'] != 'open':
+                        store.update_suspect(suspect['id'], status='not_tested', conclusion={'status': 'not_tested', 'reason': 'The review ended before this refine round finished.'})
                 if inv['status'] == 'open':
                     for suspect in store.list_suspects(inv['id']):
                         if suspect['status'] == 'open':
@@ -377,6 +380,9 @@ class ReviewRun:
             summary['region_views'] = [{k: v for k, v in item.items()} for item in session.region_views.values()]
             if session.coverage_waived:
                 summary['coverage_waived'] = session.coverage_waived
+            summary['layout_review'] = {'reasons': dict(session.layout_reasons), 'waived': session.layout_waived}
+            summary['refine'] = {'rounds_allowed': session.config.refine_rounds, 'rounds': list(session.refine.history), 'declined': list(session.refine.declined),
+                                 'skipped': list(session.refine.skipped), 'open_when_ended': session.refine.active}
         summary['unreviewed_groups'] = unreviewed
         summary['summary'] = agent_summary or deterministic_summary(store, self.review_id, end_state, reason, rf_status,
                                                                     extra={'brief': summary.get('brief'), 'dismissals': summary.get('dismissals'), 'unreviewed': unreviewed})

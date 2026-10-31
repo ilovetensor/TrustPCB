@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from .handlers import MARK_SCHEMA, OP_SCHEMA, Handlers
 from .investigate import InvestigationMixin
+from .refine import RefineMixin
 from .tools import BOOL, INT, NUM, STR, ToolDef, arr, obj, text
 
 
-class AllHandlers(InvestigationMixin, Handlers):
+class AllHandlers(RefineMixin, InvestigationMixin, Handlers):
     pass
 
 
@@ -40,7 +41,8 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
     return [
         define('get_status', 'Current phase, allowed tools, time and budgets left, candidate counts.', obj({}), h.get_status,
                phases=ALL_PHASES, levels=ALL_LEVELS, free=True, closing=True, trail=lambda a: 'Checking status and budgets'),
-        define('advance_phase', 'Close the current phase and move to the next. Returns the brief for the new phase.', obj({'note': text(1, 300)}), h.advance_phase,
+        define('advance_phase', 'Close the current phase and move to the next. Returns the brief for the new phase. Phase 3 needs placement and routing judgement: layout_reasons {group: reason of 60+ characters} '
+               'says why a layout group merits no finding. In phase 5, a confirm that missed the target opens a refine round instead (decline_refine: a reason that cites confirm evidence; refused on Standard while solver budget allows).', obj({'note': text(1, 300), 'layout_reasons': {'type': 'object', 'additionalProperties': text(1, 600)}, 'decline_refine': text(1, 600)}), h.advance_phase,
                phases=P({2, 3, 4, 5}), free=True, closing=True, trail=lambda a: 'Moving to the next phase'),
         define('get_board_summary', 'Parts, nets, layers, stackup, goal, assumptions and candidate counts for this board.', obj({}), h.get_board_summary,
                phases=P({2}), trail=lambda a: 'Reading the board summary'),
@@ -87,12 +89,13 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
         define('open_investigation', 'Start an investigation: one question and 1 to 3 ranked suspects.',
                obj({'question': text(10, 400), 'suspects': arr(SUSPECT_SCHEMA, 1, 3)}, ['question', 'suspects']), h.open_investigation,
                phases=P({4}), levels=TEST, trail=lambda a: f'Opening an investigation: {a.get("question", "")[:100]}'),
-        define('run_simulation', 'Run a base (no whatif_ops) or what-if scenario at screen quality for one suspect. Identical scenarios return the stored result.',
-               obj({'suspect_id': CODE, 'label': text(1, 120), 'whatif_ops': arr(OP_SCHEMA, 0, 3),
+        define('run_simulation', 'Run a base (no whatif_ops) or what-if scenario at screen quality for one suspect. Identical scenarios return the stored result. '
+               'In a refine round (phase 5) it needs whatif_ops and a reason that cites confirm evidence by its code; the suspect is the round\'s own.',
+               obj({'suspect_id': CODE, 'label': text(1, 120), 'whatif_ops': arr(OP_SCHEMA, 0, 3), 'reason': text(1, 600),
                     'setup': obj({'region_margin_mm': {'type': 'number', 'minimum': 1, 'maximum': 40}, 'max_timesteps': {'type': 'integer', 'minimum': 1000, 'maximum': 2000000},
                                   'end_criteria_db': {'type': 'number', 'minimum': -80, 'maximum': -20}, 'mesh': {'type': 'string', 'enum': ['normal', 'fine']}})},
                    ['suspect_id']),
-               h.run_simulation, phases=P({4}), levels=TEST, trail=lambda a: 'Running a simulation: ' + (a.get('label') or ('base case' if not a.get('whatif_ops') else 'what-if'))),
+               h.run_simulation, phases=P({4, 5}), levels=TEST, trail=lambda a: 'Running a simulation: ' + (a.get('label') or ('base case' if not a.get('whatif_ops') else 'what-if'))),
         define('view_result', 'View a chart or field image of a stored result. kind: s11, smith, pattern, field or current.',
                obj({'ref': CODE, 'kind': {'type': 'string', 'enum': ['s11', 'smith', 'pattern', 'field', 'current']}}, ['ref', 'kind']), h.view_result,
                phases=P({4, 5}), levels=TEST, image=True, trail=lambda a: f'Viewing the {a.get("kind")} of {a.get("ref")}'),
@@ -113,8 +116,9 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
                    ['investigation_id', 'outcome', 'summary']), h.close_investigation, phases=P({4}), levels=TEST, closing=True,
                trail=lambda a: f'Closing investigation {a.get("investigation_id")}: {a.get("outcome")}'),
         define('confirm_result', 'Detailed (confirm quality) run of the base, then of the winner: what-if operations plus matching parts. A matching-only winner reuses the base run. '
+               'which=refine confirms the best candidate of the open refine round. '
                'The parts are then locked and re-tuned at confirm quality, and the report says honestly whether the screen improvement held.',
-               obj({'investigation_id': CODE, 'which': {'type': 'string', 'enum': ['base', 'winner']}}, ['investigation_id', 'which']), h.confirm_result,
+               obj({'investigation_id': CODE, 'which': {'type': 'string', 'enum': ['base', 'winner', 'refine']}}, ['investigation_id', 'which']), h.confirm_result,
                phases=P({5}), levels=TEST, trail=lambda a: f'Confirming the {a.get("which")} with a detailed run'),
         define('submit_summary', 'Submit the plain-language summary and up to five top actions. Every number must match the evidence.',
                obj({'summary': text(20, 2400), 'top_actions': arr(text(5, 400), 1, 5)}, ['summary', 'top_actions']), h.submit_summary,

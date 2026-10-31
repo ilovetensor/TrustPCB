@@ -72,6 +72,7 @@ async def test_a_screen_win_that_does_not_hold_at_confirm_is_said_so_in_the_find
 
     env.lab.model = fails_at_confirm
     env.lab.match_gain['confirm_free'] = 0.2
+    env.lab.solve_s = {'screen': 60.0, 'confirm': 1000.0}            # two confirm runs leave too little solver time for a refine round (the refine scenarios cover that)
     review = await env.review(SCRIPTS / 'screen_win_fails_at_confirm.json')
     assert review['end_state'] == 'complete', (review['summary']['end'], errors(env, review))
     assert env.lab.count('run_scenario') == 4                       # base, the copper clearing, and two confirm runs: this winner has its own geometry

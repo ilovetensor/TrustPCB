@@ -24,6 +24,15 @@ REPAIRS_PER_SCENARIO = 1         # rule 7
 REPAIRS_PER_INVESTIGATION = 2
 SILENCE_SECONDS = 180.0          # rule 8
 MIN_REGION_VIEWS = {'quick': 1, 'standard': 2, 'deep': 2}   # phase 3 open-review gate: region views before leaving the phase
+MIN_LAYOUT_FINDINGS = {'quick': 1, 'standard': 2, 'deep': 2}   # phase 3 layout judgement gate: findings from layout groups or region-view opinions
+LAYOUT_RULES = ('zones', 'noise_proximity', 'track_jitter', 'track_detour', 'track_angle', 'edge_track', 'via_count')
+MIN_LAYOUT_REASON = 60           # a layout group with no finding needs a specific reason of at least this many characters
+REFINE_SCREENS = 3               # screen what-ifs in one refine round
+REFINE_MATCHING = 3              # matching experiments (zero solver time) in one refine round
+REFINE_EXTRA_CALLS = 14          # phase 5 tool calls a refine round adds
+REFINE_EXPERIMENT_ALLOWANCE = REFINE_SCREENS + REFINE_MATCHING
+DEFAULT_SCREEN_S = 240.0         # solver estimates before any run was timed (spec section 8)
+DEFAULT_CONFIRM_S = 420.0
 REFUSAL_STREAK_LIMIT = 6         # extra safety: this many refused calls in a row end the agent
 IMPROVEMENT_DB = 1.0             # a what-if or matching change counts as an improvement when the worst in-band S11 gains at least this much
 SCREEN_CONFIRM_DB = 3.0          # screen and confirm must agree within these limits (in-band worst S11, then the first series resonance)
@@ -83,6 +92,7 @@ class BudgetConfig:
     silence_s: float = SILENCE_SECONDS
     reserve_s: float | None = None                        # time before the hard deadline when only closing tools work
     full_investigation: bool = False                      # Standard: no closing without a result while budget allows and the method is incomplete
+    refine_rounds: int = 0                                # bounded refine rounds after a confirm that missed the target (Standard 1, Deep 2, Quick none)
 
     @property
     def soft_wall_s(self) -> float:
@@ -101,8 +111,8 @@ _PHASE_CALLS = {
 
 CONFIGS: dict[str, BudgetConfig] = {
     'quick': BudgetConfig('quick', 6 * 60, 0, 90, 0, 0, 0, 8, 3_000_000, 30_000, _PHASE_CALLS['quick'], {3: 8}),
-    'standard': BudgetConfig('standard', 60 * 60, 40 * 60, 160, 1, 5, 2, 14, 4_000_000, 40_000, _PHASE_CALLS['standard'], {3: 8}, full_investigation=True),
-    'deep': BudgetConfig('deep', 120 * 60, 90 * 60, 220, 3, 6, 4, 20, 6_000_000, 60_000, _PHASE_CALLS['deep'], {3: 8}),
+    'standard': BudgetConfig('standard', 60 * 60, 40 * 60, 160, 1, 5, 2, 14, 4_000_000, 40_000, _PHASE_CALLS['standard'], {3: 8}, full_investigation=True, refine_rounds=1),
+    'deep': BudgetConfig('deep', 120 * 60, 90 * 60, 220, 3, 6, 4, 20, 6_000_000, 60_000, _PHASE_CALLS['deep'], {3: 8}, refine_rounds=2),
 }
 
 
@@ -139,6 +149,8 @@ class BudgetTracker:
         self.turns = 0
         self.images = 0
         self.calls: dict[Any, int] = {}
+        self.bonus_calls: dict[Any, int] = {}        # tool calls a refine round adds to a phase
+        self.bonus_confirm_runs = 0                  # confirm runs the refine rounds add
         self.images_by_phase: dict[Any, int] = {}
         self.investigations = 0
         self.confirm_runs = 0
@@ -189,7 +201,7 @@ class BudgetTracker:
 
     def calls_left(self, key) -> int:
         cap = self.config.phase_calls.get(key)
-        return 10 ** 9 if cap is None else max(0, cap - self.calls.get(key, 0))
+        return 10 ** 9 if cap is None else max(0, cap + self.bonus_calls.get(key, 0) - self.calls.get(key, 0))
 
     def add_images(self, key, count: int = 1) -> None:
         self.images += count
@@ -230,7 +242,7 @@ class BudgetTracker:
             'images': {'used': self.images, 'limit': c.images},
             'investigations': {'used': self.investigations, 'limit': c.investigations},
             'experiments': {'used': self.experiments},
-            'confirm_runs': {'used': self.confirm_runs, 'limit': c.confirm_runs},
+            'confirm_runs': {'used': self.confirm_runs, 'limit': c.confirm_runs + self.bonus_confirm_runs},
             'input_tokens': {'used': self.input_tokens, 'limit': c.input_tokens},
             'output_tokens': {'used': self.output_tokens, 'limit': c.output_tokens},
             'duplicates': self.duplicates, 'refused_calls': self.refused,
@@ -297,6 +309,10 @@ class InvestigationState:
     matching_runs: int = 0                              # matching experiments recorded (zero solver time)
     matching_unavailable: str | None = None             # why a matching experiment cannot be done on this board
     confirmation: dict | None = None                    # the screen against confirm comparison, once confirmed
+    refining: bool = False                              # a refine round is open on this (closed) investigation
+    extra_experiments: int = 0                          # experiments a refine round adds to the investigation's allowance
+    refine_suspects: list = field(default_factory=list)  # ids of the suspects created for refine rounds
+    refine_confirmations: dict = field(default_factory=dict)   # 'refine1' -> the screen against confirm comparison of that round's candidate
 
 
 @dataclass
@@ -349,7 +365,7 @@ class Ledger:
     # ---- deciding a simulation request --------------------------------------------------
     def decide(self, suspect: SuspectState, sc_hash: str, key: str, kind: str, *, optimisation: bool, base_hash: str | None) -> Decision:
         inv = self.investigations[suspect.investigation_id]
-        if inv.status != 'open':
+        if inv.status != 'open' and not inv.refining:
             return Decision('refuse', 'investigation_closed', 'This investigation is closed.')
         if suspect.closed:
             return Decision('refuse', 'suspect_closed', f'Suspect {suspect.code} is closed ({suspect.status}) and stays closed.', 'no_reopening')
@@ -372,8 +388,8 @@ class Ledger:
             return Decision('refuse', 'base_required', 'Run the unmodified base scenario first so tests can be compared with it.')
         if experiment and inv.good_enough and optimisation:
             return Decision('refuse', 'target_met', 'The target is already met. Optimising further is not allowed; confirm and close.', 'good_enough')
-        if experiment and inv.experiments >= self.config.experiments_per_investigation:
-            return Decision('refuse', 'budget_exhausted', f'This investigation used its {self.config.experiments_per_investigation} experiments.', 'experiment_budget')
+        if experiment and inv.experiments >= self.config.experiments_per_investigation + inv.extra_experiments:
+            return Decision('refuse', 'budget_exhausted', f'This investigation used its {self.config.experiments_per_investigation + inv.extra_experiments} experiments.', 'experiment_budget')
         repair = key in inv.failures_by_key
         if repair:
             if inv.repairs_by_key.get(key, 0) >= REPAIRS_PER_SCENARIO or inv.repairs >= REPAIRS_PER_INVESTIGATION:
@@ -429,11 +445,24 @@ class Ledger:
         """
         best = None
         for suspect in inv.suspects:
+            if suspect.id in inv.refine_suspects:       # refine candidates are judged on their own (refine_candidate)
+                continue
             for exp in suspect.experiments:
                 if exp.kind not in ('whatif', 'matching') or not exp.ok or exp.quality != 'screen' or not exp.delta or not is_improvement(exp.delta):
                     continue
                 if best is None or rank_key(exp.delta) > rank_key(best.delta):
                     best = exp
+        return best
+
+    def refine_candidate(self, inv: InvestigationState, suspect_id: str) -> Experiment | None:
+        """The best trusted screen what-if or matching experiment of one refine round that improved the in-band result by IMPROVEMENT_DB."""
+        suspect = self.suspects.get(suspect_id)
+        best = None
+        for exp in (suspect.experiments if suspect else []):
+            if exp.kind not in ('whatif', 'matching') or not exp.ok or exp.quality != 'screen' or not exp.delta or not is_improvement(exp.delta):
+                continue
+            if best is None or rank_key(exp.delta) > rank_key(best.delta):
+                best = exp
         return best
 
     # ---- not stopping early (Standard) -----------------------------------------------------

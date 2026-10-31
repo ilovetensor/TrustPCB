@@ -15,6 +15,7 @@ from .budgets import REFUSAL_STREAK_LIMIT, BudgetConfig, BudgetTracker, Clock, L
 from .findings import FindingEngine
 from .lab import Lab, scenario_hash
 from .machine import PHASE_NAMES, PhaseMachine
+from .refine import REFINE_ONLY_TOOLS, RefineState
 from .tools import ToolDef, ToolResult, fail
 
 GATE_REFUSALS = ('agent_stopped', 'not_allowed_in_phase', 'invalid_arguments', 'budget_exhausted', 'review_complete', 'unknown_tool', 'level_not_allowed', 'no_further_evidence')
@@ -54,6 +55,9 @@ class ReviewSession:
         self.view_unavailable = False                   # the board cannot be drawn: the region view gate gives way
         self.dismissals: list[dict] = []                # {rules, count, reason}: shown in the report
         self.auto_grouped: list[dict] = []              # info-only rule groups grouped by code at the phase 3 gate
+        self.layout_reasons: dict[str, str] = {}        # phase 3 layout gate: layout rule group -> the specific reason (60+ characters) no finding is needed
+        self.layout_waived: dict | None = None
+        self.refine = RefineState()                     # the bounded refine round after a confirm that missed the target
         self.coverage_refusals = 0
         self.coverage_waived: dict | None = None
         self.stop_reason: str | None = None
@@ -191,7 +195,10 @@ class ReviewSession:
     def allowed_names(self) -> list[str]:
         if self.finished:
             return [n for n, d in self.tools.items() if d.free]
-        return [n for n, d in self.tools.items() if self.phase in d.phases]
+        names = [n for n, d in self.tools.items() if self.phase in d.phases]
+        if self.phase == 5 and not self.refine.active:
+            names = [n for n in names if n not in REFINE_ONLY_TOOLS]      # simulations come back only while a refine round is open
+        return names
 
     def phase_label(self) -> str:
         return f'phase {self.phase}, {PHASE_NAMES[self.phase]}'

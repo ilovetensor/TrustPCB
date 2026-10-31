@@ -9,7 +9,7 @@ import math
 from typing import Any
 
 from .. import prompts
-from .budgets import MIN_REGION_VIEWS
+from .budgets import LAYOUT_RULES, MIN_LAYOUT_FINDINGS, MIN_LAYOUT_REASON, MIN_REGION_VIEWS, REFINE_MATCHING, REFINE_SCREENS
 from .findings import SEVERITIES, FindingRejected, check_wording
 from .lab import LabUnavailable
 from .machine import PHASE_NAMES
@@ -142,12 +142,15 @@ class Handlers:
         await self.s.emit('suspect_updated', {'suspect_id': st.id, 'code': st.code, 'investigation_id': st.investigation_id, 'title': st.title,
                                               'status': st.status, 'reason': st.reason, 'experiments': len(st.experiments)})
 
-    async def publish_investigation(self, inv, question: str | None = None) -> None:
+    async def publish_investigation(self, inv, question: str | None = None, note: str | None = None) -> None:
         row = self.store.get_investigation(inv.id)
-        await self.s.emit('investigation_updated', {
+        payload = {
             'investigation_id': inv.id, 'code': inv.code, 'question': question or row['question'], 'status': inv.status, 'outcome': inv.outcome,
             'suspects': [{'code': x.code, 'title': x.title, 'status': x.status} for x in inv.suspects], 'experiments': inv.experiments,
-            'good_enough': inv.good_enough})
+            'good_enough': inv.good_enough, 'refining': inv.refining}
+        if note:
+            payload['note'] = note
+        await self.s.emit('investigation_updated', payload)
 
     async def publish_finding(self, finding: dict, event: str = 'finding_upserted', source: str = 'review') -> None:
         public = self.s.engine.public(finding)
@@ -165,7 +168,8 @@ class Handlers:
         band = s.rf.get('band_hz') or s.goal.get('band_hz')
         return {'depth': c.name, 'investigations': c.investigations, 'experiments': c.experiments_per_investigation, 'confirm_runs': c.confirm_runs,
                 'images': c.images, 'phase2_calls': c.phase_calls.get(2), 'phase3_calls': c.phase_calls.get(3), 'phase4_calls': c.phase_calls.get(4),
-                'phase5_calls': c.phase_calls.get(5), 'region_views': MIN_REGION_VIEWS.get(c.name, 2), 'target_db': s.goal.get('target_s11_db', -10),
+                'phase5_calls': c.phase_calls.get(5), 'region_views': MIN_REGION_VIEWS.get(c.name, 2), 'layout_findings': MIN_LAYOUT_FINDINGS.get(c.name, 2),
+                'layout_reason_chars': MIN_LAYOUT_REASON, 'refine_rounds': c.refine_rounds, 'refine_screens': REFINE_SCREENS, 'refine_matching': REFINE_MATCHING, 'target_db': s.goal.get('target_s11_db', -10),
                 'band': f'{band[0] / 1e9:g} to {band[1] / 1e9:g} GHz' if band else 'not given', 'wall_minutes': round(c.wall_s / 60)}
 
     # ---- status and phases ----------------------------------------------------------------
@@ -185,6 +189,12 @@ class Handlers:
         }
         if s.limits:
             data['limits_hit'] = [l['rule'] for l in s.limits]
+        if s.config.refine_rounds:
+            data['refine'] = {'rounds_allowed': s.config.refine_rounds, 'rounds_started': s.refine.round, 'open': s.refine.active,
+                              **({'screens_used': s.refine.screens, 'screens_allowed': REFINE_SCREENS, 'matching_used': s.refine.matching, 'matching_allowed': REFINE_MATCHING} if s.refine.active else {})}
+        if s.phase == 3:
+            layout = self.layout_status()
+            data['layout_review'] = {'findings_recorded': layout['count'], 'findings_needed': layout['need'], 'groups_without_finding_or_reason': layout['missing']}
         return ok(data)
 
     async def advance_phase(self, args: dict) -> ToolResult:
@@ -203,9 +213,13 @@ class Handlers:
                 self.store.update_investigation(inv.id, status='incomplete', outcome={'outcome': 'incomplete', 'summary': 'A budget ended before this investigation was closed.'})
                 await self.publish_investigation(inv)
         if s.phase == 3:
-            refusal = await self.phase3_gate()
+            refusal = await self.phase3_gate(args)
             if refusal is not None:
                 return refusal
+        if s.phase == 5:
+            held = await self.refine_gate(args)
+            if held is not None:
+                return held
         change = s.machine.advance()
         await s.announce_phase(change)
         data = {'phase': change.phase, 'name': PHASE_NAMES[change.phase],
@@ -219,14 +233,75 @@ class Handlers:
                 data['coverage_waived'] = s.coverage_waived
         return ok(data)
 
-    async def phase3_gate(self) -> ToolResult | None:
-        """Leaving phase 3 needs every rule group resolved and the open-review region views taken (spec sections 6 and 7).
+    # ---- the layout judgement gate ------------------------------------------------------------
+    def layout_finding_count(self) -> int:
+        """Findings that judge placement or routing: recorded from a layout rule group, or an open-review opinion anchored on the board
+        inside a region view the agent took (an opinion with real ids, not a whole-board remark)."""
+        s = self.s
+        windows = [v['region'] for v in s.region_views.values()]
+        count = 0
+        for finding in self.store.list_findings(s.review_id):
+            if finding['status'] not in ('open', 'needs_recheck') or finding.get('source') not in (None, 'review'):
+                continue
+            rows = [r for r in (self.store.get_evidence(i) for i in finding['evidence_ids'] or []) if r]
+            candidate_rules = {(r['values'] or {}).get('rule') for r in rows if r['type'] == 'candidate'}
+            if candidate_rules & set(LAYOUT_RULES):
+                count += 1
+            elif not candidate_rules and finding['class'] == 'opinion' and self.opinion_is_anchored(finding, windows):
+                count += 1
+        return count
 
-        Enforced by the server. It can never trap the run: when a budget wall or the phase 3 call limit has ended, or the board
-        cannot be drawn, the gate gives way and the gap is recorded as a limit. Each refusal costs one phase 3 call, so the
-        refusals themselves run out.
+    @staticmethod
+    def opinion_is_anchored(finding: dict, windows: list) -> bool:
+        boxes = [g['bbox'] for m in finding['marks'] or [] for g in m.get('resolved') or [] if g.get('bbox')]
+        if not boxes:
+            return False
+        if not windows:       # the board could not be drawn, so no region view was possible
+            return True
+        return any(b[2] >= w[0] and b[0] <= w[2] and b[3] >= w[1] and b[1] <= w[3] for b in boxes for w in windows)
+
+    def layout_status(self) -> dict:
+        s = self.s
+        exempt = {g['rule'] for g in s.auto_grouped}      # info-only groups: nothing to judge
+        groups: dict[str, dict] = {}
+        for row in self.store.list_candidates(s.review_id):
+            rule = row['rule'] or 'other'
+            if rule not in LAYOUT_RULES:
+                continue
+            group = groups.setdefault(rule, {'rule': rule, 'results': 0, 'worst': 'info', 'covered': False})
+            group['results'] += 1
+            hint = (row['data'] or {}).get('severity_hint') or 'info'
+            if SEV_ORDER.get(hint, 9) < SEV_ORDER.get(group['worst'], 9):
+                group['worst'] = hint
+            if row['review_state'] in ('recorded', 'grouped'):
+                group['covered'] = True
+        need = MIN_LAYOUT_FINDINGS[s.config.name]
+        count = self.layout_finding_count()
+        missing = [{'rule': g['rule'], 'results': g['results'], 'worst': g['worst']} for g in groups.values()
+                   if not g['covered'] and g['rule'] not in exempt and g['rule'] not in s.layout_reasons]
+        missing.sort(key=lambda g: (SEV_ORDER.get(g['worst'], 9), -g['results']))
+        return {'need': need, 'count': count, 'missing': missing if count < need else [], 'groups': sorted(groups)}
+
+    def accept_layout_reasons(self, reasons: dict | None) -> list[str]:
+        """Take the specific reasons given with advance_phase; returns the groups whose reason was too short."""
+        short = []
+        for group, reason in (reasons or {}).items():
+            if len(str(reason).strip()) >= MIN_LAYOUT_REASON:
+                self.s.layout_reasons[group] = str(reason).strip()
+            else:
+                short.append(group)
+        return short
+
+    async def phase3_gate(self, args: dict | None = None) -> ToolResult | None:
+        """Leaving phase 3 needs every rule group resolved, the open-review region views taken and the layout judged (spec sections 6 and 7).
+
+        Layout judgement: at least `MIN_LAYOUT_FINDINGS` findings from layout groups or anchored open-review opinions, unless each layout
+        group without a finding has a specific reason of 60+ characters why none merits one. Enforced by the server. It can never trap the run:
+        when a budget wall or the phase 3 call limit has ended, or the board cannot be drawn, the gate gives way and the gap is recorded as a
+        limit. Each refusal costs one phase 3 call, so the refusals themselves run out.
         """
         s = self.s
+        short_reasons = self.accept_layout_reasons((args or {}).get('layout_reasons'))
         # info-only groups (for example footprint parity) are grouped by code: nothing to judge one by one
         for group in self.rule_groups().values():
             if group['new'] and group['worst'] == 'info':
@@ -238,7 +313,9 @@ class Handlers:
         taken = len(s.region_views)
         views_possible = not s.view_unavailable and s.budgets.images_left(3) > 0
         missing_views = max(0, need - taken) if views_possible else 0
-        if not unresolved and not missing_views:
+        layout = self.layout_status()
+        layout_missing = bool(layout['missing'])
+        if not unresolved and not missing_views and not layout_missing:
             return None
         wall = s.budgets.global_exhausted()
         if wall or s.budgets.calls_left(3) <= 0:
@@ -246,8 +323,13 @@ class Handlers:
             if not wall:
                 s.note_wall('phase_3_tool_calls')
             s.coverage_waived = {'reason': f'The {reason} budget ended', 'unresolved_rule_groups': unresolved, 'region_views_missing': max(0, need - taken)}
-            s.add_limit('coverage_waived', f'The {reason} budget ended before phase 3 coverage was complete: '
-                        f'{len(unresolved)} rule group(s) unresolved, {max(0, need - taken)} region view(s) missing')
+            detail = (f'The {reason} budget ended before phase 3 coverage was complete: '
+                      f'{len(unresolved)} rule group(s) unresolved, {max(0, need - taken)} region view(s) missing')
+            if layout_missing:
+                s.layout_waived = {'reason': f'The {reason} budget ended', 'findings': layout['count'], 'needed': layout['need'], 'groups': layout['missing']}
+                s.coverage_waived['layout_groups_missing'] = layout['missing']
+                detail += f', layout judgement incomplete ({layout["count"]} of {layout["need"]} findings, {len(layout["missing"])} group(s) without a reason)'
+            s.add_limit('coverage_waived', detail)
             return None
         s.budgets.add_call(3)              # a refusal counts against the phase budget, so it cannot loop
         s.coverage_refusals += 1
@@ -256,13 +338,23 @@ class Handlers:
             code = 'coverage_incomplete'
             message = (f'{len(unresolved)} rule group(s) are not resolved yet. For each one, record a finding that covers it (record_finding with rule_group, '
                        'or candidate_ids) or dismiss it with a reason (dismiss_rule_group). One finding can cover a whole group.')
-        else:
+        elif missing_views:
             code = 'open_review_incomplete'
             message = (f'Take {missing_views} more region view(s) with view_board (around a part, net or zone, or a region) before leaving phase 3. '
                        'Choose the areas that matter on this board.')
-        return fail(code, message, unresolved_rule_groups=unresolved[:20],
-                    region_views={'taken': taken, 'needed': need}, phase_3_calls_left=left,
-                    note='This refusal used one phase 3 call. If the calls run out the review moves on and the gaps are listed as not reviewed.')
+        else:
+            code = 'layout_review_incomplete'
+            message = (f'Placement and routing judgement is missing: {layout["count"]} of {layout["need"]} layout finding(s) are recorded. Record findings that judge the layout: '
+                       'from the layout groups below (record_finding with rule_group, so the analyzer marks are drawn on the board), or open-review opinions about what you see in a region view '
+                       '(power parts not grouped, parts awkwardly placed relative to connectors, shaky tracks, tracks running along the board edge, a long detour when a cleaner route exists; '
+                       'anchor each with real ids and, for a route, a sketch mark). If a group truly has nothing worth a finding, give a specific reason of at least '
+                       f'{MIN_LAYOUT_REASON} characters for it: pass layout_reasons {{group: reason}} to advance_phase, or use dismiss_rule_group.')
+        data: dict = {}
+        if code == 'layout_review_incomplete':
+            data = {'layout': {'findings_recorded': layout['count'], 'findings_needed': layout['need'], 'groups_without_finding_or_reason': layout['missing'],
+                               'short_reasons': short_reasons}}
+        return fail(code, message, unresolved_rule_groups=unresolved[:20], region_views={'taken': taken, 'needed': need}, phase_3_calls_left=left,
+                    note='This refusal used one phase 3 call. If the calls run out the review moves on and the gaps are listed as not reviewed.', **data)
 
     # ---- understanding the board ------------------------------------------------------------
     async def get_board_summary(self, args: dict) -> ToolResult:
@@ -541,7 +633,12 @@ class Handlers:
             return fail('unknown_candidate', f'Unknown candidates: {", ".join(missing[:5])}.')
         for cid in args['candidate_ids']:
             self.store.set_candidate_state(s.review_id, cid, 'dismissed')
-        s.dismissals.append({'rules': sorted({(s.candidates[c].get('rule') or 'other') for c in args['candidate_ids']}), 'count': len(args['candidate_ids']), 'reason': args['reason']})
+        rules = sorted({(s.candidates[c].get('rule') or 'other') for c in args['candidate_ids']})
+        if len(args['reason'].strip()) >= MIN_LAYOUT_REASON:
+            for rule in rules:
+                if rule in LAYOUT_RULES:
+                    s.layout_reasons.setdefault(rule, args['reason'].strip())
+        s.dismissals.append({'rules': rules, 'count': len(args['candidate_ids']), 'reason': args['reason']})
         await self.publish_candidates()
         return ok({'dismissed': args['candidate_ids'], 'reason': args['reason'], 'unresolved_rule_groups': len(self.unresolved_groups())})
 
@@ -557,6 +654,8 @@ class Handlers:
         if group['worst'] in ('high', 'medium') and len(args['reason'].strip()) < MIN_DISMISS_REASON_RISKY:
             return fail('reason_too_short', f'This group has {group["worst"]}-severity results. Say specifically why they are harmless on this board '
                         f'(at least {MIN_DISMISS_REASON_RISKY} characters), or record a finding instead.', worst=group['worst'], unresolved=group['new'])
+        if args['rule'] in LAYOUT_RULES and len(args['reason'].strip()) >= MIN_LAYOUT_REASON:
+            s.layout_reasons[args['rule']] = args['reason'].strip()      # a specific reason also answers the layout judgement gate
         for cid in group['new_ids']:
             self.store.set_candidate_state(s.review_id, cid, 'dismissed')
         s.dismissals.append({'rules': [args['rule']], 'count': group['new'], 'reason': args['reason'], 'worst': group['worst']})
