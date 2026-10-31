@@ -12,10 +12,10 @@ export interface Brief { purpose: string; part_roles?: Record<string, string>; r
 export interface Proposal { request_id: string | null; what: string; why: string; eta_s: number; plan?: any; limits?: any; status: "pending" | "approved" | "declined" }
 export interface PendingRequest { request_id: string; kind: "test" | "permission" | "question"; payload: Record<string, any>; status: "pending" | "approved" | "declined" }
 export interface FollowupMessage { id: string; role: "user" | "agent"; text: string; selected?: string[]; turn?: string; error?: boolean; /** the message is finished: later text starts a new one */ closed?: boolean; /** written before a working tool, not the reply */ narration?: boolean }
-export interface FollowupState { level: string | null; selected: string[]; messages: FollowupMessage[]; proposal: Proposal | null; whatif: any; running: boolean }
+export interface FollowupState { level: string | null; selected: string[]; messages: FollowupMessage[]; proposal: Proposal | null; whatif: any; running: boolean; /** turn whose reply end_followup has closed */ endedTurn: string | null }
 export interface ReviewState {
   mode: "review" | "thread"; status: "idle" | "running" | "complete" | "failed" | "canceled"; endState: string | null; failure: string | null; phase: number; seen: number;
-  budget: Budget | null; trail: TrailEntry[]; findings: Record<string, Finding>; findingOrder: string[]; marks: Mark[]; brief: Brief | null;
+  budget: Budget | null; /** ms timestamp of the last budget event */ budgetAt: number | null; trail: TrailEntry[]; findings: Record<string, Finding>; findingOrder: string[]; marks: Mark[]; brief: Brief | null;
   refine: { round: number; rounds: number | null; investigation: string | null } | null;
   cleared: { id: string; rule: string | null; count: number; reason: string }[];
   candidates: { total: number; reviewed: number; byRule: Record<string, number> };

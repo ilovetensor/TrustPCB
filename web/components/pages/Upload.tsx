@@ -9,8 +9,8 @@ import { useAppEnv } from "../../lib/demo";
 
 const DEPTHS: { id: Depth; label: string; note: string }[] = [
   { id: "quick", label: "Quick", note: "About 6 min. KiCad checks and an open review. No simulation." },
-  { id: "standard", label: "Standard", note: "Up to 30 min. One investigation with simulation when the RF lab is installed." },
-  { id: "deep", label: "Deep", note: "Up to 75 min. Up to three investigations." },
+  { id: "standard", label: "Standard", note: "Up to 60 min. One investigation with simulation when the RF lab is installed." },
+  { id: "deep", label: "Deep", note: "Up to 120 min. Up to three investigations." },
 ];
 
 interface Picked { files: File[]; names: string[]; zip: boolean; pcb: string | null; pro: boolean; sch: boolean; title: string }

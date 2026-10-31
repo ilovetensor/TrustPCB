@@ -60,6 +60,12 @@ test("phase and budget events move the tracker", () => {
   assert.equal(s.budget.wall_s.left, 190);
 });
 
+test("a budget event keeps the time it was true, so a clock can count on from it after a reload", () => {
+  const s = replayAll([ev(1, "budget", { wall_s: { used: 10, limit: 200, left: 190 } })]);
+  assert.equal(s.budgetAt, Date.parse("2026-10-31T00:00:00Z"));
+  assert.equal(initialReviewState().budgetAt, null);
+});
+
 test("duplicate or out-of-order sequences are ignored", () => {
   let s = reviewReducer(initialReviewState(), ev(5, "thought", { text: "a" }));
   s = reviewReducer(s, ev(5, "thought", { text: "dup" }));
@@ -233,6 +239,25 @@ test("follow-up chat: narration before a tool stays apart from the reply streame
   assert.equal(agent[1].text, "The antenna resonates at 1.87 GHz, far below the band.");
   assert.ok(!agent[1].narration);
   assert.equal(s.followup.running, false);
+});
+
+test("follow-up chat: text written after end_followup closed the reply is not a second copy", () => {
+  const T = "t9";
+  const s = replayAll([
+    ev(1, "user_message", { text: "Why?", selected: [] }, T),
+    ev(2, "tool_start", { tool_call_id: "e", name: "end_followup", input: { reply: "J1 fails." } }, T),
+    ev(3, "text_delta", { text: "J1 fails because it faces into the board." }, T),
+    ev(4, "tool_result", { tool_call_id: "e", name: "end_followup", content: "{}" }, T),
+    ev(5, "text_delta", { text: "J" }, T),
+    ev(6, "text_delta", { text: "1 fails because it faces into the board." }, T),
+    ev(7, "thought", { text: "J1 fails because it faces into the board." }, T),
+    ev(8, "completed", {}, T),
+  ], initialReviewState("thread"));
+  const agent = s.followup.messages.filter((m) => m.role === "agent");
+  assert.equal(agent.length, 1);
+  assert.equal(agent[0].text, "J1 fails because it faces into the board.");
+  const next = replayAll([ev(9, "user_message", { text: "And?", selected: [] }, "t10"), ev(10, "text_delta", { text: "More." }, "t10")], s);
+  assert.equal(next.followup.messages.at(-1).text, "More.", "a later turn still streams");
 });
 
 test("follow-up chat: a reply that only exists as a thought is still shown, and never twice", () => {

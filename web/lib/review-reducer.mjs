@@ -22,6 +22,8 @@ export function initialReviewState(mode = "review") {
     phase: -1,
     seen: -1,
     budget: null,
+    /** when the budget numbers were true, from the event's own timestamp (ms), so a clock can count on from there */
+    budgetAt: null,
     trail: [],
     findings: {},
     findingOrder: [],
@@ -40,7 +42,7 @@ export function initialReviewState(mode = "review") {
     reportReady: null,
     assumptions: [],
     requests: {}, // interactions awaiting a decision, by request_id
-    followup: { level: null, selected: [], messages: [], proposal: null, whatif: null, running: false },
+    followup: { level: null, selected: [], messages: [], proposal: null, whatif: null, running: false, endedTurn: null },
     notices: [],
   };
 }
@@ -139,7 +141,7 @@ export function reviewReducer(state, event) {
       return next;
     }
     case "budget":
-      return { ...next, budget: { ...(next.budget ?? {}), ...p } };
+      return { ...next, budget: { ...(next.budget ?? {}), ...p }, budgetAt: Number.isFinite(Date.parse(at)) ? Date.parse(at) : next.budgetAt };
     case "thought": {
       if (thread) {
         // The thread's reply normally arrives as text_delta. A reply that only exists as a thought still has to be readable.
@@ -175,6 +177,8 @@ export function reviewReducer(state, event) {
         const reason = data?.reason ?? input.reason ?? "";
         if (count) next = { ...next, cleared: [...next.cleared.filter((c) => c.id !== id), { id, rule: data?.dismissed_rule ?? input.rule ?? null, count, reason }] };
       }
+      // end_followup closes the reply. Text a model writes after it is the same answer again, so it is not shown.
+      if (thread && name === "end_followup" && !p.is_error) next = { ...next, followup: { ...next.followup, endedTurn: event.turn_id } };
       return upsertTrail(next, {
         id, kind: "tool", tool: p.name ?? prev?.tool, text: prev?.text ?? toolLabel(p.name), state: p.is_error ? "error" : "done",
         result: resultText(p.content).slice(0, 600), phase: next.phase, at: prev?.at ?? at, seq: prev?.seq ?? event.sequence,
@@ -305,6 +309,7 @@ export function reviewReducer(state, event) {
     case "text_delta": {
       if (!thread || !p.text) return next;
       const f = next.followup;
+      if (f.endedTurn && f.endedTurn === event.turn_id) return next;
       const msgs = f.messages.slice();
       const last = msgs[msgs.length - 1];
       if (last && last.role === "agent" && !last.error && !last.closed && last.turn === event.turn_id) msgs[msgs.length - 1] = { ...last, text: last.text + p.text };

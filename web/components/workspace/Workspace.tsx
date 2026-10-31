@@ -162,7 +162,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     { id: "chat", dot: pendingApproval },
   ];
   const goCode = (code: string) => { const f = state.findingOrder.map((id) => state.findings[id]).find((x) => x?.code === code); if (f) selectFinding(f.id); };
-  const progress = running ? <RunProgress phase={state.phase} budget={state.budget} refine={state.refine} canStop={canStop} onStop={() => { void rv.stop(); }} /> : null;
+  const progress = running ? <RunProgress phase={state.phase} budget={state.budget} budgetAt={state.budgetAt} solving={simsWorking} refine={state.refine} canStop={canStop} onStop={() => { void rv.stop(); }} /> : null;
 
   const body = (
     <>
