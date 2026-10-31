@@ -147,3 +147,19 @@ def test_power_bars_hatch_the_earlier_value_and_mark_the_improved_one():
 def test_print_css_lets_long_cards_flow_and_keeps_images_and_rows_whole():
     printed = report.CSS.split('@media print', 1)[1]
     assert '.card{break-inside:auto}' in printed and 'svg.board' in printed and 'tr' in printed and 'max-height' in printed
+
+
+def test_clamp_region_stays_inside_the_board():
+    from trustpcb.review.report import _clamp_region
+    bbox = (0.0, 0.0, 80.0, 60.0)
+    assert _clamp_region([-6, -6, 10, 12], bbox) == [0, 0, 16, 18]          # moved in, not shrunk
+    assert _clamp_region([70, 50, 90, 70], bbox) == [60, 40, 80, 60]
+    assert _clamp_region([-20, -20, 120, 100], bbox) == [0, 0, 80, 60]      # larger than the board: the board
+
+
+def test_still_sources_follow_a_matching_winner_to_its_base_run():
+    from trustpcb.review.report import _still_sources
+    base = {'id': 'a', 'code': 'E-1', 'values': {'ref': 'R3', 'label': 'confirm base', 'job_id': 'j1'}}
+    winner = {'id': 'b', 'code': 'E-2', 'values': {'ref': 'R6', 'label': 'confirm winner', 'job_id': None, 'derived_from': 'R3'}}
+    out = _still_sources([base, winner])
+    assert out == [(base, winner)]                                         # one source, listed once, standing in for the winner

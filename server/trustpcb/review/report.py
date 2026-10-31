@@ -252,24 +252,24 @@ def version_changes(store, review_id: str, new_coverage: set[str] | None = None)
 # ---- HTML ------------------------------------------------------------------------------------------
 
 CSS = '''
-:root{color-scheme:light}*{box-sizing:border-box}body{font:15px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif;color:#1c2024;background:#fff;margin:0}
-main{max-width:920px;margin:0 auto;padding:32px 24px 64px}h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:36px 0 10px;padding-bottom:6px;border-bottom:1px solid #d7dbe0}
-h3{font-size:16px;margin:18px 0 4px}p{margin:6px 0}.meta,.muted{color:#5b6570}.mono,td.n{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
-table{border-collapse:collapse;width:100%;margin:8px 0}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e6e9ed;vertical-align:top}th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5b6570}
-.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid #c8ced5;background:#f4f6f8}
-.sev-critical{background:#ffe3e8;border-color:#ff2d55;color:#8a0f2b}.sev-high{background:#ffe5e5;border-color:#ff4d4f;color:#8a1c1c}.sev-medium{background:#fff1dc;border-color:#ff9f1a;color:#7a4a00}
-.sev-low{background:#fff9d6;border-color:#d9b800;color:#665500}.sev-info{background:#e3f1ff;border-color:#4da3ff;color:#0c4a8a}
-.cls-measured{background:#e5f6ee;border-color:#2a9d68;color:#145a3b}.cls-simulated{background:#e6f4fb;border-color:#22a3d6;color:#0e5a78}.cls-opinion{background:#f1ecfa;border-color:#8e6fcf;color:#46308a}.cls-not_tested{background:#eee;color:#444}
-.card{border:1px solid #d7dbe0;border-radius:8px;padding:14px 16px;margin:14px 0;break-inside:avoid}.card h3{margin-top:0}.notice{border-left:4px solid #ff9f1a;background:#fff8ec;padding:8px 12px;margin:12px 0}
-.changes{border-left:4px solid #22a3d6;background:#eef8fd;padding:8px 12px;margin:12px 0}svg.board{width:100%;height:auto;border:1px solid #d7dbe0;border-radius:6px;background:#fff}
-.counts span{margin-right:8px}td.n,table.vc th{white-space:nowrap}ul{padding-left:20px;margin:4px 0}code{font-family:ui-monospace,Menlo,monospace;font-size:13px}.small{font-size:13px}
+:root{color-scheme:light}*{box-sizing:border-box}html{print-color-adjust:exact;-webkit-print-color-adjust:exact}body{font:15px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif;color:#1c2024;background:#fff;margin:0;font-variant-numeric:tabular-nums}
+main{max-width:920px;margin:0 auto;padding:32px 24px 64px}h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:36px 0 10px}
+h3{font-size:16px;margin:18px 0 4px}p{margin:6px 0}.meta,.muted{color:#5b6570}.mono,td.n,code{font-family:inherit;font-variant-numeric:tabular-nums}
+table{border-collapse:collapse;width:100%;margin:8px 0}th,td{text-align:left;padding:5px 8px;vertical-align:top}table:not(.metrics) tr:nth-child(even) td{background:rgba(28,32,36,.045)}th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5b6570;background:rgba(28,32,36,.07)}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;background:#eceff2;color:#2c3238}
+.sev-critical{background:#ffd9e0;color:#8a0f2b}.sev-high{background:#ffe0e0;color:#8a1c1c}.sev-medium{background:#ffeccf;color:#7a4a00}
+.sev-low{background:#fff4c2;color:#665500}.sev-info{background:#dcecfb;color:#0c4a8a}
+.cls-measured{background:#dcf1e6;color:#145a3b}.cls-simulated{background:#dcedf7;color:#0e5a78}.cls-opinion{background:#ebe5f7;color:#46308a}.cls-not_tested{background:#e8eaed;color:#444}
+.card{background:#f5f6f8;border-radius:12px;padding:14px 16px;margin:14px 0;break-inside:avoid}.card h3{margin-top:0}.notice{background:#fff3df;border-radius:8px;padding:8px 12px;margin:12px 0}
+.changes{background:#e6f3fa;border-radius:8px;padding:8px 12px;margin:12px 0}svg.board,img.still{width:100%;height:auto;border-radius:8px;background:#fff}img.still{display:block;max-width:100%}
+.counts span{margin-right:8px}td.n,table.vc th{white-space:nowrap}ul{padding-left:20px;margin:4px 0}code{font-size:13px;font-weight:600}.small{font-size:13px}
 .power{margin:12px 0}.power>div{display:grid;grid-template-columns:minmax(0,190px) 1fr 58px;gap:10px;align-items:center;margin:6px 0;font-size:13px}
 .power i{position:relative;display:block;height:14px;background:#eef0f2;box-shadow:inset 0 0 0 1px #c8ced5;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .power i::after{content:"";position:absolute;top:-2px;bottom:-2px;left:0;right:0;pointer-events:none;print-color-adjust:exact;-webkit-print-color-adjust:exact;background:linear-gradient(#7d8590,#7d8590) 25% 0/1px 100% no-repeat,linear-gradient(#7d8590,#7d8590) 50% 0/1px 100% no-repeat,linear-gradient(#7d8590,#7d8590) 75% 0/1px 100% no-repeat}
 .power b{position:relative;display:block;height:100%;background:#1c2024;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .power b.before{background:repeating-linear-gradient(135deg,#3b424a 0 1.5px,transparent 1.5px 4.5px)}
 .power b.now::after{content:"";position:absolute;right:-1px;top:-3px;bottom:-3px;width:2px;background:#ff4a1c;print-color-adjust:exact;-webkit-print-color-adjust:exact}
-.power strong{text-align:right;font-family:ui-monospace,Menlo,monospace}
+.power strong{text-align:right}
 @media print{body{font-size:14px;line-height:1.45}main{padding:0}th,td{padding:4px 8px}h2{margin-top:28px}h2,h3,.card h3+p,.card p:has(+ul){break-after:avoid}h2,h3{break-inside:avoid}.card{break-inside:auto}.card.keep,svg.board,img,tr,li,.power,.notice,.changes{break-inside:avoid}svg.board{max-height:120mm}svg.board[width]{display:block;width:auto;max-width:100%;margin:0 auto}table.vc td:first-child{width:36%}table.metrics,table.metrics tbody{display:block}table.metrics tbody{display:grid;grid-template-columns:1fr auto 1fr auto}table.metrics tr{display:contents}table.metrics tr:nth-child(even) td:first-child{padding-left:28px}table.metrics td.n{text-align:right}}
 '''
 
@@ -353,7 +353,7 @@ def render_headline(h: dict) -> str:
     if base.get('accepted_power_mean_pct') is not None and best.get('accepted_power_mean_pct') is not None:
         rows.append(('Accepted power, mean across the band', f'{base["accepted_power_mean_pct"]} %', f'{best["accepted_power_mean_pct"]} %'))
     table = '<table><tr><th></th><th>Confirmed base</th><th>Best confirm-quality parts</th></tr>' + ''.join(f'<tr><td>{esc(a)}</td><td class="n">{esc(b)}</td><td class="n">{esc(c)}</td></tr>' for a, b, c in rows) + '</table>'
-    return ('<div class="card keep"><h2 style="margin-top:0;border:0">Improved, target not met</h2>'
+    return ('<div class="card keep"><h2 style="margin-top:0">Improved, target not met</h2>'
             f'<p>{pill("cls-simulated", "partial win")} Confirm improves the worst S11 in the band by {esc(h.get("gain_db"))} dB, and the tuning target'
             f'{" of " + esc(format(h["target_db"], "g")) + " dB" if h.get("target_db") is not None else ""} is not met.</p>'
             f'<p><strong>Parts to try, in your own tool:</strong> {esc(h["parts_text"])}.</p>{bars}{table}'
@@ -387,7 +387,7 @@ def render_version_change(vc: dict) -> str:
             badges += ' ' + (pill('cls-simulated', 'Same solver run, new parts') if vc.get('consistent') else pill('sev-high', 'Same solver run, not consistent'))
     badges += ' ' + (pill('cls-measured', 'Target met') if vc['target_met'] else pill('sev-medium', 'Target not met'))
     bars = power_bars('Accepted power as built, worst point of the band', [(f'Version {a}', frm.get('accepted_power_worst_pct')), (f'Version {b}', to.get('accepted_power_worst_pct'))])
-    return (f'<div class="card keep"><h2 style="margin-top:0;border:0">Compared with version {esc(a)}</h2><p>{badges}</p><p>{esc(vc["text"])}</p>{bars}{table}'
+    return (f'<div class="card keep"><h2 style="margin-top:0">Compared with version {esc(a)}</h2><p>{badges}</p><p>{esc(vc["text"])}</p>{bars}{table}'
             '<p class="small muted">Accepted power is 100 x (1 - |S11|^2) per frequency: a mismatch figure only, not radiated power or efficiency. '
             f'Both results are confirm-quality simulations of the board as built (evidence {esc(frm.get("evidence"))} and {esc(to.get("evidence"))}). '
             + ('Version ' + esc(b) + ' was finalised from the same solver run as version ' + esc(a) + ', with its own matching parts: it is consistent with the prediction, not an independent result. ' if prediction and not vc.get('independent_check') and vc.get('applied') is not False else '')
@@ -590,7 +590,7 @@ def render_rf(rf: dict, images: dict | None = None) -> str:
     for key, title, caption in (('rf_field', 'Field still', 'Electric field in the board plane at the design frequency, from the confirm run.'),
                                 ('rf_pattern', 'Radiation pattern', 'Directivity from the confirm run. A simulation, not a chamber measurement.')):
         if images.get(key):
-            parts.append(f'<div class="card"><h3>{esc(title)}</h3>{images[key]}<p class="muted small">{esc(caption)}</p></div>')
+            parts.append(f'<div class="card"><h3>{esc(title)}</h3>{images[key]}<p class="muted small">{esc(caption)}{" " + esc(images[key + "_note"]) if images.get(key + "_note") else ""}</p></div>')
     missing = images.get('rf_missing') or {}
     if rf.get('confirm_base') or rf.get('confirm_winner'):
         for key, title in (('field', 'Field still'), ('pattern', 'Radiation-pattern still')):
@@ -687,6 +687,16 @@ def _bbox_of(marks: list[dict]) -> list[float] | None:
     return [min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes)]
 
 
+def _clamp_region(region: list[float], bbox) -> list[float]:
+    """The crop window moved and trimmed to lie inside the board outline's box, so a crop never shows white margin or runs off the board."""
+    out = list(region)
+    for lo, hi, size_lo, size_hi in ((0, 2, bbox[0], bbox[2]), (1, 3, bbox[1], bbox[3])):
+        span = min(region[hi] - region[lo], size_hi - size_lo)
+        start = min(max(region[lo], size_lo), size_hi - span)
+        out[lo], out[hi] = start, start + span
+    return out
+
+
 async def board_images(store, review: dict, snap: dict) -> dict:
     """Marked-up board images as inline SVG: an overview and a crop per finding. Empty when the board cannot be drawn."""
     from ..pcb import render_svg
@@ -703,16 +713,16 @@ async def board_images(store, review: dict, snap: dict) -> dict:
         marks = [{**m, 'number': number(f), 'severity': f['severity']} for f in live for m in f['marks'] if m['type'] == 'pin']
         opts = render_svg.RenderOptions(theme='light', px_per_mm=8)
         base = render_svg.layer_svg(board, 'top', opts)
-        images['overview'] = render_svg.annotate(base, marks, board).replace('<svg ', '<svg class="board" ', 1)
+        images['overview'] = render_svg.annotate(base, marks, board, labels=False, spread=True).replace('<svg ', '<svg class="board" ', 1)
         for f in live[:12]:
             box = _bbox_of(f['marks'])
             if not box:
                 continue
             pad = max(4.0, 0.6 * max(box[2] - box[0], box[3] - box[1]))
-            region = [box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad]
+            region = _clamp_region([box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad], board.bbox)
             crop = render_svg.layer_svg(board, 'top', render_svg.RenderOptions(theme='light', px_per_mm=14, region=region))
             fm = [{**m, 'number': number(f), 'severity': f['severity']} for m in f['marks']]
-            images[f['code']] = render_svg.annotate(crop, fm, board).replace('<svg ', '<svg class="board" ', 1)
+            images[f['code']] = render_svg.annotate(crop, fm, board, labels=False, spread=True).replace('<svg ', '<svg class="board" ', 1)
         return images
 
     try:
@@ -762,6 +772,29 @@ async def html_to_pdf(document: str, browser: str | None = None) -> bytes:
             raise ValueError('PDF export needs Chrome or Chromium. Run npm run setup, or open the HTML report and print it to PDF instead.') from None
 
 
+def _still_sources(rows: list[dict]) -> list[tuple[dict, dict | None]]:
+    """Confirm results whose solver output may hold the stills, best first, as (row whose job is drawn, the winner row it stands in for).
+
+    A matching-only winner is calculated on the base confirm run and has no job of its own (`job_id` is None, `derived_from` names the
+    run): its stills are that run's, so the winner resolves to it. Then the other confirm runs follow."""
+    by_ref = {r['values'].get('ref'): r for r in rows if r['values'].get('ref')}
+
+    def has_run(row: dict) -> bool:
+        return bool(row['values'].get('run') or row['values'].get('job_id'))
+
+    ordered = sorted(rows, key=lambda r: r['values'].get('label') != 'confirm winner')       # the winner first, the rest in stored order
+    out: list[tuple[dict, dict | None]] = []
+    for row in ordered:
+        if has_run(row):
+            out.append((row, None))
+            continue
+        source = by_ref.get(row['values'].get('derived_from'))
+        if source is not None and has_run(source):
+            out.append((source, row))
+    seen: set[str] = set()
+    return [(r, w) for r, w in out if not (r['id'] in seen or seen.add(r['id']))]
+
+
 async def rf_stills(store, review: dict, snap: dict) -> dict:
     """Field and radiation-pattern stills from the best confirm run, as inline images. The Lab supplies the PNG bytes
     (`view_result` kinds `field` and `pattern`); anything it cannot draw is reported in `rf_missing`, never invented."""
@@ -769,25 +802,31 @@ async def rf_stills(store, review: dict, snap: dict) -> dict:
     out: dict[str, Any] = {}
     if (snap.get('rf') or {}).get('status') != 'tested':
         return out
-    rows = [r for r in store.list_evidence(review['id']) if r['type'] == ev.CONFIRM and (r['values'].get('trust') or {}).get('status') == 'ok' and (r['values'].get('run') or r['values'].get('job_id'))]
-    winner = next((r for r in rows if r['values'].get('label') == 'confirm winner'), None)
-    best = winner or (rows[0] if rows else None)
+    rows = [r for r in store.list_evidence(review['id']) if r['type'] == ev.CONFIRM and (r['values'].get('trust') or {}).get('status') == 'ok']
+    sources = _still_sources(rows)
     missing: dict[str, str] = {}
-    if best is None:
+    if not sources:
         missing = {k: 'no confirmed run with stored solver output' for k in ('field', 'pattern')}
     else:
         lab = service.get_lab(store)
         for kind in ('field', 'pattern'):
-            try:
-                values = best['values']
-                run = values.get('run') or {'job_id': values.get('job_id'), 'status': values.get('status') or 'done', 'result': values.get('metrics') or {}, 'curve': values.get('curve')}
-                image = await lab.view_result(review_id=review['id'], result=run, kind=kind, params={})
-                data = image.get('data_b64') or (base64.b64encode(image['png']).decode() if image.get('png') else None)
-                if not data:
-                    raise ValueError('the lab returned no image')
-                out['rf_' + kind] = f'<img alt="{kind} still" style="max-width:100%;border:1px solid #d7dbe0;border-radius:6px" src="data:{image.get("mime", "image/png")};base64,{data}">'
-            except Exception as exc:
-                missing[kind] = str(exc)[:160] or type(exc).__name__
+            reason = ''
+            for row, stands_in_for in sources:
+                try:
+                    values = row['values']
+                    run = values.get('run') or {'job_id': values.get('job_id'), 'status': values.get('status') or 'done', 'result': values.get('metrics') or {}, 'curve': values.get('curve')}
+                    image = await lab.view_result(review_id=review['id'], result=run, kind=kind, params={})
+                    data = image.get('data_b64') or (base64.b64encode(image['png']).decode() if image.get('png') else None)
+                    if not data:
+                        raise ValueError('the lab returned no image')
+                    out['rf_' + kind] = f'<img alt="{kind} still" class="still" src="data:{image.get("mime", "image/png")};base64,{data}">'
+                    if stands_in_for is not None:
+                        out['rf_' + kind + '_note'] = f'Drawn from confirm run {row["values"].get("ref") or row["code"]}, the solver run the winning matching change was calculated on.'
+                    break
+                except Exception as exc:
+                    reason = reason or str(exc)[:160] or type(exc).__name__
+            else:
+                missing[kind] = reason
     if missing:
         out['rf_missing'] = missing
     return out
