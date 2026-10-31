@@ -343,3 +343,20 @@ a.tile:hover {
   color: var(--sev-high);
   font-size: 13px;
 }
+
+/* Open findings per version: one row each, on the same left edge as the card title */
+.fbars {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px 12px;
+  align-items: center;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fbars li { display: contents; }
+.fbars span { font-size: 13px; color: var(--paper-2); }
+.fbars i { display: block; height: 14px; border-radius: 4px; background: var(--hair-3); overflow: hidden; }
+.fbars b { display: block; height: 100%; border-radius: 4px; background: var(--paper-3); }
+.fbars .now b { background: var(--paper); }
+.fbars strong { min-width: 2ch; text-align: right; font-size: 15px; font-weight: 600; color: var(--paper); }
