@@ -33,7 +33,7 @@ async def test_no_progress_closes_the_suspect_after_two_flat_experiments(env):
 async def test_target_met_stops_optimising(env):
     review = await env.review(PRE + [BASE, sim('clear', op='clear_copper_region', bbox=[26.0, 10.0, 33.0, 14.0]), adjust(2.0, 'S2')])
     results = contents(env, review, 'run_simulation')
-    assert '"meets_target":true' in results[1] and 'target is met' in results[1]
+    assert '"meets_target":true' in results[1] and 'reaches the target on the screen run' in results[1]
     assert 'target_met' in results[2] and env.lab.count('run_scenario') == 2
 
 
@@ -60,14 +60,14 @@ async def test_failed_repair_ends_the_suspect(env):
 
 
 async def test_a_ruled_out_suspect_cannot_be_reopened(env):
-    script = PRE + [BASE, adjust(0.1), {'tool': 'conclude_suspect', 'args': {'suspect_id': 'S1', 'verdict': 'ruled_out', 'reasoning': 'The test changed nothing noticeable.'}},
+    script = PRE + [BASE, adjust(12.0), adjust(0.1), {'tool': 'conclude_suspect', 'args': {'suspect_id': 'S1', 'verdict': 'ruled_out', 'reasoning': 'Neither length point improved the in-band result against the base.'}},
                     {'tool': 'conclude_suspect', 'args': {'suspect_id': 'S1', 'verdict': 'confirmed', 'reasoning': 'On reflection it is the cause.'}},
                     {'tool': 'run_simulation', 'args': {'suspect_id': 'S1', 'label': 'again', 'whatif_ops': [{'op': 'adjust_antenna_length', 'delta_mm': 1.0}]}},
                     {'tool': 'close_investigation', 'args': {'investigation_id': 'I1', 'outcome': 'no_improvement', 'summary': 'Nothing changed the match.'}},
                     {'tool': 'open_investigation', 'args': {'question': 'Is the same copper really not the problem?', 'suspects': [{'title': 'Ground copper next to the FEED', 'why': 'Another look.'}]}}]
     review = await env.review(script, depth='deep')
     assert 'no_reopening' in contents(env, review, 'conclude_suspect')[1]
-    assert 'suspect_closed' in contents(env, review, 'run_simulation')[2]
+    assert 'suspect_closed' in contents(env, review, 'run_simulation')[3]
     assert 'ruled out earlier' in contents(env, review, 'open_investigation')[1]
     assert [i['status'] for i in env.store.list_investigations(review['id'])] == ['closed']
 

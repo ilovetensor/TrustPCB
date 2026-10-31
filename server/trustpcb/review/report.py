@@ -24,7 +24,7 @@ from playwright.async_api import async_playwright
 
 from . import change
 from . import evidence as ev
-from . import partial
+from . import partial, restate
 from .compare import classify_findings, previous_context
 from .machine import PHASE_NAMES
 
@@ -68,18 +68,18 @@ def _finding_public(store, finding: dict, codes: dict[str, str]) -> dict:
 
 
 def _investigations(store, review_id: str) -> list[dict]:
-    out = []
-    for index, inv in enumerate(store.list_investigations(review_id), start=1):
-        suspects = []
-        for s in store.list_suspects(inv['id']):
-            data = s.get('data') or {}
-            suspects.append({'code': data.get('code') or f'S{s["rank"]}', 'title': s['title'], 'status': s['status'], 'reason': (s.get('conclusion') or {}).get('reason'),
-                             'experiments': data.get('experiments') or []})
-        outcome = inv.get('outcome')
-        out.append({'code': f'I{index}', 'question': inv['question'], 'status': inv['status'], 'outcome': outcome, 'suspects': suspects,
-                    'confirmation': outcome.get('confirmation') if isinstance(outcome, dict) else None,
-                    'refine_rounds': (outcome.get('refine_rounds') or []) if isinstance(outcome, dict) else []})
-    return out
+    """The investigation story. Conclusions written at the screen phase are kept as history; when the confirm result is short of the target it is the conclusion
+    (restate.py), so the report never says "met the target" over a confirm run that missed it."""
+    review = store.get_review(review_id) or {}
+    return restate.entries(store, review_id, ev.target_db(review.get('goal') or {}, (review.get('summary') or {}).get('rf') or {}))
+
+
+def best_confirmed(*rows: dict | None) -> dict | None:
+    """The confirm-quality row with the lowest worst in-band S11, so the report's best change is the one the headline names, not only the screen's parts."""
+    candidates = [r for r in rows if r]
+    worst = lambda r: ((r['values'].get('metrics') or {}).get('band_worst_s11_db'))
+    scored = [r for r in candidates if isinstance(worst(r), (int, float))]
+    return min(scored, key=worst) if scored else (candidates[0] if candidates else None)
 
 
 def _rf_section(store, review_id: str, summary: dict, evidence_rows: list[dict]) -> dict:
@@ -94,10 +94,10 @@ def _rf_section(store, review_id: str, summary: dict, evidence_rows: list[dict])
     winner_confirm = next((r for r in confirm if r['values'].get('label') == 'confirm winner'), None)
     shown = lambda r: r and {'code': r['code'], 'label': r['values'].get('label'), 'quality': r['values'].get('quality'), 'trust': r['values'].get('trust'),
                              'measurements': r['values'].get('measurements'), 'scenario_hash': r['values'].get('scenario_hash'), 'curve': r['values'].get('curve')}
-    section['confirm_base'], section['confirm_winner'] = shown(base_confirm), shown(winner_confirm)
     calc = [r for r in evidence_rows if r['type'] == ev.CALCULATION and (r['values'].get('trust') or {}).get('status') == 'ok' and r['values'].get('quality') == 'confirm']
     locked = next((r for r in calc if r['values'].get('label') == 'confirm matching, parts locked'), None)
     free = next((r for r in calc if r['values'].get('label') == 'confirm matching, free tuning'), None)
+    section['confirm_base'], section['confirm_winner'] = shown(base_confirm), shown(best_confirmed(winner_confirm, free if free and free['values'].get('curve') else None))
     section['confirm_matching'] = {'locked': shown(locked), 'free': shown(free)} if (locked or free) else None
     best = locked or winner_confirm or base_confirm
     if best:
@@ -516,13 +516,18 @@ def render_html(snap: dict, images: dict | None = None) -> str:
     if snap['investigations']:
         for inv in snap['investigations']:
             outcome = inv.get('outcome') or {}
-            out.append(f'<div class="card"><h3>{esc(inv["code"])}: {esc(inv["question"])}</h3><p>{pill("", inv["status"])} {esc(outcome.get("outcome", "") if isinstance(outcome, dict) else outcome)}</p>')
+            confirm_label = f' - confirm: {esc(outcome["confirm_label"])}' if isinstance(outcome, dict) and outcome.get('confirm_label') else ''
+            out.append(f'<div class="card"><h3>{esc(inv["code"])}: {esc(inv["question"])}</h3><p>{pill("", inv["status"])} {esc(outcome.get("outcome", "") if isinstance(outcome, dict) else outcome)}{confirm_label}</p>')
             if isinstance(outcome, dict) and outcome.get('summary'):
                 out.append(f'<p>{esc(outcome["summary"])}</p>')
+            if isinstance(outcome, dict) and outcome.get('screen_summary'):
+                out.append(f'<p class="muted small"><strong>{esc(restate.SCREEN_HISTORY)}.</strong> {esc(outcome["screen_summary"])}</p>')
             out.append('<table><tr><th>Suspect</th><th>Result</th><th>Tests</th></tr>')
             for s in inv['suspects']:
                 tests = '<br>'.join(experiment_line(e) for e in s['experiments']) or '<span class="muted">none</span>'
-                out.append(f'<tr><td>{esc(s["code"])} {esc(s["title"])}</td><td>{pill("", s["status"].replace("_", " "))}<br><span class="small">{esc(s.get("reason") or "")}</span></td><td class="small">{tests}</td></tr>')
+                history = f'<br><span class="muted small"><strong>{esc(restate.SCREEN_HISTORY)}</strong>{" (" + esc(s["screen_status"].replace("_", " ")) + ")" if s.get("screen_status") else ""}: {esc(s["screen_reason"])}</span>' if s.get('screen_reason') else ''
+                caveat = f'<br><span class="small"><strong>Caveat.</strong> {esc(s["caveat"])}</span>' if s.get('caveat') else ''
+                out.append(f'<tr><td>{esc(s["code"])} {esc(s["title"])}</td><td>{pill("", s["status"].replace("_", " "))}<br><span class="small">{esc(s.get("reason") or "")}</span>{history}{caveat}</td><td class="small">{tests}</td></tr>')
             out.append('</table>')
             if inv.get('confirmation'):
                 out.append(render_confirmation(inv['confirmation']))

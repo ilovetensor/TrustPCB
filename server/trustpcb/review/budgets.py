@@ -287,6 +287,8 @@ class SuspectState:
     requests: dict = field(default_factory=dict)       # scenario hash -> times this suspect asked for it
     no_effect_streak: int = 0
     closed_base: str | None = None                      # base hash when it was closed (rule 4)
+    screen_reason: str | None = None                    # the screen-phase conclusion, kept as history once the confirm result has replaced it (restate.py)
+    screen_status: str | None = None
 
     @property
     def closed(self) -> bool:
@@ -388,7 +390,8 @@ class Ledger:
         if experiment and (inv.base is None or not inv.base.ok):
             return Decision('refuse', 'base_required', 'Run the unmodified base scenario first so tests can be compared with it.')
         if experiment and inv.good_enough and optimisation:
-            return Decision('refuse', 'target_met', 'The target is already met. Optimising further is not allowed; confirm and close.', 'good_enough')
+            return Decision('refuse', 'target_met', 'A screen run already reaches the target. That is a comparison, not a result: only a confirm run decides, and it may disagree. '
+                            'Further design changes are not allowed now; confirm and close. Checks that change only the material or the setup (such as the dielectric constant) are still allowed.', 'good_enough')
         if experiment and inv.experiments >= self.config.experiments_per_investigation + inv.extra_experiments:
             return Decision('refuse', 'budget_exhausted', f'This investigation used its {self.config.experiments_per_investigation + inv.extra_experiments} experiments.', 'experiment_budget')
         repair = key in inv.failures_by_key

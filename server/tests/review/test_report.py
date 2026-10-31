@@ -165,6 +165,16 @@ def test_still_sources_follow_a_matching_winner_to_its_base_run():
     assert out == [(base, winner)]                                         # one source, listed once, standing in for the winner
 
 
+def test_best_confirmed_change_is_the_lowest_worst_s11_not_just_the_screen_winner():
+    from trustpcb.review.report import best_confirmed
+    row = lambda code, worst: {'code': code, 'values': {'metrics': {'band_worst_s11_db': worst}}}
+    locked_screen_set, free_retune = row('E-178', -3.86), row('E-177', -5.78)
+    assert best_confirmed(locked_screen_set, free_retune)['code'] == 'E-177'     # the headline's best change, not the screen's parts
+    assert best_confirmed(row('E-4', -12.0), row('E-5', -9.0))['code'] == 'E-4'
+    assert best_confirmed(locked_screen_set, None)['code'] == 'E-178' and best_confirmed(None, None) is None
+    assert best_confirmed({'code': 'E-9', 'values': {}}, None)['code'] == 'E-9'     # no numbers to compare: keep what exists
+
+
 def test_metric_names_are_readable_and_unknown_keys_degrade_gracefully():
     from trustpcb.review.report import metric_name
     assert metric_name('resonance') == 'Deepest dip' and metric_name('s11_band_worst') == 'Worst S11 in the band'

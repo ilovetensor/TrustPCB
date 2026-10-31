@@ -119,6 +119,11 @@ class BaselineLab:
         """KiCad results from the baseline plus the analyzers (when that lane is installed)."""
         path = self._dir(version_id) / 'artifacts' / 'candidates.json'
         found = json.loads(path.read_text()) if path.is_file() else []
+        try:
+            from ..analyzers import drc_summary
+            drc_summary.annotate(found)       # older versions have no distinct counts: add them on read (pure, idempotent)
+        except ImportError:
+            pass
         return found + await self._analyze(version_id, part_roles)
 
     async def _analyze(self, version_id, part_roles=None, only=None) -> list[dict]:

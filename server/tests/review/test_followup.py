@@ -394,6 +394,15 @@ async def test_end_followup_needs_no_reply_when_the_answer_was_streamed_after_th
     assert end['ended'] is True and streamed(env, thread) == 'F-001 stands as written in the report.'
 
 
+async def test_text_written_after_end_followup_is_not_a_second_copy_of_the_answer(env):
+    review = await finished_review(env)
+    thread = new_thread(env, review)
+    reply = 'C14 is close to U3, but the edge to edge distance is in the measure result above.'
+    await say(env, thread, 'Is C14 near U3?', [{'tool': 'get_finding', 'args': {'code': 'F-001'}}, {'tool': 'end_followup', 'args': {'reply': reply}},
+                                              {'text': 'C14 is close to U3, and the edge to edge distance is in the measure result.'}])
+    assert streamed(env, thread) == reply
+
+
 async def test_a_second_end_followup_is_a_harmless_no_op(env):
     review = await finished_review(env)
     thread = new_thread(env, review)

@@ -658,6 +658,8 @@ class FollowupRun:
         session.finished, session.stop_reason, session._cancel_task = False, None, None
 
         async def tap(kind: str, payload: dict) -> None:
+            if kind == 'text_delta' and session.finished:
+                return                              # end_followup already gave the reply; a model that then writes the answer again must not show it twice
             if kind == 'text_delta':
                 session._text += payload.get('text', '')
                 session.reply_chars += len(payload.get('text', ''))
