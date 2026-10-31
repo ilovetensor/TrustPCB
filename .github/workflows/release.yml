@@ -1,0 +1,105 @@
+name: Release
+
+# When a pull request is merged to main, create a release:
+#   label "major" bumps X, label "minor" bumps Y, anything else bumps Z (X.Y.Z).
+# The work is done by scripts/release.mjs, which has unit tests. See docs/RELEASING.md.
+#
+# pull_request_target is used so that merged pull requests from forks also get a release (the
+# token of a plain pull_request run is read-only there). This is safe because the job checks out
+# main, never the pull request's code, and the pull request's title and labels are only passed
+# through environment variables, never interpolated into a shell command.
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions: {}
+
+# One run per pull request, so a re-run never overlaps with itself. Different pull requests
+# run side by side; a push that loses the race is retried from the latest main (see below).
+concurrency:
+  group: release-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create release
+    # A release commit made by this workflow is never released again.
+    if: github.event.pull_request.merged == true && !startsWith(github.event.pull_request.title, 'chore(release)')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: main
+          fetch-depth: 0
+          # GITHUB_TOKEN by default. If branch protection blocks the bot's push to main, the
+          # maintainer can add a RELEASE_TOKEN secret (see docs/RELEASING.md); it is optional.
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+      - name: Bump versions, update CHANGELOG.md and push the release commit
+        id: bump
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          pushed=false
+          for attempt in 1 2 3 4 5; do
+            # Start from the latest main every time, so a lost race recomputes the version.
+            git fetch --tags --force origin main
+            git reset --hard origin/main
+            result="$(node scripts/release.mjs apply --pr "$PR_NUMBER" --title "$PR_TITLE" --labels "$PR_LABELS")"
+            echo "$result"
+            version="$(jq -r .version <<<"$result")"
+            if [ "$(jq -r .recorded <<<"$result")" = "true" ]; then
+              echo "Pull request #$PR_NUMBER is already in the changelog as $version; nothing to commit."
+              pushed=true
+              break
+            fi
+            git add CHANGELOG.md package.json web/package.json web/package-lock.json server/pyproject.toml server/uv.lock
+            git commit -m "chore(release): v$version (#$PR_NUMBER) [skip ci]"
+            if git push origin HEAD:main; then
+              pushed=true
+              break
+            fi
+            echo "Push failed (attempt $attempt). Another change may have reached main first, or branch protection refused the push."
+            sleep $((attempt * 5))
+          done
+          if [ "$pushed" != "true" ]; then
+            echo "::error::Could not push the release commit to main. See docs/RELEASING.md, section Branch protection."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Tag and create the GitHub Release
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The release commit for this version: the one the bump step just pushed, or on a retry
+          # the earlier one that recorded this pull request.
+          sha="$(git log -n1 --format=%H --grep="^chore(release): v${VERSION} " HEAD)"
+          if [ -z "$sha" ]; then
+            sha="$(git log --format=%H -S"(#${PR_NUMBER})" -- CHANGELOG.md | tail -n1)"
+          fi
+          [ -n "$sha" ] || { echo "::error::Could not find the release commit for v$VERSION"; exit 1; }
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists; leaving it alone."
+          else
+            git tag -a "v${VERSION}" -m "v${VERSION}" "$sha"
+            git push origin "refs/tags/v${VERSION}"
+          fi
+          node scripts/release.mjs notes --version "$VERSION" > "$RUNNER_TEMP/notes.md"
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "GitHub Release v$VERSION already exists; leaving it alone."
+          else
+            gh release create "v${VERSION}" --title "v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+          fi

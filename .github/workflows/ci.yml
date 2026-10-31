@@ -1,0 +1,142 @@
+name: CI
+
+# One fast workflow for pull requests and pushes to main. It never calls a model, never runs the
+# solver and uses no secrets, so it is safe for pull requests from forks.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decides whether anything besides documentation and community files changed, so that a
+  # docs-only change skips the heavy jobs. The job "CI result" at the end is the one to require
+  # in branch protection: it passes when the heavy jobs passed or were skipped.
+  changes:
+    name: Changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Compare with the base commit
+        id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          code=true
+          if [ -n "${BASE:-}" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ] \
+              && git fetch --no-tags --depth=1 origin "$BASE" 2>/dev/null; then
+            changed="$(git diff --name-only "$BASE" HEAD)"
+            echo "$changed"
+            # Anything outside documentation and community files counts as code.
+            other="$(printf '%s\n' "$changed" | grep -Ev '^(docs/|[^/]+\.md$|LICENSE$|NOTICE$|\.editorconfig$|\.github/(ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE\.md$|dependabot\.yml$)|$)' || true)"
+            if [ -z "$other" ]; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Heavy jobs needed: $code"
+
+  # Cheap checks that always run: version fields agree, the release script's unit tests pass,
+  # shell scripts parse.
+  repo:
+    name: Version and release checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+      - run: node scripts/release.mjs check
+      - run: node --test scripts/tests/
+      - run: bash -n scripts/*.sh
+
+  backend:
+    name: Backend tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: server
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.26"
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+      - name: Install dependencies (Python 3.12, exactly as locked)
+        run: uv sync --locked --python 3.12
+      - name: Lint (syntax errors and undefined names only)
+        run: uvx ruff@0.17.3 check --isolated --select E9,F63,F7,F82 --exclude 'trustpcb/runners/local_*' trustpcb tests ../worker ../scripts
+      - name: What is installed
+        run: |
+          echo "kicad-cli: $(command -v kicad-cli || echo 'not installed')"
+          echo "docker image for the solver: not built (no solver runs in CI)"
+      # Tests that need kicad-cli skip themselves when it is missing, and -rs lists each skip.
+      # Tests marked slow (solver, Docker, full pipelines) are excluded.
+      - name: Tests
+        run: uv run --locked pytest -n 2 -m "not slow" -q -rs
+
+  web:
+    name: Web typecheck and tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+
+  result:
+    name: CI result
+    needs: [changes, repo, backend, web]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "A job finished as: $result"; exit 1 ;;
+            esac
+          done
+          echo "All jobs passed or were skipped."
