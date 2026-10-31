@@ -1,47 +1,119 @@
 "use client";
 import "./pages.css";
-import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
-import { Icon, Panel, TopBar, FixtureBadge } from "../ui";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { createProject, FIXTURE_MODE, getProject, getVersion, startReview, uploadVersion, type Depth, type Goal, type VersionInfo } from "../../lib/api";
+import { Icon, Panel, TopBar } from "../ui";
 
-type Depth = "Quick" | "Standard" | "Deep";
-const DEPTH_NOTE: Record<Depth, string> = {
-  Quick: "4 min. Code checks and an open review. No simulation.",
-  Standard: "30 min. One investigation with simulation.",
-  Deep: "75 min. Up to three investigations.",
-};
+const DEPTHS: { id: Depth; label: string; note: string }[] = [
+  { id: "quick", label: "Quick", note: "About 6 min. KiCad checks and an open review. No simulation." },
+  { id: "standard", label: "Standard", note: "Up to 30 min. One investigation with simulation when the RF lab is installed." },
+  { id: "deep", label: "Deep", note: "Up to 75 min. Up to three investigations." },
+];
 
-interface Picked { names: string[]; zip: boolean; pcb: string | null; pro: boolean; sch: boolean; sample: boolean }
+interface Picked { files: File[]; names: string[]; zip: boolean; pcb: string | null; pro: boolean; sch: boolean; title: string }
 
-function inspect(files: { name: string }[]): Picked {
-  const names = files.map((f) => f.name);
+function inspect(files: File[]): Picked {
+  const names = files.map((f) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name);
   const zip = names.length === 1 && /\.zip$/i.test(names[0]);
-  return {
-    names, zip, sample: false,
-    pcb: names.find((n) => /\.kicad_pcb$/i.test(n)) ?? null,
-    pro: names.some((n) => /\.kicad_pro$/i.test(n)),
-    sch: names.some((n) => /\.kicad_sch$/i.test(n)),
-  };
+  const pcb = names.find((n) => /\.kicad_pcb$/i.test(n)) ?? null;
+  const title = zip ? names[0].replace(/\.zip$/i, "") : pcb ? pcb.split("/").pop()!.replace(/\.kicad_pcb$/i, "") : names[0]?.split("/")[0] ?? "Board";
+  return { files, names, zip, pcb, pro: names.some((n) => /\.kicad_pro$/i.test(n)), sch: names.some((n) => /\.kicad_sch$/i.test(n)), title };
 }
 
-export function Upload() {
+const bandText = (d: VersionInfo["detection"]) => (d?.band ? `${d.band.low_ghz} to ${d.band.high_ghz} GHz` : "");
+function parseBand(text: string): [number, number] | undefined {
+  const m = text.match(/(\d+(?:\.\d+)?)\s*(?:to|-|–)\s*(\d+(?:\.\d+)?)\s*(GHz|MHz)?/i);
+  if (!m) return undefined;
+  const k = /mhz/i.test(m[3] ?? "") ? 1e6 : 1e9;
+  const lo = parseFloat(m[1]) * k, hi = parseFloat(m[2]) * k;
+  return hi > lo ? [lo, hi] : undefined;
+}
+
+function UploadInner() {
   const router = useRouter();
+  const sp = useSearchParams();
+  const existingVersion = sp.get("version");
+  const existing = sp.get("project");
   const [over, setOver] = useState(false);
   const [picked, setPicked] = useState<Picked | null>(null);
-  const [depth, setDepth] = useState<Depth>("Standard");
-  const [goal, setGoal] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [existingName, setExistingName] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [version, setVersion] = useState<VersionInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [depth, setDepth] = useState<Depth>("quick");
+  const [purpose, setPurpose] = useState("");
+  const [band, setBand] = useState("");
+  const [target, setTarget] = useState("-10");
   const [focus, setFocus] = useState("");
-  const [target, setTarget] = useState("S11 better than -10 dB across 2.4 to 2.4835 GHz");
+  const [starting, setStarting] = useState(false);
   const zipRef = useRef<HTMLInputElement>(null);
   const dirRef = useRef<HTMLInputElement>(null);
 
-  const onFiles = (list: FileList | File[]) => setPicked(inspect([...list].map((f) => ({ name: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name }))));
-  const sample = () => {
-    setPicked({ names: ["nrf52840_rf_iot_node.kicad_pcb", "nrf52840_rf_iot_node.kicad_pro", "nrf52840_rf_iot_node.kicad_sch"], zip: false, pcb: "nrf52840_rf_iot_node.kicad_pcb", pro: true, sch: true, sample: true });
-    setGoal("Battery Bluetooth sensor node on 2.4 GHz");
-    setFocus("Is the antenna OK?");
+  // arriving from a project page with an uploaded version that has no review yet
+  useEffect(() => {
+    if (!existingVersion) return;
+    void getVersion(existingVersion).then((v) => { setVersion(v); if (v.detection?.band) setBand(bandText(v.detection)); }).catch((e) => setError(e instanceof Error ? e.message : "Could not load the version."));
+  }, [existingVersion]);
+  useEffect(() => {
+    if (!existing) return;
+    void getProject(existing).then((p) => { if (p) setExistingName(p.project.name); });
+  }, [existing]);
+
+  const onFiles = (list: FileList | File[]) => {
+    const files = [...list].filter((f) => f.size >= 0);
+    if (!files.length) return;
+    const p = inspect(files);
+    setPicked(p);
+    setError(null);
+    setVersion(null);
+    if (!existing && !projectName) setProjectName(p.title);
   };
-  const ready = !!picked?.pcb || !!picked?.zip;
+
+  const upload = async () => {
+    if (!picked) return;
+    setError(null);
+    setProgress(0);
+    try {
+      let pid = existing;
+      if (!pid) pid = (await createProject(projectName.trim() || picked.title)).id;
+      const v = await uploadVersion(pid, picked.files, undefined, setProgress);
+      setVersion(v);
+      if (v.detection?.band) setBand(bandText(v.detection));
+      if (!purpose && v.detection?.wireless) setPurpose("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The upload failed.");
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  const start = async () => {
+    if (!version) return;
+    setStarting(true);
+    setError(null);
+    const goal: Goal = {};
+    if (purpose.trim()) goal.purpose = purpose.trim();
+    const b = parseBand(band);
+    if (b) goal.band_hz = b;
+    const t = parseFloat(target);
+    if (Number.isFinite(t)) goal.target_s11_db = t;
+    if (focus.trim()) goal.focus = focus.trim();
+    try {
+      const r = await startReview(version.id, goal, depth);
+      router.push(`/reviews/${r.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The review did not start.");
+      setStarting(false);
+    }
+  };
+
+  const d = version?.detection;
+  const st = version?.stackup;
+  const uploading = progress !== null;
+  const ready = !!picked && (!!picked.pcb || picked.zip);
 
   return (
     <div className="pg">
@@ -49,11 +121,14 @@ export function Upload() {
       <main className="pg-main">
         <div className="pg-head">
           <div>
-            <span className="idx">INTAKE / STEP {picked ? "02" : "01"} OF 02</span>
-            <h1 className="serif">Bring a board to the bench.</h1>
+            <span className="idx">INTAKE / STEP {version ? "02" : "01"} OF 02</span>
+            <h1 className="serif">{existing ? `New version of ${existingName ?? "this board"}.` : "Bring a board to the bench."}</h1>
             <p className="pg-sub">Drop a KiCad project as a zip or a folder. The server unpacks it on a copy and never edits your files.</p>
           </div>
         </div>
+        {FIXTURE_MODE && (
+          <p className="warn"><span className="signal mono">!</span><span><b>Fixture mode.</b> Uploads are off. <Link href="/reviews/r-0042" className="signal">Open the sample review replay</Link>.</span></p>
+        )}
         <div className="drop-grid">
           <div>
             <div
@@ -70,48 +145,87 @@ export function Upload() {
                 <h2 className="serif">Drop a project here</h2>
                 <p>{picked ? "Drop again to replace it." : "A .zip of the project, or the project folder. The .kicad_pcb is required. The .kicad_pro is strongly recommended."}</p>
                 <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 18, flexWrap: "wrap" }}>
-                  <button className="btn" onClick={() => zipRef.current?.click()}><Icon name="file" size={13} /> Choose zip</button>
-                  <button className="btn" onClick={() => dirRef.current?.click()}><Icon name="layers" size={13} /> Choose folder</button>
-                  <button className="btn ghost" onClick={sample}>Use the sample board</button>
+                  <button className="btn" onClick={() => zipRef.current?.click()} disabled={uploading}><Icon name="file" size={13} /> Choose zip</button>
+                  <button className="btn" onClick={() => dirRef.current?.click()} disabled={uploading}><Icon name="layers" size={13} /> Choose folder</button>
                 </div>
-                <input ref={zipRef} type="file" accept=".zip" hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
-                <input ref={dirRef} type="file" hidden multiple {...({ webkitdirectory: "" } as object)} onChange={(e) => e.target.files && onFiles(e.target.files)} />
+                <input ref={zipRef} data-testid="zip-input" type="file" accept=".zip,application/zip" hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
+                <input ref={dirRef} data-testid="dir-input" type="file" hidden multiple {...({ webkitdirectory: "" } as object)} onChange={(e) => e.target.files && onFiles(e.target.files)} />
               </div>
             </div>
-            {picked && (
-              <Panel className="card rise" idx="DETECTION" title="What we found" delay={0} style={{ marginTop: 18 }}>
+
+            {picked && !version && (
+              <Panel className="card rise" idx="FILES" title="What you chose" delay={0} style={{ marginTop: 18 }}>
                 <dl className="kv">
                   <dt>Files</dt><dd className="mono" style={{ wordBreak: "break-all" }}>{picked.names.length > 4 ? `${picked.names.slice(0, 4).join(", ")} and ${picked.names.length - 4} more` : picked.names.join(", ")}</dd>
                   <dt>Board file</dt><dd>{picked.zip ? "Inside the zip. Detected after upload." : picked.pcb ? <span className="mono">{picked.pcb}</span> : <span className="signal">No .kicad_pcb found</span>}</dd>
                   <dt>Design rules</dt><dd>{picked.zip ? "Checked after upload." : picked.pro ? ".kicad_pro found. Real rules are used." : <span className="signal">Missing</span>}</dd>
                   <dt>Schematic</dt><dd>{picked.zip ? "Checked after upload." : picked.sch ? "Found" : "Not found. ERC and part intent are skipped."}</dd>
-                  {picked.sample && (<><dt>Board</dt><dd className="mono">66.0 x 53.0 mm, 2 copper layers, 50 parts</dd><dt>Stackup</dt><dd>1.6 mm, from the board file</dd><dt>Wireless</dt><dd>Printed meander antenna on 2.4 GHz</dd></>)}
                 </dl>
                 {!picked.pro && !picked.zip && <p className="warn"><span className="signal mono">!</span><span><b>Default rules.</b> Without a .kicad_pro the review runs with KiCad defaults and rule results are downgraded.</span></p>}
-                {picked.sample && <p className="idx" style={{ marginTop: 12 }}>SAMPLE DETECTION IS A DEV FIXTURE</p>}
+                <div style={{ padding: "0 16px 16px", display: "grid", gap: 12 }}>
+                  {!existing && (
+                    <div className="field"><label className="idx" htmlFor="pn">PROJECT NAME</label><input id="pn" type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} /></div>
+                  )}
+                  <button className="btn primary" disabled={!ready || uploading || FIXTURE_MODE} onClick={upload} data-testid="upload-go">
+                    {uploading ? `Uploading ${Math.round((progress ?? 0) * 100)}%` : <>Upload and detect <Icon name="arrow" size={14} /></>}
+                  </button>
+                  {uploading && <div className="meter sig"><b style={{ width: `${(progress ?? 0) * 100}%` }} /></div>}
+                </div>
+              </Panel>
+            )}
+
+            {version && (
+              <Panel className="card rise" idx="DETECTION" title="What the server found" delay={0} style={{ marginTop: 18 }}>
+                <dl className="kv" data-testid="detection">
+                  <dt>Version</dt><dd>v{version.number}{version.duplicate_of ? <span className="signal"> (same files as an earlier upload)</span> : null}</dd>
+                  <dt>Status</dt><dd>{version.status}</dd>
+                  <dt>Wireless</dt>
+                  <dd>{d?.wireless ? `Yes (${d.confidence ?? "unknown"} confidence)${d.band ? `. ${d.band.label}` : ""}` : d ? "No radio part or antenna found" : "Not detected"}</dd>
+                  {d?.antenna && (<><dt>Antenna</dt><dd>{[d.antenna.type, d.antenna.shape].filter(Boolean).join(" ")}{d.antenna.length_mm ? `, ${d.antenna.length_mm} mm` : ""}{d.antenna.net ? ` on ${d.antenna.net}` : ""}{d.antenna.in_keepout ? ", inside a keep-out" : ""}</dd></>)}
+                  {d?.parts && d.parts.length > 0 && (<><dt>Radio parts</dt><dd>{d.parts.map((p) => `${p.ref} ${p.value}`).join(", ")}</dd></>)}
+                  {st && (<><dt>Stackup</dt><dd>{st.total_thickness_mm} mm, {st.copper_layers ?? "?"} copper layers, {st.source === "default" ? "default FR-4 assumed" : `from the ${st.source}`}</dd></>)}
+                </dl>
+                {st?.layers && (
+                  <table className="rp-tbl" style={{ margin: "0 16px 12px", width: "calc(100% - 32px)", fontSize: 12 }}>
+                    <thead><tr><th>Layer</th><th>Kind</th><th>Thickness</th><th>Er</th></tr></thead>
+                    <tbody>{st.layers.map((l) => (<tr key={l.name}><td className="mono">{l.name}</td><td>{l.kind}</td><td className="num">{l.thickness_mm} mm</td><td className="num">{l.epsilon_r ?? "-"}</td></tr>))}</tbody>
+                  </table>
+                )}
+                {st?.assumptions && st.assumptions.length > 0 && (
+                  <p className="warn"><span className="signal mono">!</span><span><b>Assumed:</b> {st.assumptions.map((a) => a.text).join(" ")} They are listed in the report.</span></p>
+                )}
+                {st?.warnings && st.warnings.length > 0 && <p className="warn"><span className="signal mono">!</span><span>{st.warnings.join(" ")}</span></p>}
               </Panel>
             )}
           </div>
 
           <Panel className="card" idx="GOAL" title="What must this board do?" delay={100}>
             <div style={{ padding: 16 }}>
-              <div className="field"><label className="idx" htmlFor="g1">WHAT THE BOARD DOES</label><input id="g1" type="text" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="Battery Bluetooth sensor" /></div>
-              <div className="field"><label className="idx" htmlFor="g2">TUNING TARGET</label><input id="g2" type="text" value={target} onChange={(e) => setTarget(e.target.value)} /></div>
-              <div className="field"><label className="idx" htmlFor="g3">FOCUS</label><input id="g3" type="text" value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Is the antenna OK?" /></div>
+              <div className="field"><label className="idx" htmlFor="g1">WHAT THE BOARD DOES</label><input id="g1" type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Battery Bluetooth sensor" disabled={!version} /></div>
+              <div className="field"><label className="idx" htmlFor="g2">BAND TO TUNE FOR</label><input id="g2" type="text" value={band} onChange={(e) => setBand(e.target.value)} placeholder="2.4 to 2.4835 GHz" disabled={!version} /></div>
+              <div className="field"><label className="idx" htmlFor="g4">S11 TARGET (DB)</label><input id="g4" type="text" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} disabled={!version} /></div>
+              <div className="field"><label className="idx" htmlFor="g3">FOCUS</label><input id="g3" type="text" value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Is the antenna OK?" disabled={!version} /></div>
               <div className="field">
                 <span className="idx">REVIEW DEPTH</span>
                 <div className="seg" role="group" aria-label="Review depth" style={{ width: "100%" }}>
-                  {(["Quick", "Standard", "Deep"] as Depth[]).map((d) => (<button key={d} style={{ flex: 1 }} aria-pressed={depth === d} onClick={() => setDepth(d)}>{d}</button>))}
+                  {DEPTHS.map((x) => (<button key={x.id} style={{ flex: 1 }} aria-pressed={depth === x.id} onClick={() => setDepth(x.id)}>{x.label}</button>))}
                 </div>
-                <span className="dim" style={{ fontSize: 12 }}>{DEPTH_NOTE[depth]}</span>
+                <span className="dim" style={{ fontSize: 12 }}>{DEPTHS.find((x) => x.id === depth)!.note}</span>
               </div>
-              <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }}>Fields fill in automatically where possible and lock when the review starts. The agent does not stop to ask questions mid-review.</p>
-              <button className="btn primary big" style={{ width: "100%" }} disabled={!ready} onClick={() => router.push("/reviews/r-0042")}>Start review <Icon name="arrow" size={14} /></button>
-              <p className="idx" style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}><FixtureBadge label="Fixture" /> No upload is sent. This opens the sample review replay.</p>
+              <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }}>The agent does not stop to ask questions mid-review. Fields lock when it starts.</p>
+              {error && <p className="chat-err" role="alert" style={{ margin: "0 0 12px" }}>{error}</p>}
+              <button className="btn primary big" style={{ width: "100%" }} disabled={!version || starting || version.status === "failed"} onClick={start} data-testid="start-review">
+                {starting ? "Starting" : "Start review"} <Icon name="arrow" size={14} />
+              </button>
+              {!version && <p className="idx" style={{ marginTop: 10 }}>UPLOAD A BOARD FIRST. THE REVIEW STARTS FROM WHAT THE SERVER DETECTS.</p>}
             </div>
           </Panel>
         </div>
       </main>
     </div>
   );
+}
+
+export function Upload() {
+  return (<Suspense fallback={null}><UploadInner /></Suspense>);
 }

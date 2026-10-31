@@ -6,12 +6,13 @@ import { listProjects } from "../../lib/api";
 import type { ProjectSummary } from "../../lib/types";
 import { Sparkline, SevBar, TopBar, Icon } from "../ui";
 
-const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Agent stopped", queued: "Queued" };
-const RF: Record<string, string> = { pass: "RF in band", fail: "RF off target", not_tested: "RF not tested", "n/a": "No wireless" };
+const STATE: Record<string, string> = { complete: "Complete", complete_with_limits: "Complete, limits", running: "Running", agent_stopped: "Agent stopped", queued: "Queued", failed: "Failed", canceled: "Stopped", no_review: "No review yet" };
+const RF: Record<string, string> = { pass: "RF in band", fail: "RF off target", not_tested: "RF not tested", "n/a": "No radio" };
 
 export function Projects() {
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
-  useEffect(() => { listProjects().then(setProjects); }, []);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { listProjects().then(setProjects).catch((e) => setError(e instanceof Error ? e.message : "Could not load projects.")); }, []);
   const total = projects?.reduce((s, p) => s + p.counts.critical + p.counts.high + p.counts.medium + p.counts.low + p.counts.info, 0) ?? 0;
   return (
     <div className="pg">
@@ -41,15 +42,22 @@ export function Projects() {
                 <span className={`tbl-state ${p.state}`}><i />{STATE[p.state]}</span>
               </Link>
             ))}
-            {!projects && <p className="empty dim" style={{ padding: 24 }}>Loading projects.</p>}
+            {!projects && !error && <p className="empty dim" style={{ padding: 24 }}>Loading projects.</p>}
+            {error && <p className="empty" role="alert" style={{ padding: 24, color: "var(--sev-high)" }}>{error}</p>}
+            {projects && projects.length === 0 && <p className="empty dim" style={{ padding: 24 }}>No boards yet. <Link href="/upload" className="signal">Upload one</Link> to start a review.</p>}
           </div>
           <aside>
             <span className="idx">RECENT ACTIVITY</span>
             <ul className="feed" style={{ marginTop: 14 }}>
-              <li className="sig"><b>nRF52840 RF IoT Node</b> v2 review finished. 1 high, 2 medium. Report r1 ready.</li>
-              <li><b>2.5 GHz Patch Antenna</b> v1 resonates in band. 3 notes.</li>
-              <li><b>USB-C Hub Rev B</b> v3 rechecked. 2 findings carried over, 1 fixed.</li>
-              <li><b>Sensor Pod</b> review stopped at the time budget. Report lists what was not tested.</li>
+              {(projects ?? []).slice(0, 6).map((p, i) => {
+                const n = p.counts.critical + p.counts.high + p.counts.medium + p.counts.low + p.counts.info;
+                return (
+                  <li key={p.id} className={i === 0 ? "sig" : undefined}>
+                    <b>{p.name}</b> {p.latest_version}: {STATE[p.state].toLowerCase()}{p.state === "no_review" ? "." : `. ${n} open finding${n === 1 ? "" : "s"}.`}
+                  </li>
+                );
+              })}
+              {projects && projects.length === 0 && <li className="dim">Nothing yet.</li>}
             </ul>
           </aside>
         </div>

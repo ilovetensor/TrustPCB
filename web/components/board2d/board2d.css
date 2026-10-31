@@ -30,26 +30,57 @@
   pointer-events: none;
   will-change: transform;
 }
+.bl {
+  --bl-board: #0b1a18;
+  --bl-fcu: #ff6f52;
+  --bl-bcu: #4da6ff;
+  --bl-pad: #ffdc8f;
+  --bl-pad-b: #a9d4ff;
+  --bl-via: #f6e4b4;
+  --bl-hole: #05060c;
+  --bl-silk: #f6f1cf;
+  --bl-edge: #f2cf5c;
+}
+.bl-glow {
+  fill: rgba(120, 112, 255, 0.34);
+  stroke: rgba(120, 112, 255, 0.34);
+  stroke-width: 2.4px;
+  stroke-linejoin: round;
+}
 .bl-substrate {
-  fill: #0e0e20;
+  fill: var(--bl-board);
   stroke: none;
 }
 .bl-substrate-inner {
-  fill: url(#none);
-  fill: rgba(130, 120, 255, 0.045);
+  fill: rgba(96, 255, 214, 0.035);
   stroke: none;
 }
 .bl-edge {
   fill: none;
-  stroke: var(--paper);
-  stroke-width: 1.4px;
-  opacity: 0.92;
+  stroke: var(--bl-edge);
+  stroke-width: 1.6px;
+  opacity: 0.95;
+}
+.sc-silk [data-role="silk"] {
+  stroke: var(--bl-silk);
+  stroke-opacity: 0.92;
+}
+.sc-silk.sc-back [data-role="silk"] {
+  stroke-opacity: 0.55;
+}
+.sc-refs text {
+  fill: #fff6dc;
+  stroke: #05060c;
+  stroke-width: 0.26px;
+  paint-order: stroke;
+  font-weight: 600;
 }
 .b2-base {
   transition: opacity 0.35s;
 }
-.has-sel .b2-base {
-  opacity: 0.4;
+.b2-veil {
+  pointer-events: none;
+  transition: opacity 0.3s;
 }
 .mk-draw {
   stroke-dasharray: 1;
@@ -59,12 +90,19 @@
 .mk {
   transition: opacity 0.3s;
 }
-.b2-readout {
+.b2-pill {
   position: absolute;
   display: flex;
-  gap: 12px;
   align-items: center;
-  padding: 4px 10px;
+  gap: 6px;
+  z-index: 3;
+}
+.b2-readout {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
   font-size: 11px;
   background: var(--panel);
   border: 1px solid var(--hair);
@@ -75,11 +113,10 @@
   color: var(--paper);
   font-weight: 500;
   display: inline-block;
-  min-width: 5.2ch;
+  min-width: 4.4ch;
   text-align: right;
 }
 .b2-controls {
-  position: absolute;
   display: flex;
   gap: 2px;
   padding: 2px;

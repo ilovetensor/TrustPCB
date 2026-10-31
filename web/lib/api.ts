@@ -1,148 +1,269 @@
 // The single data-access module for the web app.
-// Everything the UI shows comes through here. Today it serves dev fixtures;
-// swap the bodies for fetch("/api/...") calls (same-origin proxy) when the
-// backend is live. Screens never import fixtures directly.
+// Live by default: every call goes to same-origin /api/... (the Next route handler adds the token).
+// Fixture mode is an explicit, opt-in design aid: NEXT_PUBLIC_TRUSTPCB_FIXTURES=1. In live mode
+// no fixture module is ever loaded and no invented number can appear.
 
-import type { Board, EventEnvelope, Finding, Evidence, ProjectSummary } from "./types";
-import { PROJECTS, VERSIONS, COMPARE_NRF, type VersionRow } from "./fixtures/projects";
-import {
-  ASSUMPTIONS, buildReplay, CURVES, EVIDENCE, FINDINGS, NOT_TESTED, NRF_ASSETS, TARGET_BAND, toEnvelopes, type Curve,
-} from "./fixtures/nrf-review";
+import { netId } from "./geometry.mjs";
+import { apiGet, apiSend, ApiError, uploadFiles } from "./live";
+import type { Board, Evidence, Finding, ProjectSummary, Severity } from "./types";
 
-export const DATA_SOURCE: "fixture" | "live" = "fixture";
+export { ApiError };
+export const FIXTURE_MODE = process.env.NEXT_PUBLIC_TRUSTPCB_FIXTURES === "1";
+export const DATA_SOURCE: "fixture" | "live" = FIXTURE_MODE ? "fixture" : "live";
 export const FIXTURE_NOTE = "Dev fixture data. Not a real review.";
 
-export type { Curve };
-export { TARGET_BAND };
+const fx = () => import("./fixture-api");
+
+/* ------------------------------ view models ------------------------------ */
+
+export interface Goal { purpose?: string; band_hz?: [number, number]; target_s11_db?: number; focus?: string }
+export type Depth = "quick" | "standard" | "deep";
+
+export interface Detection {
+  wireless?: boolean; confidence?: string; ambiguous?: boolean;
+  band?: { low_ghz: number; high_ghz: number; label: string; source?: string; confidence?: string } | null;
+  antenna?: { type?: string; shape?: string; net?: string; length_mm?: number; layer?: string; in_keepout?: boolean } | null;
+  parts?: { ref: string; value: string; family?: string; technology?: string; band_ghz?: [number, number] }[];
+  keepouts?: { id: string; name: string; layers: string[]; bbox: number[]; blocks_copper?: boolean }[];
+  evidence?: { kind: string; text: string }[];
+  [k: string]: unknown;
+}
+export interface Stackup {
+  source?: string; assumed?: boolean; copper_layers?: number; total_thickness_mm?: number; needs_confirmation?: boolean; message?: string;
+  layers?: { name: string; kind: string; thickness_mm: number; epsilon_r: number | null; loss_tangent?: number | null; material?: string }[];
+  assumptions?: { id: string; text: string; source: string }[];
+  warnings?: string[];
+}
+export interface VersionInfo {
+  id: string; project_id: string; number: number; label: string | null; status: string; error: string | null; created_at: string;
+  stackup: Stackup | null; detection: Detection | null; duplicate_of?: string | null;
+  artifacts?: { id: string; type: string; mime: string; size: number; url: string }[];
+}
+export interface VersionRow {
+  id: string; number: number; label: string; review_id: string | null; at: string; counts: Record<Severity, number> | null;
+  status: string; state: ProjectSummary["state"]; note: string; detection: Detection | null; f0_ghz?: number | null;
+}
+export interface ProjectDetail { project: ProjectSummary; versions: VersionRow[] }
+export interface ThreadInfo { id: string; review_id: string; chat_id: string; level: string; status: string; created_at: string }
+export interface ReviewMeta {
+  id: string; project_id: string; project_name: string; version_label: string; version_id: string; version_number: number;
+  profile: string; depth: string; goal: Goal; goal_text: string; started_at: string;
+  status: string; end_state: string | null; chat_status: string | null; threads: ThreadInfo[]; report_revision: number | null;
+  counts: Record<Severity, number>; rf: { status: string; reason: string | null } | null; fixture?: boolean;
+}
+export interface SceneInfo { view_box: [number, number, number, number]; layers: string[]; urls: Record<string, string>; px_per_mm?: number }
+export interface Zone { role: string; index: number; parts: string[]; ring: [number, number][]; area_mm2: number }
+export interface BoardBundle { board: Board; glbUrl: string | null; scene: SceneInfo | null; zones: Zone[]; fixture?: boolean }
+export interface RevisionRow { id: string; number: number; cause: string; created_at: string }
+export interface Snapshot {
+  revision: number; cause: string; incomplete: boolean; created_at: string;
+  cover: Record<string, any>; summary: { text: string; top_actions?: string[] } | null;
+  findings: Finding[]; evidence: Evidence[]; assumptions: { name: string; value: unknown; source: string; note?: string }[];
+  not_tested: string[]; rf: { status: string; reason?: string | null } | null; [k: string]: any;
+}
+
+const STATE_OF: Record<string, ProjectSummary["state"]> = {
+  complete: "complete", complete_with_limits: "complete_with_limits", agent_stopped: "agent_stopped", canceled: "canceled", pipeline_failed: "failed",
+};
+export function reviewState(r: { status?: string; end_state?: string | null } | null | undefined): ProjectSummary["state"] {
+  if (!r) return "no_review";
+  if (r.status === "queued") return "queued";
+  if (r.status === "running") return "running";
+  return STATE_OF[r.end_state ?? ""] ?? (r.status === "failed" ? "failed" : r.status === "canceled" ? "canceled" : "complete");
+}
+const ZERO: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+
+function kindOf(d: Detection | null | undefined): string {
+  if (!d) return "Board";
+  if (d.wireless) return d.band?.label ? `Wireless board, ${d.band.label}` : "Wireless board";
+  return "Board without a radio";
+}
 
 /* ------------------------------ projects ------------------------------ */
 
+function summariseProject(p: any): ProjectSummary {
+  const versions: any[] = p.versions ?? [];
+  const last = p.dashboard?.last_review ?? null;
+  const latestVersion = versions[versions.length - 1];
+  const counts = (last?.counts ?? ZERO) as Record<Severity, number>;
+  const wireless = versions.map((v) => v.detection?.wireless).find((w) => w !== undefined && w !== null);
+  return {
+    id: p.id, name: p.name, kind: kindOf(latestVersion?.detection), updated_at: last?.updated_at ?? latestVersion?.created_at ?? p.created_at,
+    versions: versions.length, latest_version: latestVersion ? (latestVersion.label || `v${latestVersion.number}`) : "none", latest_review_id: last?.id ?? "",
+    counts, rf: wireless ? "not_tested" : wireless === false ? "n/a" : "not_tested", state: reviewState(last),
+    trend: (p.dashboard?.trend ?? []).map((t: any) => Object.values(t.counts as Record<string, number>).reduce((a, b) => a + b, 0)),
+  };
+}
+
 export async function listProjects(): Promise<ProjectSummary[]> {
-  return PROJECTS;
+  if (FIXTURE_MODE) return (await fx()).listProjects();
+  const list = await apiGet<any[]>("projects");
+  const full = await Promise.all(list.map((p) => apiGet<any>(`projects/${p.id}`).catch(() => ({ ...p, versions: [] }))));
+  return full.map(summariseProject).sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
 }
-export async function getProject(id: string): Promise<{ project: ProjectSummary; versions: VersionRow[] } | null> {
-  const project = PROJECTS.find((p) => p.id === id);
-  if (!project) return null;
-  return { project, versions: VERSIONS[id] ?? [] };
+
+export async function getProject(id: string): Promise<ProjectDetail | null> {
+  if (FIXTURE_MODE) return (await fx()).getProject(id);
+  let p: any;
+  try { p = await apiGet<any>(`projects/${id}`); } catch (e) { if (e instanceof ApiError && e.status === 404) return null; throw e; }
+  const versions: VersionRow[] = (p.versions as any[]).map((v) => {
+    const review = v.reviews?.[v.reviews.length - 1] ?? null;
+    return {
+      id: v.id, number: v.number, label: v.label || `v${v.number}`, review_id: review?.id ?? null, at: v.created_at,
+      counts: review ? review.counts : null, status: v.status, state: v.status === "failed" ? "failed" : reviewState(review),
+      note: v.status === "failed" ? v.error ?? "Upload failed" : review ? "" : "No review yet", detection: v.detection,
+    };
+  });
+  return { project: summariseProject(p), versions };
 }
-export function findProjectForReview(reviewId: string): ProjectSummary {
-  return PROJECTS.find((p) => p.latest_review_id === reviewId) ?? PROJECTS[0];
+
+export async function createProject(name: string): Promise<{ id: string; name: string }> {
+  if (FIXTURE_MODE) throw new ApiError(0, "Uploads are off in fixture mode.");
+  return apiSend("POST", "projects", { name });
+}
+export async function uploadVersion(projectId: string, files: File[], label?: string, onProgress?: (f: number) => void): Promise<VersionInfo> {
+  if (FIXTURE_MODE) throw new ApiError(0, "Uploads are off in fixture mode.");
+  return uploadFiles(`projects/${projectId}/versions`, files, label ? { label } : {}, onProgress);
+}
+export async function getVersion(id: string): Promise<VersionInfo> {
+  return apiGet(`versions/${id}`);
+}
+export async function startReview(versionId: string, goal: Goal, depth: Depth): Promise<{ id: string }> {
+  if (FIXTURE_MODE) throw new ApiError(0, "Reviews are off in fixture mode.");
+  return apiSend("POST", `versions/${versionId}/reviews`, { goal, depth });
 }
 
 /* ------------------------------ board ------------------------------ */
 
-let boardCache: Promise<Board> | null = null;
-export async function getBoard(_versionId?: string): Promise<Board> {
-  boardCache ??= fetch(NRF_ASSETS.board).then((r) => r.json());
-  return boardCache;
+const boardCache = new Map<string, Promise<BoardBundle>>();
+
+/** The server writes net names bare on tracks and pads; target ids and marks use `net:<name>`. */
+export function normaliseBoard(b: Board): Board {
+  const fix = <T extends { net: string | null }>(xs: T[]) => xs.map((x) => (x.net != null && !x.net.startsWith("net:") ? { ...x, net: netId(x.net) } : x));
+  return { ...b, pads: fix(b.pads), tracks: fix(b.tracks), vias: fix(b.vias), zones: fix(b.zones) as Board["zones"] };
 }
-export function getBoardGlbUrl(_versionId?: string): string {
-  return NRF_ASSETS.glb;
+
+export function getBoardBundle(versionId: string): Promise<BoardBundle> {
+  if (FIXTURE_MODE) return fx().then((m) => m.getBoardBundle());
+  let p = boardCache.get(versionId);
+  if (!p) {
+    p = (async () => {
+      const v = await getVersion(versionId);
+      const by = new Map((v.artifacts ?? []).map((a) => [a.type, a]));
+      const boardArt = by.get("board.json");
+      if (!boardArt) throw new ApiError(404, "This version has no board.json yet.");
+      const board = normaliseBoard(await (await fetch(boardArt.url)).json());
+      let scene: SceneInfo | null = null;
+      const sceneArt = by.get("scene/scene.json");
+      if (sceneArt) {
+        const meta = await (await fetch(sceneArt.url)).json();
+        const urls: Record<string, string> = {};
+        for (const name of meta.layers as string[]) {
+          const art = by.get(`scene/${name}.svg`);
+          if (art) urls[name] = art.url;
+        }
+        scene = { view_box: meta.view_box, layers: meta.layers, urls, px_per_mm: meta.px_per_mm };
+      }
+      let zones: Zone[] = [];
+      const anaArt = by.get("analyzers.json");
+      if (anaArt) {
+        try {
+          const ana = await (await fetch(anaArt.url)).json();
+          zones = (ana?.overlays?.zones?.zones ?? []) as Zone[];
+        } catch { /* optional */ }
+      }
+      return { board, glbUrl: by.get("board.glb")?.url ?? null, scene, zones };
+    })();
+    boardCache.set(versionId, p);
+    p.catch(() => boardCache.delete(versionId));
+  }
+  return p;
 }
 
 /* ------------------------------ review ------------------------------ */
 
-export interface ReviewMeta {
-  id: string; project_id: string; project_name: string; version_label: string; version_id: string;
-  profile: string; depth: "Quick" | "Standard" | "Deep"; goal: string; started_at: string;
+function goalText(g: Goal | null | undefined): string {
+  if (!g) return "";
+  return [g.purpose, g.focus].filter(Boolean).join(". ");
 }
+
 export async function getReview(id: string): Promise<ReviewMeta> {
-  const project = findProjectForReview(id);
+  if (FIXTURE_MODE) return (await fx()).getReview(id);
+  const r = await apiGet<any>(`reviews/${id}`);
+  const [project, version] = await Promise.all([apiGet<any>(`projects/${r.project_id}`), getVersion(r.version_id)]);
   return {
-    id, project_id: project.id, project_name: project.name, version_label: project.latest_version, version_id: "ver-2",
-    profile: "Muse (fixture replay)", depth: "Standard", goal: "BLE node on 2.4 GHz. Is the antenna OK?", started_at: "2026-10-31T09:00:00Z",
+    id: r.id, project_id: r.project_id, project_name: project.name, version_id: r.version_id, version_number: version.number,
+    version_label: version.label || `v${version.number}`, profile: r.profile?.name ?? "agent", depth: r.depth, goal: r.goal ?? {}, goal_text: goalText(r.goal),
+    started_at: r.created_at, status: r.status, end_state: r.end_state, chat_status: r.chat_status, threads: r.threads ?? [],
+    report_revision: r.report_revision, counts: r.counts, rf: r.summary?.rf ? { status: r.summary.rf.simulatable ? "available" : "not_tested", reason: r.summary.rf.reason ?? null } : null,
   };
 }
 
-export interface ReplaySource {
-  events: (EventEnvelope & { _t: number })[];
-  duration: number;
-  fixture: boolean;
+export async function listFindings(reviewId: string): Promise<Finding[]> {
+  if (FIXTURE_MODE) return (await fx()).listFindings(reviewId);
+  return apiGet(`reviews/${reviewId}/findings`);
 }
-export async function getReviewReplay(id: string): Promise<ReplaySource> {
-  const events = toEnvelopes(buildReplay(), id);
-  return { events, duration: events[events.length - 1]._t, fixture: true };
+export async function patchFinding(id: string, status: "dismissed" | "open", reason?: string): Promise<Finding> {
+  return apiSend("PATCH", `findings/${id}`, { status, reason });
 }
-
-export function getFinding(id: string): Finding | undefined {
-  return FINDINGS[id];
+export async function cancelReview(reviewId: string) { return apiSend<any>("POST", `reviews/${reviewId}/cancel`); }
+export async function cancelThread(threadId: string) { return apiSend<any>("POST", `threads/${threadId}/cancel`); }
+export async function startThread(reviewId: string, level?: string): Promise<ThreadInfo> {
+  return apiSend("POST", `reviews/${reviewId}/threads`, level ? { level } : {});
 }
-export async function listFindings(_reviewId: string): Promise<Finding[]> {
-  return Object.values(FINDINGS);
+export async function sendThreadMessage(threadId: string, text: string, selected: { id: string; type?: string }[], requestId: string) {
+  return apiSend<any>("POST", `threads/${threadId}/messages`, { text, selected, request_id: requestId });
 }
-export function getEvidence(ids: string[]): Evidence[] {
-  return ids.map((i) => EVIDENCE[i]).filter(Boolean);
-}
-export async function listAssumptions(_reviewId: string) {
-  return { assumptions: ASSUMPTIONS, not_tested: NOT_TESTED };
+export async function respondRequest(requestId: string, body: { allow?: boolean; answers?: Record<string, string> }) {
+  return apiSend<any>("POST", `requests/${requestId}/respond`, body);
 }
 
-export function resolveCurve(c: string | Curve | undefined | null): Curve | null {
-  if (!c) return null;
-  if (typeof c !== "string") return c;
-  return (CURVES as Record<string, Curve>)[c] ?? null;
+/* ------------------------------ reports ------------------------------ */
+
+export async function listRevisions(reviewId: string): Promise<RevisionRow[]> {
+  if (FIXTURE_MODE) return [];
+  return apiGet(`reviews/${reviewId}/report/revisions`);
+}
+export async function getSnapshot(reviewId: string, revision: number): Promise<Snapshot> {
+  return apiGet(`reviews/${reviewId}/report/${revision}.json`);
+}
+export const reportUrl = (reviewId: string, revision: number, fmt: "html" | "pdf" | "json" = "html") => `/api/reviews/${reviewId}/report/${revision}.${fmt}`;
+
+/** Evidence rows by display code (E-007), from the latest report snapshot. Empty while no report exists. */
+export async function getEvidenceByCode(reviewId: string): Promise<Record<string, Evidence>> {
+  if (FIXTURE_MODE) return (await fx()).getEvidenceByCode();
+  try {
+    const rows = await listRevisions(reviewId);
+    if (!rows.length) return {};
+    const snap = await getSnapshot(reviewId, rows[rows.length - 1].number);
+    return Object.fromEntries((snap.evidence ?? []).map((e) => [e.code ?? e.id, e]));
+  } catch { return {}; }
 }
 
 /* ------------------------------ compare ------------------------------ */
 
-export async function getCompare(_from: string, _to: string) {
-  return {
-    a: { label: "v1", review_id: "r-0031", curve: CURVES.v1, f0_ghz: 2.285 },
-    b: { label: "v2", review_id: "r-0042", curve: CURVES.base, f0_ghz: 2.312 },
-    rows: COMPARE_NRF,
-    fixture: true,
-  };
+export interface FindingBrief { id: string; code: string; fingerprint: string; title: string; severity: Severity; class: string; status: string; dismissed_reason?: string | null; was?: FindingBrief; changes?: string[]; dismissed_on?: FindingBrief }
+export interface BoardDiff {
+  parts: { added: { ref: string; value: string }[]; removed: { ref: string; value: string }[]; moved: { ref: string; from: [number, number]; to: [number, number]; distance_mm: number }[]; value_changed: { ref: string; from: string; to: string }[] };
+  tracks: { added: number; removed: number; length_added_mm: number; length_removed_mm: number };
+  vias: { added: number; removed: number; count_old: number; count_new: number };
+  nets: { added: string[]; removed: string[] }; zones: { old: number; new: number };
+}
+export interface CompareResult {
+  from: { version_id: string; number: number; review_id: string | null; counts: Record<Severity, number> | null };
+  to: { version_id: string; number: number; review_id: string | null; counts: Record<Severity, number> | null };
+  findings: { fixed: FindingBrief[]; still_present: FindingBrief[]; changed: FindingBrief[]; new: FindingBrief[]; dismissed_carried: FindingBrief[]; not_rechecked: FindingBrief[] } | null;
+  board: BoardDiff | null; counts_change?: Record<string, number>; notes: string[];
+}
+export async function getCompare(from: string, to: string): Promise<CompareResult> {
+  return apiGet(`compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 }
 
-/* ------------------------------ report ------------------------------ */
+/* ------------------------------ events (plain fetch) ------------------------------ */
 
-export async function getReport(reviewId: string) {
-  const review = await getReview(reviewId);
-  return {
-    review,
-    revision: 1,
-    generated_at: "2026-10-31T09:01:00Z",
-    summary:
-      "The board has one high risk: the meander antenna resonates at 2.31 GHz, 120 MHz below the band. A supported fix is to shorten the meander by about 4 mm. The remaining findings are routing and placement points that do not stop the board from working.",
-    actions: [
-      "Shorten the antenna meander by about 4 mm and re-tune the match",
-      "Pull the ground pour back from the feed line to at least 1.0 mm",
-      "Reroute the 3V3 branch out from under the RF section",
-    ],
-    findings: Object.values(FINDINGS),
-    evidence: EVIDENCE,
-    assumptions: ASSUMPTIONS,
-    not_tested: NOT_TESTED,
-    method: [
-      ["KiCad", "10.0.5 kicad-cli, default DRC with board rules"],
-      ["Analyzers", "9 rules, no part roles supplied"],
-      ["Solver", "openEMS, screen and confirm quality (fixture values)"],
-      ["Scenario hash", "fixture-0000"],
-    ] as [string, string][],
-    fixture: true,
-  };
+export async function getReviewEvents(reviewId: string, after = 0): Promise<any[]> {
+  return apiGet(`reviews/${reviewId}/events?after=${after}`);
 }
-
-/* ------------------------------ follow-up (fixture runner) ------------------------------ */
-
-export interface FollowupChunk { delay: number; type: string; payload: Record<string, any> }
-/** Deterministic scripted reply. The live version posts to /api/threads/{id}/messages. */
-export function askFollowup(text: string, selected: string[]): FollowupChunk[] {
-  const lower = text.toLowerCase();
-  const chunks: FollowupChunk[] = [];
-  const say = (s: string, d = 40) => s.split(/(?<= )/).forEach((w) => chunks.push({ delay: d, type: "text_delta", payload: { text: w } }));
-  if (/simulat|test|rogers|run/.test(lower)) {
-    chunks.push({ delay: 300, type: "followup_started", payload: { level: "Test", selected } });
-    say("That needs a simulation. I can compare the board with the pour cleared near the feed. It uses the solver, so I need your approval first.");
-    chunks.push({ delay: 400, type: "test_proposed", payload: { request_id: "req-fx-1", what: "Clear the ground pour 3 mm around the feed line, screen quality", why: "Check how much of the 120 MHz offset the pour explains", eta_s: 240 } });
-  } else if (/c12|move|place/.test(lower)) {
-    chunks.push({ delay: 300, type: "followup_started", payload: { level: "Check", selected } });
-    say("Placing C12 at 3 mm from U3:W1 shortens the supply path by 4.7 mm and keeps it clear of the 0.5 mm track. The effect on the antenna is Not tested in this version.");
-    chunks.push({ delay: 300, type: "whatif_ready", payload: { ref: "C12", to: [35.6, 25.9], label: "What-if, not your board" } });
-  } else {
-    chunks.push({ delay: 300, type: "followup_started", payload: { level: "Answer", selected } });
-    say(selected.length ? `About ${selected.join(", ")}: it was recorded from measured board geometry, so the number is exact. Open the evidence list on the card for the tool and values.` : "I answer from the saved findings and evidence. Select a part, track or finding on the board to ask about that exact item.");
-  }
-  chunks.push({ delay: 200, type: "followup_done", payload: {} });
-  return chunks;
+export async function getThreadEvents(threadId: string, after = 0): Promise<any[]> {
+  return apiGet(`threads/${threadId}/events?after=${after}`);
 }

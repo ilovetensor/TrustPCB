@@ -1,16 +1,63 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { initialReviewState, reviewReducer, replayAll, activeMarks, severityCounts, sortFindings, PHASES } from "../lib/review-reducer.mjs";
 
-const ev = (sequence, type, payload) => ({ sequence, type, payload, turn_id: "t", created_at: "2026-10-31T00:00:00Z" });
-const F = (id, severity, marks = []) => ({ id, title: id, severity, class: "measured", status: "open", marks, evidence_ids: [], assumptions: [], not_tested: [] });
+const ev = (sequence, type, payload, turn_id = "t") => ({ sequence, type, payload, turn_id, created_at: "2026-10-31T00:00:00Z" });
+const F = (id, severity, marks = []) => ({ id, code: id, title: id, severity, class: "measured", status: "open", marks, evidence: [], assumptions: [], not_tested: [] });
+
+// A real event log captured from a live quick review (no model was involved in this test).
+const real = JSON.parse(fs.readFileSync(new URL("./data/quick_review_events.json", import.meta.url)));
+
+test("a real quick review replays to a complete state with its findings and marks", () => {
+  const s = replayAll(real);
+  assert.equal(s.status, "complete");
+  assert.equal(s.endState, "complete");
+  assert.equal(s.phase, 6);
+  assert.equal(s.findingOrder.length, 2);
+  const [a, b] = s.findingOrder.map((id) => s.findings[id]);
+  assert.equal(a.code, "F-001");
+  assert.equal(b.code, "F-002");
+  assert.ok(a.marks.length > 0 && a.marks[0].resolved?.length, "marks carry server-resolved geometry");
+  assert.equal(activeMarks(s).length, a.marks.length + b.marks.length);
+  assert.deepEqual(s.reportReady, { revision: 1 });
+  assert.equal(s.budget.wall_s.limit, 240);
+  assert.equal(s.budget.turns.used, 10);
+  assert.equal(s.candidates.total, 358);
+  assert.equal(s.candidates.reviewed, 7, "reviewed is the total minus the ones still new");
+});
+
+test("tool_start carries the readable trail text and tool_result closes the same entry", () => {
+  const s = replayAll(real);
+  const read = s.trail.find((e) => e.kind === "tool" && e.tool === "get_board_summary");
+  assert.equal(read.text, "Reading the board summary");
+  assert.equal(read.state, "done");
+  assert.ok(s.trail.filter((e) => e.kind === "tool" && e.tool === "get_board_summary").length === 1);
+  const skipped = s.trail.filter((e) => e.kind === "result" && /^Skipped/.test(e.text));
+  assert.equal(skipped.length, 2, "phases 4 and 5 are shown as skipped for a quick review");
+});
+
+test("brief_ready keeps the brief and its zones", () => {
+  const s = replayAll(real);
+  assert.match(s.brief.purpose, /nRF52840/);
+  assert.ok(s.brief.zones.radio.includes("ref:U3"));
+});
+
+test("replaying from any prefix and then the rest equals one full replay", () => {
+  const full = replayAll(real);
+  const mid = replayAll(real.slice(0, 20));
+  const resumed = replayAll(real.slice(20), mid);
+  assert.equal(resumed.findingOrder.length, full.findingOrder.length);
+  assert.equal(resumed.status, full.status);
+  assert.equal(resumed.trail.length, full.trail.length);
+});
 
 test("phase and budget events move the tracker", () => {
-  const s = replayAll([ev(1, "phase_changed", { phase: 3, label: "Review" }), ev(2, "budget", { wall_left_s: 100, wall_total_s: 200 })]);
+  const s = replayAll([ev(1, "phase_changed", { phase: 3, name: "review", previous: 2 }), ev(2, "budget", { wall_s: { used: 10, limit: 200, left: 190 } })]);
   assert.equal(s.phase, 3);
   assert.equal(PHASES[s.phase].key, "review");
   assert.equal(s.status, "running");
-  assert.equal(s.budget.wall_left_s, 100);
+  assert.equal(s.budget.wall_s.left, 190);
 });
 
 test("duplicate or out-of-order sequences are ignored", () => {
@@ -20,62 +67,94 @@ test("duplicate or out-of-order sequences are ignored", () => {
   assert.equal(s.trail.length, 1);
 });
 
-test("finding_upserted adds card and marks together; upsert updates in place", () => {
+test("finding_upserted adds card and marks together; marks_changed finds the card by id or code", () => {
   const m = { type: "pin", targets: ["ref:C12"] };
-  let s = replayAll([ev(1, "finding_upserted", { finding: F("F-001", "high", [m]) })]);
+  let s = replayAll([ev(1, "finding_upserted", { finding: F("a1", "high", [m]) })]);
   assert.equal(s.findingOrder.length, 1);
   assert.equal(activeMarks(s).length, 1);
-  s = reviewReducer(s, ev(2, "finding_upserted", { finding: F("F-001", "critical", [m, m]) }));
+  s = reviewReducer(s, ev(2, "finding_upserted", { finding: F("a1", "critical", [m, m]) }));
   assert.equal(s.findingOrder.length, 1);
-  assert.equal(s.findings["F-001"].severity, "critical");
+  assert.equal(s.findings.a1.severity, "critical");
   assert.equal(activeMarks(s).length, 2);
+  s = reviewReducer(s, ev(3, "marks_changed", { finding_id: "zzz", code: "a1", marks: [m] }));
+  assert.equal(s.findings.a1.marks.length, 1, "falls back to the display code");
 });
 
-test("tool_start then tool_result updates one trail entry", () => {
-  const s = replayAll([ev(1, "tool_start", { call_id: "c1", tool: "measure" }), ev(2, "tool_result", { call_id: "c1", tool: "measure", ok: true, result: "7.66 mm" })]);
-  assert.equal(s.trail.length, 1);
-  assert.equal(s.trail[0].state, "done");
+test("spotlight resolves its finding by code", () => {
+  let s = replayAll([ev(1, "finding_upserted", { finding: { ...F("hex1", "high"), code: "F-007" } })]);
+  s = reviewReducer(s, ev(2, "spotlight", { targets: ["ref:U3"], finding_code: "F-007", label: "look", resolved: [] }));
+  assert.equal(s.spotlight.findingId, "hex1");
 });
 
-test("simulation lifecycle fills the experiment strip", () => {
+test("simulation lifecycle fills the experiment strip from the backend's field names", () => {
   const s = replayAll([
-    ev(1, "sim_queued", { job_id: "a", label: "Base", kind: "base" }),
-    ev(2, "sim_progress", { job_id: "a", pct: 0.5 }),
-    ev(3, "sim_done", { job_id: "a", summary: { f0_ghz: 2.3, s11_db: -12, bw_mhz: 50 }, curve: "base" }),
+    ev(1, "sim_queued", { ref: "S-1", hash: "h", label: "Base", kind: "base", quality: "screen", suspect: "X-1" }),
+    ev(2, "sim_progress", { ref: "S-1", hash: "h", fraction: 0.5, phase: "solving" }),
+    ev(3, "sim_done", { ref: "S-1", hash: "h", label: "Base", ok: true, trust: { status: "ok" }, kind: "base", quality: "screen", measurements: { f_res_hz: { value: 2.4e9, unit: "Hz" } }, curve: null }),
   ]);
-  assert.equal(s.sims.a.status, "done");
+  assert.equal(s.sims["S-1"].status, "done");
   assert.equal(s.experiments.length, 1);
+  assert.equal(s.experiments[0].measurements.f_res_hz.value, 2.4e9);
+  assert.equal(s.experiments[0].curve, null, "no curve is invented when the backend sent none");
   assert.equal(s.trail.length, 1);
 });
 
-test("suspect updates require the investigation and change status", () => {
+test("investigation and suspect events use their real keys", () => {
   const s = replayAll([
-    ev(1, "investigation_updated", { id: "i", question: "Q?", status: "running", suspects: [{ id: "s1", title: "A", status: "pending" }] }),
-    ev(2, "suspect_updated", { investigation_id: "i", suspect_id: "s1", status: "ruled_out", conclusion: "no effect" }),
-    ev(3, "suspect_updated", { investigation_id: "nope", suspect_id: "s1", status: "confirmed" }),
+    ev(1, "investigation_updated", { investigation_id: "i", code: "I-001", question: "Q?", status: "running", suspects: [{ code: "S-1", title: "A", status: "pending" }] }),
+    ev(2, "suspect_updated", { investigation_id: "i", suspect_id: "sid", code: "S-1", title: "A", status: "ruled_out", reason: "no effect" }),
+    ev(3, "suspect_updated", { investigation_id: "nope", suspect_id: "x", code: "S-9", status: "confirmed" }),
   ]);
   assert.equal(s.investigations.i.suspects[0].status, "ruled_out");
+  assert.equal(s.investigations.i.suspects[0].conclusion, "no effect");
+  assert.equal(s.investigations.i.suspects.length, 1);
 });
 
-test("assumption_changed marks dependents as needing recheck, dismissed findings leave counts", () => {
-  let s = replayAll([ev(1, "finding_upserted", { finding: F("F-002", "medium") }), ev(2, "finding_upserted", { finding: F("F-003", "low") })]);
-  s = reviewReducer(s, ev(3, "assumption_changed", { assumption: { id: "A-1", text: "x" }, affects: ["F-002"] }));
-  assert.equal(s.findings["F-002"].status, "needs_recheck");
-  const counts = severityCounts([{ ...s.findings["F-002"], status: "dismissed" }, s.findings["F-003"]]);
+test("assumption_changed marks the affected findings by code, dismissed ones leave the counts", () => {
+  let s = replayAll([ev(1, "finding_upserted", { finding: { ...F("h2", "medium"), code: "F-002" } }), ev(2, "finding_upserted", { finding: { ...F("h3", "low"), code: "F-003" } })]);
+  s = reviewReducer(s, ev(3, "assumption_changed", { assumption: { id: "A-1", name: "dielectric_permittivity", value: 3.5, source: "user_provided" }, topic: "stackup", affected: [{ code: "F-002", status: "needs_recheck" }] }));
+  assert.equal(s.findings.h2.status, "needs_recheck");
+  assert.match(s.assumptions[0].text, /dielectric permittivity: 3.5/);
+  const counts = severityCounts([{ ...s.findings.h2, status: "dismissed" }, s.findings.h3]);
   assert.equal(counts.medium, 0);
   assert.equal(counts.low, 1);
-  assert.deepEqual(sortFindings(Object.values(s.findings)).map((f) => f.id), ["F-002", "F-003"]);
+  assert.deepEqual(sortFindings(Object.values(s.findings)).map((f) => f.code), ["F-002", "F-003"]);
 });
 
-test("follow-up text deltas stream into one agent message and proposals resolve", () => {
+test("a thread streams deltas into one agent message, shows the approval card, and ends on completed", () => {
   let s = replayAll([
-    ev(1, "user_message", { text: "hi", selected: [] }),
-    ev(2, "text_delta", { text: "Hel" }),
-    ev(3, "text_delta", { text: "lo" }),
-    ev(4, "test_proposed", { request_id: "r1", what: "w", why: "y", eta_s: 60 }),
-  ]);
+    ev(1, "user_message", { text: "hi", selected: [{ id: "ref:U3", type: "object" }], thread_id: "th" }),
+    ev(2, "followup_started", { thread_id: "th", level: "answer", selected: [] }),
+    ev(3, "text_delta", { text: "Hel" }, "t1"),
+    ev(4, "text_delta", { text: "lo" }, "t1"),
+    ev(5, "test_proposed", { thread_id: "th", title: "Clear pour", why: "y", estimated_seconds: 60 }),
+    ev(6, "test", { thread_id: "th", title: "Clear pour", why: "y", estimated_seconds: 60, request_id: "r1" }),
+  ], initialReviewState("thread"));
   assert.equal(s.followup.messages.at(-1).text, "Hello");
+  assert.deepEqual(s.followup.messages[0].selected, ["ref:U3"]);
+  assert.equal(s.followup.proposal.request_id, "r1", "the interaction event carries the id the page must answer");
   assert.equal(s.followup.proposal.status, "pending");
-  s = reviewReducer(s, ev(5, "test_decided", { request_id: "r1", approved: false }));
+  assert.equal(s.followup.running, true);
+  s = reviewReducer(s, ev(7, "request_resolved", { request_id: "r1", kind: "test", allow: false }));
   assert.equal(s.followup.proposal.status, "declined");
+  s = reviewReducer(s, ev(8, "completed", { thread_id: "th", level: "answer", changes: 0 }));
+  assert.equal(s.followup.running, false);
+  assert.equal(s.status, "idle", "a thread ending does not end the review");
+});
+
+test("the review chat ignores text deltas and user_message (the agent's words arrive as thoughts)", () => {
+  const s = replayAll([ev(1, "user_message", { kind: "review", goal: {} }), ev(2, "text_delta", { text: "x" })]);
+  assert.equal(s.followup.messages.length, 0);
+});
+
+test("failed and canceled end the review with a reason", () => {
+  assert.equal(replayAll([ev(1, "failed", { message: "boom" })]).failure, "boom");
+  assert.equal(replayAll([ev(1, "canceled", {})]).status, "canceled");
+});
+
+test("a finding changed by the user without a payload finding keeps its card", () => {
+  let s = replayAll([ev(1, "finding_upserted", { finding: { ...F("h9", "low"), code: "F-009" } })]);
+  s = reviewReducer(s, ev(2, "finding_changed", { finding_id: "h9", code: "F-009", status: "dismissed", source: "user" }));
+  assert.equal(s.findings.h9.status, "dismissed");
+  assert.equal(activeMarks(s).length, 0);
 });

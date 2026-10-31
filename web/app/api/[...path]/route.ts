@@ -1,4 +1,4 @@
-import { allowedRoute, trustedRequest } from "../../../lib/proxy-policy.mjs";
+import { allowedRoute, isArtifactRoute, trustedRequest } from "../../../lib/proxy-policy.mjs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 async function proxy(
@@ -57,14 +57,23 @@ async function proxy(
       redirect: "error",
       ...({ duplex: "half" } as Record<string, string>),
     });
+    // Version artifacts (board.json, scene SVGs, the GLB) are immutable per version, so the browser
+    // may keep them for the short time the backend allows. Everything else is never cached.
+    const isArtifact = isArtifactRoute(request.method, path);
     const outgoing = new Headers({
-      "Cache-Control": "no-store",
+      "Cache-Control": isArtifact
+        ? (upstream.headers.get("cache-control") ?? "private, max-age=60")
+        : "no-store",
       "X-Content-Type-Options": "nosniff",
     });
+    // Keep the backend's sandbox policy on report HTML and artifacts, and the exact media type
+    // (model/gltf-binary, image/svg+xml). The body is streamed, never buffered, so a 7 MB GLB
+    // reaches the viewer as it is read.
     for (const name of [
       "content-type",
       "content-length",
       "content-disposition",
+      "content-security-policy",
     ]) {
       const value = upstream.headers.get(name);
       if (value) outgoing.set(name, value);

@@ -28,3 +28,4 @@ export function arrowhead(tip: Pt, dx: number, dy: number, len?: number, half?: 
 export function geometrySegments(g: Geometry): [Pt, Pt][];
 export function nearestPair(ga: Geometry, gb: Geometry): { a: Pt; b: Pt; d: number } | null;
 export function dimensionGeometry(a: Pt, b: Pt, offset?: number): { ext: [Pt, Pt][]; line: [Pt, Pt]; arrows: Pt[][]; mid: Pt; len: number; inside: boolean };
+export function netId(name: string | null | undefined): string | null;

@@ -81,9 +81,10 @@ export function CalloutLayer({
         const a = anchors.find((x) => x.id === selectedId);
         const p = a && placed.get(a.id);
         if (!a || !p) return null;
-        const w = 214;
+        const w = Math.min(214, Math.max(120, width - 16));
         const right = p.bx + R + 10 + w < width - 6;
-        const left = right ? p.bx + R + 10 : p.bx - R - 10 - w;
+        // keep the whole card on the stage, even when the balloon sits near an edge
+        const left = Math.min(Math.max(6, right ? p.bx + R + 10 : p.bx - R - 10 - w), Math.max(6, width - w - 6));
         const top = Math.min(Math.max(8, p.by - 22), height - 70);
         return (
           <div key={a.id} className="cl-tag hair panel" style={{ left, top, width: w }}>

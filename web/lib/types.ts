@@ -56,6 +56,9 @@ export interface Geometry {
   layer?: string;
   side?: "top" | "bottom";
   radius?: number;
+  center?: Pt;
+  target?: string;
+  width?: number;
 }
 
 export type MarkType = "pin" | "object" | "path" | "region" | "link" | "sketch";
@@ -73,20 +76,23 @@ export type EvidenceClass = "measured" | "simulated" | "opinion" | "not_tested";
 export type FindingStatus = "open" | "dismissed" | "fixed" | "needs_recheck" | "superseded";
 
 export interface Finding {
-  id: string; fingerprint: string; title: string;
+  id: string; /** display code such as F-001 (the id is an opaque hex string in live mode) */ code?: string; fingerprint: string; title: string;
   severity: Severity; class: EvidenceClass; status: FindingStatus;
   what: string; why_it_matters: string; recommendation: string;
-  evidence_ids: string[]; marks: Mark[];
+  /** evidence row ids (store rows) or, from the live event stream, display codes in `evidence` */
+  evidence_ids?: string[]; evidence?: string[]; marks: Mark[];
   assumptions: string[]; not_tested: string[];
+  needs_recheck?: number | boolean; dismissed_reason?: string | null; source?: string;
   origin?: "review" | "followup";
   /** Present for version comparison. */
   change?: "new" | "fixed" | "still_present" | "changed";
 }
 
 export interface Evidence {
-  id: string; type: "drc" | "analyzer" | "measurement" | "simulation" | "render";
+  id: string; code?: string; type: string;
   source_tool: string; summary: string;
   values: Record<string, { value: number; unit: string }>;
+  title?: string; details?: string[];
   trust?: "ok" | "failed" | "unchecked";
 }
 
@@ -102,7 +108,7 @@ export interface ProjectSummary {
   versions: number; latest_version: string; latest_review_id: string;
   counts: Record<Severity, number>;
   rf: "pass" | "fail" | "not_tested" | "n/a";
-  state: "complete" | "complete_with_limits" | "running" | "agent_stopped" | "queued";
+  state: "complete" | "complete_with_limits" | "running" | "agent_stopped" | "queued" | "failed" | "canceled" | "no_review";
   trend: number[];
   fixture?: boolean;
 }

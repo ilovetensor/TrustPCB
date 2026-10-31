@@ -270,3 +270,29 @@
     print-color-adjust: exact;
   }
 }
+
+/* ---- live report: the server-rendered document in a frame ---- */
+.rp-live {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+.rp-frame-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  background: #f3f0e6;
+}
+.rp-frame {
+  flex: 1;
+  width: 100%;
+  min-height: calc(100dvh - 56px);
+  border: 0;
+  background: #fff;
+}
+.rp-frame-note {
+  position: absolute;
+  left: 50%;
+  top: 40px;
+  transform: translateX(-50%);
+}

@@ -1,5 +1,6 @@
 "use client";
 import { useFrame } from "@react-three/fiber";
+import { reducedMotion } from "../../lib/hooks";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { sample, FIELD_STOPS } from "../../lib/ramp.mjs";
@@ -43,7 +44,7 @@ export function RadiationBalloon({ pattern, center, scale = 28, spin = false }: 
     g.computeVertexNormals();
     return { geo: g, maxPos: mx };
   }, [pattern, scale]);
-  useFrame((_, dt) => { if (spin && ref.current) ref.current.rotation.y += dt * 0.25; });
+  useFrame((_, dt) => { if (spin && !reducedMotion() && ref.current) ref.current.rotation.y += dt * 0.25; });
   return (
     <group ref={ref} position={center}>
       <mesh geometry={geo} renderOrder={6}>
