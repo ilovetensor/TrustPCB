@@ -1,5 +1,5 @@
 "use client";
-import { memo, useMemo } from "react";
+import { memo, useId, useMemo } from "react";
 import { arcPoints } from "../../lib/geometry.mjs";
 import type { Zone as FunctionZone } from "../../lib/api";
 import type { Board, Pt, Ring } from "../../lib/types";
@@ -69,9 +69,11 @@ export const BoardLayers = memo(function BoardLayers({ board, layers, scene, fun
   board: Board; layers: LayerState; scene?: SceneMarkup | null; functionZones?: FunctionZone[];
 }) {
   const g = useGeometry(board);
+  const clipId = useId();
   return (
     <g className="bl">
       <defs>
+        <clipPath id={clipId}><path d={g.outline} /></clipPath>
         <pattern id="hatch-top" patternUnits="userSpaceOnUse" width="0.7" height="0.7" patternTransform="rotate(45)">
           <path d="M0 0H0.7" stroke="var(--bl-fcu)" strokeWidth="0.09" />
         </pattern>
@@ -129,8 +131,8 @@ export const BoardLayers = memo(function BoardLayers({ board, layers, scene, fun
           )}
         </g>
       )}
-      {layers.regions && functionZones.length > 0 && (
-        <g className="bl-fzones" fill="none">
+      {layers.groups && functionZones.length > 0 && (
+        <g className="bl-fzones" fill="none" clipPath={`url(#${clipId})`}>
           {functionZones.map((z) => (
             <path key={`${z.role}-${z.index}`} d={ringD(z.ring)} fill={roleColor(z.role)} fillOpacity="0.05" stroke={roleColor(z.role)} strokeOpacity="0.4" strokeWidth="0.1" strokeDasharray="0.5 0.35" strokeLinejoin="round" />
           ))}

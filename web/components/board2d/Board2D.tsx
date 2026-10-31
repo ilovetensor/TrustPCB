@@ -370,11 +370,12 @@ export function Board2D({
               <g className="b2-marks">
                 {resolved.map((r) => {
                   const isSel = !r.findingId || !selectedId || r.findingId === selectedId;
-                  const hidden = r.mark.type === "region" ? !layers.regions : !showIssues;
+                  // an area mark would cover the board at rest, so it appears only for its selected finding
+                  const hidden = !showIssues || (r.mark.type === "region" && !!r.findingId && r.findingId !== selectedId);
                   if (hidden) return null;
                   return <MarkShape key={r.key} item={r} px={px} dim={!isSel} sel={!!selectedId && r.findingId === selectedId} quiet={!selectedId && resolved.length > 6} />;
                 })}
-                <ZoneLabels zones={zones} px={px} show={layers.regions && v.scale > 6} />
+                <ZoneLabels zones={zones} px={px} show={layers.groups && v.scale > 6} />
                 {pickedId && <PickBox index={index} id={pickedId} px={px} />}
                 {ghost && <GhostPart ghost={ghost} px={px} />}
               </g>
