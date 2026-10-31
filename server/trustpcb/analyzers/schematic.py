@@ -32,6 +32,8 @@ class SchematicInfo:
     value: dict[str, str] = field(default_factory=dict)
     no_connect: list[tuple[float, float]] = field(default_factory=list)
     nc_pins: set[tuple[str, str]] = field(default_factory=set)
+    #: where each symbol's origin sits on its sheet, in mm; positions of symbols on the same sheet can be compared, those of different sheets cannot
+    sym_at: dict[str, tuple[float, float]] = field(default_factory=dict)
 
     @property
     def found(self) -> bool:
@@ -119,6 +121,7 @@ def parse_schematic(text: str, path: str | None = 'schematic') -> SchematicInfo:
         info.value[ref] = value
         at_node, unit_node, mirror_node = _child(node, 'at'), _child(node, 'unit'), _child(node, 'mirror')
         at = (_num(at_node[1]), _num(at_node[2]), _num(at_node[3]) if len(at_node) > 3 else 0.0) if at_node and len(at_node) >= 3 else (0.0, 0.0, 0.0)
+        info.sym_at[ref] = (at[0], at[1])
         unit = int(_num(unit_node[1], 1)) if unit_node and len(unit_node) > 1 else 1
         mirror = str(mirror_node[1]) if mirror_node and len(mirror_node) > 1 else None
         for pin in libs.get(str(_child(node, 'lib_id')[1]), []):

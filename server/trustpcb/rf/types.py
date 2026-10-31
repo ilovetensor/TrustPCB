@@ -103,6 +103,17 @@ class RfSetup:
     assumptions: list[str]
     warnings: list[str] = field(default_factory=list)
     simulatable: bool = True
+    #: reference of the footprint whose own copper (drawn polygons, custom pads, pads) is the antenna, else None
+    antenna_footprint: str | None = None
+    #: how the port reaches ground: "pad" (ground lies under the feed pad) or "feed_line" (the port sits on the feed line where ground starts)
+    port_mode: str = "pad"
+    #: feed_line mode: length of feed line between the antenna feed pad and the port, which is part of the simulated copper
+    feed_line_mm: float = 0.0
+    #: the stackup does not look like a real board (a KiCad default) or was replaced by an assumed one; see ``stackup_note``
+    stackup_origin: str = "board"  # board | assumed_by_user | suspect_default
+    stackup_note: str | None = None
+    #: how sure the antenna detection was: high | medium | low
+    antenna_confidence: str | None = None
 
     @property
     def sweep_hz(self) -> tuple[float, float]:
@@ -118,7 +129,7 @@ class RfSetup:
 class Item:
     """One piece of copper before merging: a track, pad, zone fill or via, as a shapely geometry."""
 
-    kind: str  # track | pad | zone | via
+    kind: str  # track | pad | zone | via | gfx (drawn copper polygon or line)
     layer: str
     net: str | None
     geom: Any  # shapely geometry (polygonal)
@@ -127,3 +138,5 @@ class Item:
     width: float | None = None  # tracks only
     points: list[tuple[float, float]] | None = None  # tracks only: centreline
     antenna: bool = False
+    #: kind "gfx" (drawn copper in a footprint or on the board) and custom pads: the narrowest width of the shape in mm
+    min_width: float | None = None

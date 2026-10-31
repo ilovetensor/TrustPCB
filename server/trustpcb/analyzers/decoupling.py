@@ -92,6 +92,57 @@ def pin_class(net: str) -> str:
     return "DEC" if _DEC_RE.match(net or "") else (net or "?")
 
 
+#: roles of parts that make a supply rather than use it; a capacitor on a regulator's output is that regulator's output capacitor
+_SUPPLY_ROLES = re.compile(r"regulator|ldo|buck|boost|dc.?dc|charger|pmic|power", re.I)
+
+
+def choose_partner(pins: list[Pad], cap_fp, cap_pad: Pad, sch, ctx: AnalyzerContext) -> tuple[list[Pad], dict[str, Any]]:
+    """Which part's supply pin a capacitor decouples, as far as the design says.
+
+    ``pins`` are the supply pins sharing the capacitor's power net. When they all belong to one part the partner is that part. When several
+    parts share the net the nearest pad is NOT taken as the partner (a capacitor moved away from its part would then be measured to a
+    neighbour that happens to share the rail). The clues, in order:
+
+    1. a regulator's output pin (the schematic types it ``power_out``) or a part whose role is a regulator is not a load that needs decoupling,
+       so it is left out when another part remains;
+    2. the capacitor's symbol in the schematic sits beside the pins of one part: the part whose supply pins on this net are the nearest on
+       the sheet, at least twice as near as the next part. Both symbols must be in the schematic read.
+
+    Returns the pins to measure against and ``{determined, basis, parts, pins}``. With no clue left, every pin stays a candidate, the nearest
+    is measured and ``determined`` is False: the result must say the partner is not known.
+    """
+    def refs(ps):
+        return sorted({p.ref for p in ps})
+
+    if len(refs(pins)) <= 1:
+        return pins, {"determined": True, "basis": "the only part with a supply pin on this net", "parts": refs(pins), "pins": [p.id for p in pins]}
+    basis = None
+    outs = [p for p in pins if (sch.pins.get((p.ref, str(p.number))) or {}).get("type") == "power_out"]
+    keep = [p for p in pins if p not in outs]
+    if outs and keep and len(refs(keep)) < len(refs(pins)):
+        pins, basis = keep, "regulator output pins are not loads: " + ", ".join(refs(outs)) + " left out"
+    roles = getattr(ctx, "part_roles", None) or {}
+    if len(refs(pins)) > 1 and roles:
+        loads = [p for p in pins if not _SUPPLY_ROLES.search(str(roles.get(p.ref, "")))]
+        if loads and len(refs(loads)) < len(refs(pins)):
+            pins, basis = loads, "part roles: " + ", ".join(sorted(set(refs(pins)) - set(refs(loads)))) + " supply the rail"
+    if len(refs(pins)) > 1 and cap_fp.ref in sch.sym_at:
+        cx, cy = sch.sym_at[cap_fp.ref]
+        near: dict[str, float] = {}
+        for p in pins:
+            pin = sch.pins.get((p.ref, str(p.number)))
+            if pin:
+                near[p.ref] = min(near.get(p.ref, 1e9), math.hypot(pin["x"] - cx, pin["y"] - cy))
+        if len(near) == len(refs(pins)):
+            ranked = sorted(near.items(), key=lambda kv: kv[1])
+            if ranked[0][1] * 2.0 <= ranked[1][1]:
+                pins = [p for p in pins if p.ref == ranked[0][0]]
+                basis = f"the schematic places {cap_fp.ref} beside {ranked[0][0]} ({ranked[0][1]:.0f} mm on the sheet, next part {ranked[1][1]:.0f} mm)"
+    if len(refs(pins)) == 1:
+        return pins, {"determined": True, "basis": basis or "the only part with a supply pin on this net", "parts": refs(pins), "pins": [p.id for p in pins]}
+    return pins, {"determined": False, "basis": "several parts share this rail and nothing in the schematic or the part roles says which one the capacitor serves", "parts": refs(pins), "pins": [p.id for p in pins]}
+
+
 def measure(board: Board, ctx: AnalyzerContext) -> dict[str, Any]:
     """Every capacitor on a supply pin of an active part: {rows, classes, excluded}. Cached on the context."""
     cached = ctx.cache.get("decoupling")
@@ -133,12 +184,13 @@ def measure(board: Board, ctx: AnalyzerContext) -> dict[str, Any]:
         # a pin the schematic names or types as a supply pin is the one the capacitor serves; an enable or other pin that shares the net is passed over
         supply = [p for p in targets if sch.is_supply_pin(p.ref, p.number)]
         candidates_pins = supply or targets
+        candidates_pins, partner = choose_partner(candidates_pins, fp, cap_pad, sch, ctx)
         pin = min(candidates_pins, key=lambda p: (math.dist((p.x, p.y), (cap_pad.x, cap_pad.y)), p.id))
         passed_over = [f"{p.ref} pin {p.number} ({sch.pin_name(p.ref, p.number)})" for p in targets if supply and p not in supply and p.ref == pin.ref and sch.pin_name(p.ref, p.number)]
         d = math.dist((pin.x, pin.y), (cap_pad.x, cap_pad.y))
         path = track_path(topo, cap_pad.net, cap_pad.id, pin.id)
         rows.append({"fp": fp, "cap_pad": cap_pad, "pin": pin, "distance": d, "path": path, "vias": path[1] if path else 0, "pin_class": pin_class(cap_pad.net),
-                     "pin_name": sch.pin_name(pin.ref, pin.number), "passed_over": passed_over})
+                     "pin_name": sch.pin_name(pin.ref, pin.number), "passed_over": passed_over, "partner": partner})
     classes: dict[str, dict[str, Any]] = {}
     for r in sorted(rows, key=lambda r: (r["pin_class"], r["distance"], r["fp"].ref)):
         c = classes.setdefault(r["pin_class"], {"pin_class": r["pin_class"], "capacitors": []})
@@ -173,7 +225,14 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
         cap_value = parse_value(fp.value)
         cls = data["classes"][r["pin_class"]]
         name = r["pin_name"]
+        part = r["partner"]
         details = [f"Pin {pin.number} of {pin.ref} is named {name} in the schematic." if name else "No schematic pin name is available: the nearest pad of the net is used and its function is not known."]
+        if part["determined"] and len(part["pins"]) > 1:
+            details.append(f"{pin.ref} has {len(part['pins'])} supply pins on this net ({', '.join(x.split(':')[-1] for x in part['pins'])}); the design does not say which one {fp.ref} serves, so the nearest is measured.")
+        elif part["determined"] and part["basis"] != "the only part with a supply pin on this net":
+            details.append(f"{pin.ref} is taken as the part {fp.ref} serves: {part['basis']}.")
+        elif not part["determined"]:
+            details.append(f"The part {fp.ref} serves cannot be determined: {part['basis']}. Candidates: {', '.join(x.replace('pad:', '') for x in part['pins'])}; the nearest, {pin.ref} pin {pin.number}, is measured.")
         if r["passed_over"]:
             details.append(f"{', '.join(r['passed_over'])} share{'s' if len(r['passed_over']) == 1 else ''} the net but {'is' if len(r['passed_over']) == 1 else 'are'} not a supply pin, so the distance is to the supply pin.")
         em.add(
@@ -194,6 +253,9 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             ic_pin_name=name,
             details=details,
             pin_class=r["pin_class"],
+            partner_determined=part["determined"],
+            partner_basis=part["basis"],
+            partner_candidates=part["pins"],
             class_summary=cls,
             measured_capacitors=len(data["rows"]),
         )

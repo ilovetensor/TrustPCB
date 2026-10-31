@@ -70,9 +70,74 @@ def track_polygon(points: list[tuple[float, float]], width: float):
 # --------------------------------------------------------------------------- items
 
 
+def pad_geometry(p):
+    """The copper of a pad: its ring, or for a custom-shaped pad the whole shape with holes and several parts."""
+    polys = getattr(p, "polys", None)
+    if p.shape == "custom" and polys:
+        parts = []
+        for rings in polys:
+            if not rings or len(rings[0]) < 3:
+                continue
+            q = Polygon(rings[0], [r for r in rings[1:] if len(r) >= 3])
+            if not q.is_valid:
+                q = make_valid(q)
+            parts.append(q)
+        g = _polygonal(unary_union(parts)) if parts else None
+        if g is not None:
+            return g
+    return ring_polygon(p.ring)
+
+
+def graphic_geometry(g):
+    """Copper drawn as a line, arc, rectangle, circle or polygon (``Board.graphics`` entry on a copper layer), or None.
+
+    A filled shape is its area plus half the stroke width; an outline-only shape is a stroke along its boundary; a line is a stroke.
+    Arcs arrive already as polylines. A zero-width line or outline has no copper.
+    """
+    pts = [(float(x), float(y)) for x, y in g.points]
+    w = float(g.width or 0.0)
+    if g.kind == "line":
+        return LineString(pts).buffer(w / 2.0, cap_style="round", join_style="round", quad_segs=6) if len(pts) >= 2 and w > 0 else None
+    if len(pts) < 3:
+        return None
+    if g.fill:
+        poly = ring_polygon(pts)
+        if poly is None:
+            return None
+        return poly.buffer(w / 2.0, join_style="round", quad_segs=4) if w > 0 else poly
+    if w <= 0:
+        return None
+    return LineString(pts + [pts[0]]).buffer(w / 2.0, cap_style="round", join_style="round", quad_segs=4)
+
+
+def copper_graphics(board: Board):
+    """``[(id, layer, owner, geometry)]`` for every drawn copper shape of the board and of its footprints."""
+    out = []
+    for n, g in enumerate(getattr(board, "graphics", []) or []):
+        if not str(g.layer).endswith(".Cu"):
+            continue
+        geo = graphic_geometry(g)
+        if geo is None or geo.is_empty:
+            continue
+        out.append((f"gfx:{g.owner or 'board'}:{n}", g.layer, g.owner, _polygonal(geo)))
+    return [o for o in out if o[3] is not None]
+
+
+def narrowest_width(geom, floor: float = 0.05) -> float | None:
+    """Narrowest width of a polygonal shape, found by morphological opening: the smallest trial width that removes area."""
+    if geom is None or geom.is_empty or geom.area <= 0:
+        return None
+    for w in (0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0):
+        opened = geom.buffer(-w / 2.0, join_style="mitre").buffer(w / 2.0, join_style="mitre")
+        if geom.area - opened.area > 0.02 * geom.area:
+            return w
+    return None
+
+
 def collect_items(board: Board, setup: RfSetup | None = None, antenna_tracks: set[str] | None = None) -> list[Item]:
     """Every piece of copper on the board as an Item. Antenna copper is flagged."""
     ant_net = setup.antenna_net if setup else None
+    ant_fp = getattr(setup, "antenna_footprint", None) if setup else None
     items: list[Item] = []
     for t in board.tracks:
         pts = [tuple(p) for p in t.points()]
@@ -82,12 +147,21 @@ def collect_items(board: Board, setup: RfSetup | None = None, antenna_tracks: se
         is_ant = bool(ant_net and t.net == ant_net) or bool(antenna_tracks and t.id in antenna_tracks)
         items.append(Item("track", t.layer, t.net, poly, t.id, width=t.width, points=pts, antenna=is_ant))
     for p in board.pads:
-        poly = ring_polygon(p.ring)
+        poly = pad_geometry(p)
         if poly is None:
             continue
+        mw = narrowest_width(poly) if (p.shape == "custom" and getattr(p, "polys", None)) else None
         for layer in p.layers:
             if layer.endswith(".Cu"):
-                items.append(Item("pad", layer, p.net, poly, p.id, ref=p.ref, antenna=bool(ant_net and p.net == ant_net)))
+                items.append(Item("pad", layer, p.net, poly, p.id, ref=p.ref, antenna=bool(ant_net and p.net == ant_net), min_width=mw))
+    # drawn copper (polygons, lines, arcs in footprints or on the board): a printed antenna from a library footprint is made of these
+    for gid, layer, owner, gg in copper_graphics(board):
+        is_ant = bool(ant_fp and owner == ant_fp)
+        items.append(Item("gfx", layer, None, gg, gid, ref=owner, antenna=is_ant, min_width=narrowest_width(gg) if is_ant else None))
+    if ant_fp:  # the footprint's own pads on the antenna net are antenna copper; its other pads (ground stub) join by overlap
+        for it in items:
+            if it.kind == "pad" and it.ref == ant_fp and it.net and it.net == ant_net:
+                it.antenna = True
     for v in board.vias:
         ring = ring_polygon(_circle(v.x, v.y, v.diameter / 2))
         for layer in v.layers:
@@ -257,6 +331,13 @@ def _collect_vias(board, setup, reg, fz, ground_nets, ops) -> list[dict[str, Any
         near = fz[0] <= v.x <= fz[2] and fz[1] <= v.y <= fz[3]
         if v.net in ground_nets or v.net == setup.antenna_net or near:
             out.append({"id": v.id, "net": v.net, "x": v.x, "y": v.y, "diameter": v.diameter, "layers": list(v.layers)})
+    # plated holes of the antenna footprint (the shorted stub of an inverted-F ties its radiator to the ground planes through one)
+    ant_fp = getattr(setup, "antenna_footprint", None)
+    if ant_fp:
+        for p in board.pads_of(ant_fp):
+            cu = [l for l in p.layers if l.endswith(".Cu")]
+            if p.drill and p.drill > 0 and len(cu) >= 2 and reg[0] <= p.x <= reg[2] and reg[1] <= p.y <= reg[3]:
+                out.append({"id": p.id, "net": p.net, "x": p.x, "y": p.y, "diameter": max(float(p.drill), 0.2), "layers": cu})
     return out
 
 

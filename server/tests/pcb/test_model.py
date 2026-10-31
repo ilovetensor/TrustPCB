@@ -244,3 +244,39 @@ def test_pads_match_kicad_own_svg_plot(tmp_path, nrf_copy):
         assert best < 0.02, (p.id, best)
         checked += 1
     assert checked > 150
+
+
+def test_net_classes_in_the_kicad6_layout_and_in_the_board_file():
+    from trustpcb.pcb.model import parse_board_text
+
+    text = """(kicad_pcb (version 20240108) (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+ (segment (start 0 0) (end 5 0) (width 0.2) (layer "F.Cu") (net "ANT") (uuid "aaaaaaaa-0000-0000-0000-000000000001"))
+ (segment (start 0 1) (end 5 1) (width 0.2) (layer "F.Cu") (net "VCC") (uuid "aaaaaaaa-0000-0000-0000-000000000002"))
+ (segment (start 0 2) (end 5 2) (width 0.2) (layer "F.Cu") (net "SIG") (uuid "aaaaaaaa-0000-0000-0000-000000000003")))"""
+    six = {"net_settings": {"classes": [{"name": "Default", "track_width": 0.2, "nets": []},
+                                        {"name": "RF", "track_width": 0.4, "nets": ["ANT"]},
+                                        {"name": "Power", "track_width": 0.5, "nets": ["VCC"]}]}}
+    b = parse_board_text(text, project=six)
+    assert {n.name: n.net_class for n in b.nets} == {"ANT": "RF", "VCC": "Power", "SIG": "Default"}
+    # KiCad 7 and later keep the assignments apart from the class list, and still win over a class's own list
+    seven = {"net_settings": {"classes": [{"name": "RF", "nets": ["ANT"]}], "netclass_assignments": {"ANT": "Antenna"}, "netclass_patterns": [{"pattern": "V*", "netclass": "Power"}]}}
+    assert {n.name: n.net_class for n in parse_board_text(text, project=seven).nets} == {"ANT": "Antenna", "VCC": "Power", "SIG": "Default"}
+    # KiCad 5 and older: the classes are in the board file
+    old = text.replace("(segment", '(net_class Power "" (clearance 0.2) (add_net VCC))\n (segment', 1)
+    assert {n.name: n.net_class for n in parse_board_text(old).nets}["VCC"] == "Power"
+
+
+def test_kicad5_modules_are_read_as_footprints():
+    from trustpcb.pcb.model import parse_board_text
+
+    text = """(kicad_pcb (version 20171130) (host pcbnew 5.1.0)
+ (layers (0 F.Cu signal) (31 B.Cu signal))
+ (net 0 "") (net 1 GND)
+ (module Antenna:Test (layer F.Cu) (tedit 0) (tstamp 5A5A5A5A) (at 10 10 90)
+   (fp_text reference AE1 (at 0 0) (layer F.SilkS)) (fp_text value Antenna_PCB (at 0 1) (layer F.Fab))
+   (fp_poly (pts (xy 0 0) (xy 4 0) (xy 4 1) (xy 0 1)) (layer F.Cu) (width 0.1))
+   (pad 1 smd rect (at 0 0 90) (size 1 1) (layers F.Cu) (net 1 GND))))"""
+    b = parse_board_text(text)
+    assert [f.ref for f in b.footprints] == ["AE1"] and b.pads_of("AE1")[0].net == "GND"
+    poly = [g for g in b.graphics if g.layer == "F.Cu"]
+    assert poly and poly[0].fill, "a KiCad 5 polygon has no fill entry and is filled"
