@@ -88,7 +88,7 @@ export function ChatDock({ state, selected, onClearSel, onSend, onDecide, busy, 
             />
             <button className="btn primary" onClick={submit} disabled={locked || f.running || busy || !text.trim()}><Icon name="send" size={14} /> Send</button>
           </div>
-          <div className="idx chat-foot">{waiting ? <span className="blink">Waiting for your approval</span> : busy || f.running ? <span className="blink">Running</span> : "Answer, check or test. A test needs your approval."}</div>
+          <div className="idx chat-foot">{locked ? "Chat opens when the review finishes." : waiting ? <span className="blink">Waiting for your approval</span> : busy || f.running ? <span className="blink">Running</span> : "Answer, check or test. A test needs your approval."}</div>
         </div>
       )}
     </div>
