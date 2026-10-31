@@ -74,8 +74,8 @@ _PHASE_CALLS = {
 
 CONFIGS: dict[str, BudgetConfig] = {
     'quick': BudgetConfig('quick', 6 * 60, 0, 90, 0, 0, 0, 8, 3_000_000, 30_000, _PHASE_CALLS['quick'], {3: 8}),
-    'standard': BudgetConfig('standard', 30 * 60, 20 * 60, 160, 1, 5, 2, 14, 4_000_000, 40_000, _PHASE_CALLS['standard'], {3: 8}),
-    'deep': BudgetConfig('deep', 75 * 60, 60 * 60, 220, 3, 6, 4, 20, 6_000_000, 60_000, _PHASE_CALLS['deep'], {3: 8}),
+    'standard': BudgetConfig('standard', 60 * 60, 40 * 60, 160, 1, 5, 2, 14, 4_000_000, 40_000, _PHASE_CALLS['standard'], {3: 8}),
+    'deep': BudgetConfig('deep', 120 * 60, 90 * 60, 220, 3, 6, 4, 20, 6_000_000, 60_000, _PHASE_CALLS['deep'], {3: 8}),
 }
 
 

@@ -208,6 +208,17 @@ def point_on_metal(sc, x, y, z):
     return False
 
 
+def port_axis(p, a, b) -> int:
+    """Excitation axis of the lumped port: the explicit ``port.axis`` ("x", "y" or "z") when given, else the longest side of
+    the port box (older scenario files)."""
+    named = p.get("axis")
+    if named is not None:
+        if str(named).lower() not in ("x", "y", "z"):
+            raise ValueError(f"port.axis must be x, y or z, got {named!r}")
+        return "xyz".index(str(named).lower())
+    return int(np.argmax(np.abs(np.asarray(b, float) - np.asarray(a, float))))
+
+
 def build_model(sc, sim_dir):
     from CSXCAD import ContinuousStructure
     from openEMS import openEMS
@@ -263,7 +274,7 @@ def build_model(sc, sim_dir):
     # lumped port
     p = sc["port"]
     a, b = np.array(p["start"], float), np.array(p["end"], float)
-    axis = int(np.argmax(np.abs(b - a)))
+    axis = port_axis(p, a, b)
     port = fd.AddLumpedPort(1, float(p.get("impedance_ohm", 50.0)), list(a), list(b), "xyz"[axis], 1.0, priority=5)
 
     # dumps ---------------------------------------------------------------

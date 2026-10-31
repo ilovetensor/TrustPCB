@@ -6,7 +6,7 @@ here because it changes no geometry (see matching.py).
 
 | Operation | Limits |
 |---|---|
-| adjust_antenna_length | +-6 mm along the detected antenna |
+| adjust_antenna_length | +-12 mm along the detected antenna |
 | clear_copper_region | polygon or box near the antenna, area up to 150 mm2, never over antenna copper |
 | remove_nearby_part | named part inside the investigation region, not a matching part |
 | set_material | permittivity 3.8 to 4.8 (loss tangent 0.005 to 0.05 when given) |
@@ -23,7 +23,7 @@ from shapely.ops import unary_union
 
 from .types import Item, RfSetup
 
-MAX_LENGTH_DELTA_MM = 6.0
+MAX_LENGTH_DELTA_MM = 12.0
 MAX_CLEAR_AREA_MM2 = 150.0
 CLEAR_NEAR_MM = 12.0  # a cleared region must come within this distance of the antenna copper
 REMOVE_NEAR_MM = 20.0

@@ -36,8 +36,11 @@ QUALITY: dict[str, dict[str, float]] = {
 
 
 def effective_port_width(setup: RfSetup) -> tuple[float, str]:
-    """Strip width the solver gets. The worker takes the excitation axis from the longest side of
-    the port box, so the strip must stay narrower than the port height."""
+    """Strip width the solver gets, clamped to 0.9 of the port height (ground layer to feed layer).
+
+    The worker now reads the excitation axis from ``port.axis`` (always z), so the clamp is no longer needed to
+    steer it. It stays because a wider port is a different physical model: results of the validated runs were
+    made with it, and relaxing it needs fresh benchmark runs and a MODEL_VERSION bump."""
     z = setup.stackup["layer_z"]
     dz = abs(z[setup.port_layer] - z[setup.ground_layer])
     w = setup.port_width_mm

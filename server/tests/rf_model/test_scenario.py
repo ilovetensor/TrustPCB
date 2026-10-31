@@ -60,7 +60,12 @@ def test_patch_strip_port_on_copper(tmp_path, patch_board, patch_setup):
     sc = json.loads((tmp_path / "scenario.json").read_text())
     w = _worker()
     a, b = np.array(sc["port"]["start"]), np.array(sc["port"]["end"])
-    assert int(np.argmax(np.abs(b - a))) == 2  # the worker takes the excitation axis from the longest side
+    assert int(np.argmax(np.abs(b - a))) == 2 and sc["port"]["axis"] == "z"
+    assert w.port_axis(sc["port"], a, b) == 2                                 # explicit axis
+    assert w.port_axis({}, [0, 0, 0], [0.2, 0, 1.5]) == 2                     # older files: longest side
+    assert w.port_axis({"axis": "x"}, [0, 0, 0], [0.2, 0, 1.5]) == 0
+    with pytest.raises(ValueError):
+        w.port_axis({"axis": "q"}, a, b)
     assert w.point_on_metal(sc, *a) and w.point_on_metal(sc, *b)
 
 

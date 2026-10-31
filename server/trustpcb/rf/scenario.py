@@ -34,6 +34,9 @@ RUN = {
     "confirm": {"end_criteria": -45.0, "max_timesteps": 300_000, "n_freq": 401},
 }
 MAX_THREADS = 6
+#: The lumped port always excites across the substrate (ground layer to feed layer). The worker takes this from
+#: ``port.axis``; it no longer guesses from the longest side of the port box.
+PORT_EXCITATION_AXIS = "z"
 
 
 @dataclass(frozen=True)
@@ -179,7 +182,7 @@ def build_job(board: Board, setup: RfSetup, scenario: Scenario, job_dir: str | P
         "metals": metals,
         "vias": vias,
         "substrates": substrates,
-        "port": {"start": start, "end": end, "impedance_ohm": setup.port_impedance_ohm},
+        "port": {"start": start, "end": end, "impedance_ohm": setup.port_impedance_ohm, "axis": PORT_EXCITATION_AXIS},
         "boundary": "MUR",
         "dumps": {
             "field_xy": {"z_mm": ztop + 2.0},

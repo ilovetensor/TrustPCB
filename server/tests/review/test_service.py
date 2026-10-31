@@ -111,7 +111,7 @@ async def test_invented_number_is_rejected_and_named(env):
 
 
 async def test_hard_deadline_cancels_the_agent_and_reports(env):
-    env.lab.solve_s['screen'] = 1000.0
+    env.lab.solve_s['screen'] = 2000.0
     review = await env.review(SCRIPTS / 'hard_deadline.json')
     assert review['end_state'] == 'complete_with_limits' and review['summary']['end']['reason'] == 'hard_deadline'
     rules = {l['rule'] for l in review['summary']['limits']}
@@ -177,7 +177,7 @@ async def test_baseline_failure_ends_as_pipeline_failed_with_a_report(env):
 
 
 async def test_budget_wall_leaves_only_closing_tools(env):
-    env.lab.solve_s['screen'] = 700.0       # two runs use 1400 of the 1200 solver seconds
+    env.lab.solve_s['screen'] = 1400.0      # two runs use 2800 of the 2400 solver seconds
     script = [{'tool': 'submit_board_brief', 'args': {'purpose': 'Battery powered Bluetooth sensor node', 'part_roles': {'U3': 'radio'}, 'risks': [], 'priorities': ['antenna']}},
               {'tool': 'advance_phase'}, *clear(), {'tool': 'advance_phase'},
               {'tool': 'open_investigation', 'args': {'question': 'Is copper next to the feed detuning the antenna?', 'suspects': [{'title': 'Copper', 'why': 'Pour near the feed.'}]}},
