@@ -127,7 +127,7 @@ function UploadInner() {
         <main className="pg-main">
           <div className="pg-head"><div><h1 className="serif">Uploads are off in this demo.</h1><p className="pg-sub">Everything here is a finished review you can read, not a service you can feed.</p></div></div>
           <DemoNotice block />
-          <p><Link href="/projects" className="btn">Browse the finished reviews <Icon name="arrow" size={14} /></Link></p>
+          <p><Link href="/projects" className="btn primary"><Icon name="folder" size={14} /> Browse the finished reviews</Link></p>
         </main>
       </div>
     );
@@ -139,32 +139,28 @@ function UploadInner() {
       <main className="pg-main">
         <div className="pg-head">
           <div>
-            <span className="idx">INTAKE / STEP {version ? "02" : "01"} OF 02</span>
-            <h1 className="serif">{existing ? `New version of ${existingName ?? "this board"}.` : "Bring a board to the bench."}</h1>
+            <span className="idx">Step {version ? "2" : "1"} of 2</span>
+            <h1 className="serif">{existing ? `New version of ${existingName ?? "this board"}.` : "Bring a board to review."}</h1>
             <p className="pg-sub">Drop a KiCad project as a zip or a folder. The server unpacks it on a copy and never edits your files.</p>
           </div>
         </div>
         {FIXTURE_MODE && (
-          <p className="warn"><span className="signal mono">!</span><span><b>Fixture mode.</b> Uploads are off. <Link href="/reviews/r-0042" className="signal">Open the sample review replay</Link>.</span></p>
+          <p className="warn"><span className="signal"><Icon name="info" size={15} /></span><span><b>Fixture mode.</b> Uploads are off. <Link href="/reviews/r-0042" className="signal">Open the sample review replay</Link>.</span></p>
         )}
         <div className="drop-grid">
           <div>
             <div
-              className={`drop hair ${over ? "over" : ""}`}
+              className={`drop ${over ? "over" : ""}`}
               onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
               onDrop={(e) => { e.preventDefault(); setOver(false); if (e.dataTransfer.files.length) onFiles(e.dataTransfer.files); }}
             >
               <div>
-                <svg width="74" height="74" viewBox="0 0 74 74" fill="none" aria-hidden stroke="currentColor" strokeWidth="1.2">
-                  <path d="M10 22V10h12M52 10h12v12M64 52v12H52M22 64H10V52" />
-                  <rect x="22" y="24" width="30" height="26" strokeDasharray="3 3" />
-                  <path d="M37 44V30M31 36l6-6 6 6" stroke="var(--signal)" />
-                </svg>
+                <span className="drop-ic"><Icon name="upload" size={26} /></span>
                 <h2 className="serif">Drop a project here</h2>
                 <p>{picked ? "Drop again to replace it." : "A .zip of the project, or the project folder. The .kicad_pcb is required. The .kicad_pro is strongly recommended."}</p>
                 <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 18, flexWrap: "wrap" }}>
-                  <button className="btn" onClick={() => zipRef.current?.click()} disabled={uploading}><Icon name="file" size={13} /> Choose zip</button>
-                  <button className="btn" onClick={() => dirRef.current?.click()} disabled={uploading}><Icon name="layers" size={13} /> Choose folder</button>
+                  <button className="btn" onClick={() => zipRef.current?.click()} disabled={uploading}><Icon name="file" size={14} /> Choose a zip</button>
+                  <button className="btn" onClick={() => dirRef.current?.click()} disabled={uploading}><Icon name="folder" size={14} /> Choose a folder</button>
                 </div>
                 <input ref={zipRef} data-testid="zip-input" type="file" accept=".zip,application/zip" hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
                 <input ref={dirRef} data-testid="dir-input" type="file" hidden multiple {...({ webkitdirectory: "" } as object)} onChange={(e) => e.target.files && onFiles(e.target.files)} />
@@ -172,20 +168,20 @@ function UploadInner() {
             </div>
 
             {picked && !version && (
-              <Panel className="card rise" idx="FILES" title="What you chose" delay={0} style={{ marginTop: 18 }}>
+              <Panel className="card rise" title="What you chose" style={{ marginTop: 14 }}>
                 <dl className="kv">
-                  <dt>Files</dt><dd className="mono" style={{ wordBreak: "break-all" }}>{picked.names.length > 4 ? `${picked.names.slice(0, 4).join(", ")} and ${picked.names.length - 4} more` : picked.names.join(", ")}</dd>
-                  <dt>Board file</dt><dd>{picked.zip ? "Inside the zip. Detected after upload." : picked.pcb ? <span className="mono">{picked.pcb}</span> : <span className="signal">No .kicad_pcb found</span>}</dd>
+                  <dt>Files</dt><dd className="code" style={{ wordBreak: "break-all", fontSize: 12.5 }}>{picked.names.length > 4 ? `${picked.names.slice(0, 4).join(", ")} and ${picked.names.length - 4} more` : picked.names.join(", ")}</dd>
+                  <dt>Board file</dt><dd>{picked.zip ? "Inside the zip. Detected after upload." : picked.pcb ? <span className="code">{picked.pcb}</span> : <span className="signal">No .kicad_pcb found</span>}</dd>
                   <dt>Design rules</dt><dd>{picked.zip ? "Checked after upload." : picked.pro ? ".kicad_pro found. Real rules are used." : <span className="signal">Missing</span>}</dd>
                   <dt>Schematic</dt><dd>{picked.zip ? "Checked after upload." : picked.sch ? "Found" : "Not found. ERC and part intent are skipped."}</dd>
                 </dl>
-                {!picked.pro && !picked.zip && <p className="warn"><span className="signal mono">!</span><span><b>Default rules.</b> Without a .kicad_pro the review runs with KiCad defaults and rule results are downgraded.</span></p>}
-                <div style={{ padding: "0 16px 16px", display: "grid", gap: 12 }}>
+                {!picked.pro && !picked.zip && <p className="warn"><span className="signal"><Icon name="info" size={15} /></span><span><b>Default rules.</b> Without a .kicad_pro the review runs with KiCad defaults and rule results are downgraded.</span></p>}
+                <div style={{ padding: "14px 0 0", display: "grid", gap: 12 }}>
                   {!existing && (
-                    <div className="field"><label className="idx" htmlFor="pn">PROJECT NAME</label><input id="pn" type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} /></div>
+                    <div className="field"><label className="idx" htmlFor="pn">Project name</label><input id="pn" type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} /></div>
                   )}
                   <button className="btn primary" disabled={!ready || uploading || FIXTURE_MODE} onClick={upload} data-testid="upload-go">
-                    {uploading ? `Uploading ${Math.round((progress ?? 0) * 100)}%` : <>Upload and detect <Icon name="arrow" size={14} /></>}
+                    {uploading ? `Uploading ${Math.round((progress ?? 0) * 100)}%` : <><Icon name="upload" size={14} /> Upload and detect</>}
                   </button>
                   {uploading && <div className="meter sig"><b style={{ width: `${(progress ?? 0) * 100}%` }} /></div>}
                 </div>
@@ -193,7 +189,7 @@ function UploadInner() {
             )}
 
             {version && (
-              <Panel className="card rise" idx="DETECTION" title="What the server found" delay={0} style={{ marginTop: 18 }}>
+              <Panel className="card rise" title="What the server found" style={{ marginTop: 14 }}>
                 <dl className="kv" data-testid="detection">
                   <dt>Version</dt><dd>v{version.number}{version.duplicate_of ? <span className="signal"> (same files as an earlier upload)</span> : null}</dd>
                   <dt>Status</dt><dd>{version.status}</dd>
@@ -204,27 +200,27 @@ function UploadInner() {
                   {st && (<><dt>Stackup</dt><dd>{st.total_thickness_mm} mm, {st.copper_layers ?? "?"} copper layers, {st.source === "default" ? "default FR-4 assumed" : `from the ${st.source}`}</dd></>)}
                 </dl>
                 {st?.layers && (
-                  <table className="rp-tbl" style={{ margin: "0 16px 12px", width: "calc(100% - 32px)", fontSize: 12 }}>
+                  <table className="rp-tbl" style={{ margin: "14px 0 0", width: "100%", fontSize: 12.5 }}>
                     <thead><tr><th>Layer</th><th>Kind</th><th>Thickness</th><th>Er</th></tr></thead>
                     <tbody>{st.layers.map((l) => (<tr key={l.name}><td className="mono">{l.name}</td><td>{l.kind}</td><td className="num">{l.thickness_mm} mm</td><td className="num">{l.epsilon_r ?? "-"}</td></tr>))}</tbody>
                   </table>
                 )}
                 {st?.assumptions && st.assumptions.length > 0 && (
-                  <p className="warn"><span className="signal mono">!</span><span><b>Assumed:</b> {st.assumptions.map((a) => a.text).join(" ")} They are listed in the report.</span></p>
+                  <p className="warn"><span className="signal"><Icon name="info" size={15} /></span><span><b>Assumed:</b> {st.assumptions.map((a) => a.text).join(" ")} They are listed in the report.</span></p>
                 )}
-                {st?.warnings && st.warnings.length > 0 && <p className="warn"><span className="signal mono">!</span><span>{st.warnings.join(" ")}</span></p>}
+                {st?.warnings && st.warnings.length > 0 && <p className="warn"><span className="signal"><Icon name="info" size={15} /></span><span>{st.warnings.join(" ")}</span></p>}
               </Panel>
             )}
           </div>
 
-          <Panel className="card" idx="GOAL" title="What must this board do?" delay={100}>
-            <div style={{ padding: 16 }}>
-              <div className="field"><label className="idx" htmlFor="g1">WHAT THE BOARD DOES</label><input id="g1" type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Battery Bluetooth sensor" disabled={!version} /></div>
-              <div className="field"><label className="idx" htmlFor="g2">BAND TO TUNE FOR</label><input id="g2" type="text" value={band} onChange={(e) => setBand(e.target.value)} placeholder="2.4 to 2.4835 GHz" disabled={!version} /></div>
-              <div className="field"><label className="idx" htmlFor="g4">S11 TARGET (DB)</label><input id="g4" type="text" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} disabled={!version} /></div>
-              <div className="field"><label className="idx" htmlFor="g3">FOCUS</label><input id="g3" type="text" value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Is the antenna OK?" disabled={!version} /></div>
+          <Panel className="card" title="What must this board do?">
+            <div>
+              <div className="field"><label className="idx" htmlFor="g1">What the board does</label><input id="g1" type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Battery Bluetooth sensor" disabled={!version} /></div>
+              <div className="field"><label className="idx" htmlFor="g2">Band to tune for</label><input id="g2" type="text" value={band} onChange={(e) => setBand(e.target.value)} placeholder="2.4 to 2.4835 GHz" disabled={!version} /></div>
+              <div className="field"><label className="idx" htmlFor="g4">S11 target (dB)</label><input id="g4" type="text" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} disabled={!version} /></div>
+              <div className="field"><label className="idx" htmlFor="g3">Focus</label><input id="g3" type="text" value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Is the antenna OK?" disabled={!version} /></div>
               <div className="field">
-                <span className="idx">REVIEW DEPTH</span>
+                <span className="idx">Review depth</span>
                 <div className="seg" role="group" aria-label="Review depth" style={{ width: "100%" }}>
                   {DEPTHS.map((x) => (<button key={x.id} style={{ flex: 1 }} aria-pressed={depth === x.id} onClick={() => setDepth(x.id)}>{x.label}</button>))}
                 </div>
@@ -233,9 +229,9 @@ function UploadInner() {
               <p className="dim" style={{ fontSize: 12, margin: "0 0 14px" }}>The agent does not stop to ask questions mid-review. Fields lock when it starts.</p>
               {error && <p className="chat-err" role="alert" style={{ margin: "0 0 12px" }} data-testid="start-error">{error}{busyProject && <> <Link href={`/projects/${busyProject}`} className="signal">Open the board</Link> to see or stop the running review.</>}</p>}
               <button className="btn primary big" style={{ width: "100%" }} disabled={!version || starting || version.status === "failed"} onClick={start} data-testid="start-review">
-                {starting ? "Starting" : "Start review"} <Icon name="arrow" size={14} />
+                <Icon name="play" size={14} /> {starting ? "Starting" : "Start the review"}
               </button>
-              {!version && <p className="idx" style={{ marginTop: 10 }}>UPLOAD A BOARD FIRST. THE REVIEW STARTS FROM WHAT THE SERVER DETECTS.</p>}
+              {!version && <p className="idx" style={{ marginTop: 10, whiteSpace: "normal" }}>Upload a board first. The review starts from what the server detects.</p>}
             </div>
           </Panel>
         </div>

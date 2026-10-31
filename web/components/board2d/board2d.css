@@ -11,7 +11,6 @@
 .b2:active {
   cursor: grabbing;
 }
-.rl-svg,
 .b2-svg {
   position: absolute;
   inset: 0;
@@ -40,12 +39,6 @@
   --bl-hole: #05060c;
   --bl-silk: #f6f1cf;
   --bl-edge: #f2cf5c;
-}
-.bl-glow {
-  fill: rgba(120, 112, 255, 0.34);
-  stroke: rgba(120, 112, 255, 0.34);
-  stroke-width: 2.4px;
-  stroke-linejoin: round;
 }
 .bl-substrate {
   fill: var(--bl-board);
@@ -97,31 +90,14 @@
   gap: 6px;
   z-index: 3;
 }
-.b2-readout {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  height: 32px;
-  padding: 0 10px;
-  font-size: 11px;
-  background: var(--panel);
-  border: 1px solid var(--hair);
-  pointer-events: none;
-  color: var(--paper-2);
-}
-.b2-readout b {
-  color: var(--paper);
-  font-weight: 500;
-  display: inline-block;
-  min-width: 4.4ch;
-  text-align: right;
-}
 .b2-controls {
   display: flex;
   gap: 2px;
-  padding: 2px;
+  padding: 3px;
   background: var(--panel);
-  border: 1px solid var(--hair);
+  border-radius: 999px;
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
 }
 .b2-spot circle.b2-spot-a {
   animation: spot 2.2s ease-out infinite;

@@ -2,6 +2,7 @@
 import "./power.css";
 import type { VersionChange as VC } from "../../lib/story.mjs";
 import { acceptedPct } from "../../lib/sims";
+import { Icon } from "../ui";
 import { PowerPair } from "./PowerPair";
 
 const db = (v: number | null | undefined) => (typeof v === "number" ? `${v.toFixed(2).replace(/\.?0+$/, "").replace("-", "−")} dB` : "-");
@@ -40,7 +41,7 @@ export function VersionChange({ vc, compact = false, wide = false, onFinding }: 
         <span className="stamp">{TONE[vc.direction]}</span>
         <HeldBadge vc={vc} />
         <span className={`stamp ${vc.target_met ? "solid" : ""}`}>{vc.target_met ? "Target met" : "Target not met"}</span>
-        {finding && onFinding && <button className="idx pwin-find" onClick={() => onFinding(finding)}>{finding}</button>}
+        {finding && onFinding && <button className="idx pwin-find" onClick={() => onFinding(finding)}><Icon name="flag" size={12} /> {finding}</button>}
       </header>
       <div className="pwin-body">
         <PowerPair
@@ -50,22 +51,22 @@ export function VersionChange({ vc, compact = false, wide = false, onFinding }: 
         />
         <dl className="pwin-facts">
           <div>
-            <dt className="idx">WORST S11 ACROSS THE BAND</dt>
+            <dt className="idx">Worst S11 across the band</dt>
             <dd className="mono">{db(vc.from.band_worst_s11_db)} <span className="pwin-arrow">to</span> {db(vc.to.band_worst_s11_db)}
               <span className="pwin-gain"> {vc.direction === "unchanged" ? "no change beyond the solver's repeat" : `${vc.direction === "improved" ? "a gain" : "a loss"} of ${Math.abs(vc.gain_db).toFixed(2).replace(/\.?0+$/, "")} dB`}</span></dd>
           </div>
           {vc.from.accepted_power_mean_pct != null && vc.to.accepted_power_mean_pct != null && (
-            <div><dt className="idx">ACCEPTED POWER, MEAN ACROSS THE BAND</dt><dd className="mono">{vc.from.accepted_power_mean_pct} % <span className="pwin-arrow">to</span> {vc.to.accepted_power_mean_pct} %</dd></div>
+            <div><dt className="idx">Accepted power, mean across the band</dt><dd className="mono">{vc.from.accepted_power_mean_pct} % <span className="pwin-arrow">to</span> {vc.to.accepted_power_mean_pct} %</dd></div>
           )}
           {p && (
             <div>
-              <dt className="idx">PREDICTED BY VERSION {a}</dt>
+              <dt className="idx">Predicted by version {a}</dt>
               <dd className="mono">{db(p.band_worst_s11_db)} for {p.parts_text || "no change to the board"}<br />
                 {vc.applied === false ? "these parts are not what this version has" : <>{vc.independent_check ? "separate confirm run" : "same solver run, version " + b + "'s parts"}: {db(vc.to.band_worst_s11_db)}{vc.difference_db != null && <span className="pwin-gain"> ({vc.difference_db === 0 ? "equal to the prediction" : `${vc.difference_db > 0 ? "+" : "−"}${Math.abs(vc.difference_db).toFixed(2).replace(/\.?0+$/, "")} dB from the prediction`})</span>}</>}
               </dd>
             </div>
           )}
-          <div><dt className="idx">TARGET</dt><dd className="mono">{db(vc.target_db)} across the band <b>{vc.target_met ? "met" : "not met"}</b></dd></div>
+          <div><dt className="idx">Target</dt><dd className="mono">{db(vc.target_db)} across the band <b>{vc.target_met ? "met" : "not met"}</b></dd></div>
         </dl>
       </div>
     </section>

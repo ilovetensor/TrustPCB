@@ -5,9 +5,7 @@ import { SEVERITY_ORDER, sortFindings, type ReviewState } from "../../lib/review
 import { findingLabel, findingNumber } from "../../lib/review-view";
 import type { Evidence, Finding, Severity } from "../../lib/types";
 import { ClassStamp, Icon, SevGlyph } from "../ui";
-import { PartialWin } from "../rf/PartialWin";
-import type { ChangeState, Headline, VersionChange as VC } from "../../lib/story.mjs";
-import { VersionChange } from "../rf/VersionChange";
+import type { ChangeState } from "../../lib/story.mjs";
 import type { Mark } from "../../lib/types";
 
 const evidenceLine = (e: Evidence): { tool: string; text: string; vals: string } => {
@@ -17,12 +15,13 @@ const evidenceLine = (e: Evidence): { tool: string; text: string; vals: string }
   return { tool: e.source_tool, text: e.title ?? v.title ?? e.summary ?? "", vals };
 };
 
-const CHANGE_LABEL: Record<ChangeState, string> = { fixed: "Fixed", improved: "Improved", still_present: "Still present", worse: "Worse", new: "New" };
+const CHANGE_LABEL: Record<ChangeState, string> = { fixed: "fixed", improved: "improved", still_present: "still present", worse: "worse", new: "new" };
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 type Changes = Record<string, { change: ChangeState; note: string | null; changes: string[] }>;
 
-export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, onSetStatus, headline = null, versionChange = null, changes = {}, onFindingCode }: {
-  headline?: Headline | null; versionChange?: VC | null; changes?: Changes; onFindingCode?: (code: string) => void;
-  state: ReviewState; evidence: Record<string, Evidence>; selectedId: string | null; onSelect: (id: string | null) => void; onAsk: (id: string) => void;
+export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, onSetStatus, changes = {} }: {
+  changes?: Changes;
+  state: ReviewState; evidence: Record<string, Evidence>; selectedId: string | null; onSelect: (id: string | null) => void; /** left out in the read-only demo */ onAsk?: (id: string) => void;
   onSetStatus: (id: string, status: "dismissed" | "open", reason?: string) => void;
 }) {
   const [sev, setSev] = useState<Severity | "all">("all");
@@ -37,25 +36,23 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
   const c = state.candidates;
   return (
     <div className="fp">
-      <div className="fp-tabs" role="tablist" aria-label="Severity filter">
-        <button role="tab" aria-selected={sev === "all"} onClick={() => setSev("all")}><span className="num">{live.length}</span><span className="idx">ALL</span></button>
-        {SEVERITY_ORDER.map((s) => (
-          <button key={s} role="tab" aria-selected={sev === s} onClick={() => setSev(s)} style={{ opacity: counts[s] || sev === s ? 1 : 0.4 }} title={s}>
-            <span className="num"><SevGlyph sev={s} size={10} /> {counts[s]}</span><span className="idx">{s.slice(0, 4)}</span>
-          </button>
-        ))}
+      <div className="fp-top">
+        <div className="pills" role="tablist" aria-label="Severity filter">
+          <button role="tab" aria-selected={sev === "all"} onClick={() => setSev("all")}>All <span className="num">{live.length}</span></button>
+          {SEVERITY_ORDER.filter((s) => counts[s] > 0 || sev === s).map((s) => (
+            <button key={s} role="tab" aria-selected={sev === s} onClick={() => setSev(s)}>
+              {cap(s)} <span className="num">{counts[s]}</span>
+            </button>
+          ))}
+        </div>
+        {c.total > 0 && <p className="fp-cand">{c.reviewed} of {c.total} candidates reviewed</p>}
       </div>
-      {c.total > 0 && (
-        <div className="fp-cand mono"><span className="idx">CANDIDATES</span><span>{c.reviewed}/{c.total} reviewed</span><div className="meter"><b style={{ width: `${(c.reviewed / c.total) * 100}%` }} /></div></div>
-      )}
       <div className="fp-list">
-        {versionChange && <VersionChange vc={versionChange} compact onFinding={onFindingCode} />}
-        {headline && <PartialWin h={headline} compact onFinding={onFindingCode} />}
         {list.length === 0 && (
           <p className="empty">{all.length === 0 ? (state.status === "running" || state.status === "idle" ? "No findings yet. Each one appears here, with its numbered balloon on the board, the moment the agent records it." : "This review recorded no findings.") : "No findings at this level."}</p>
         )}
         {list.map((f) => (
-          <FindingCard key={f.id} f={f} change={changes[f.code ?? ""]} ev={(f.evidence ?? f.evidence_ids ?? []).map((i) => evidence[i]).filter(Boolean)} evCodes={f.evidence ?? []} sel={selectedId === f.id} onSelect={() => onSelect(selectedId === f.id ? null : f.id)} onAsk={() => onAsk(f.id)} onDismiss={(reason) => onSetStatus(f.id, "dismissed", reason)} setRef={(el) => { refs.current[f.id] = el; }} />
+          <FindingCard key={f.id} f={f} change={changes[f.code ?? ""]} ev={(f.evidence ?? f.evidence_ids ?? []).map((i) => evidence[i]).filter(Boolean)} evCodes={f.evidence ?? []} sel={selectedId === f.id} onSelect={() => onSelect(selectedId === f.id ? null : f.id)} onAsk={onAsk ? () => onAsk(f.id) : undefined} onDismiss={(reason) => onSetStatus(f.id, "dismissed", reason)} setRef={(el) => { refs.current[f.id] = el; }} />
         ))}
         {gone.length > 0 && (
           <div className="fp-gone">
@@ -74,7 +71,7 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
   );
 }
 
-function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }: { f: Finding; change?: Changes[string]; ev: Evidence[]; evCodes: string[]; sel: boolean; onSelect: () => void; onAsk: () => void; onDismiss: (reason: string) => void; setRef: (el: HTMLElement | null) => void }) {
+function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }: { f: Finding; change?: Changes[string]; ev: Evidence[]; evCodes: string[]; sel: boolean; onSelect: () => void; onAsk?: () => void; onDismiss: (reason: string) => void; setRef: (el: HTMLElement | null) => void }) {
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
   const { demo } = useAppEnv();         // a read-only demo refuses every change: no dismissing and no follow-up questions
@@ -83,7 +80,10 @@ function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, 
       <button className="fc-head" onClick={onSelect} aria-expanded={sel}>
         <span className={`fc-bal ${f.severity}`}>{findingNumber(f)}</span>
         <span className="fc-main">
-          <span className="fc-meta"><span className="idx">{findingLabel(f)}</span><SevGlyph sev={f.severity} size={10} /><span className="idx">{f.severity}</span>{f.status === "needs_recheck" && <span className="stamp sig">Needs recheck</span>}{change && <span className={`stamp ${change.change === "improved" ? "solid" : change.change === "worse" ? "sig" : ""}`} title={change.note ?? change.changes.join("; ") ?? ""}>{CHANGE_LABEL[change.change]}</span>}</span>
+          <span className="fc-meta" title={change ? (change.note ?? change.changes.join("; ")) : undefined}>
+            <span>{findingLabel(f)}</span>
+            <span className="fc-sev"><SevGlyph sev={f.severity} size={10} /> {cap(f.severity)}{f.status === "needs_recheck" ? ", needs recheck" : change ? `, ${CHANGE_LABEL[change.change]}` : ""}</span>
+          </span>
           <span className="fc-title">{f.title}</span>
         </span>
         <Icon name="chevron" size={12} style={{ transform: sel ? "rotate(90deg)" : undefined, transition: "transform .2s" }} />
@@ -92,13 +92,13 @@ function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, 
         <div className="fc-body rise">
           <div className="fc-stamps"><ClassStamp cls={f.class} />{f.source === "followup" && <span className="stamp">Found in follow-up</span>}</div>
           <MarksSummary marks={f.marks ?? []} />
-          {change && <Sec k="SINCE THE PREVIOUS VERSION" t={[CHANGE_LABEL[change.change], change.changes.join("; "), change.note].filter(Boolean).join(". ")} />}
-          <Sec k="WHAT" t={f.what} />
-          <Sec k="WHY IT MATTERS" t={f.why_it_matters} />
-          <Sec k="RECOMMENDATION" t={f.recommendation} />
+          {change && <Sec k="Since the previous version" t={[cap(CHANGE_LABEL[change.change]), change.changes.join("; "), change.note].filter(Boolean).join(". ")} />}
+          <Sec k="What" t={f.what} />
+          <Sec k="Why it matters" t={f.why_it_matters} />
+          <Sec k="Recommendation" t={f.recommendation} />
           {(ev.length > 0 || evCodes.length > 0) && (
             <div className="fc-ev">
-              <span className="idx">EVIDENCE</span>
+              <span className="idx">Evidence</span>
               {ev.length === 0 && <div className="fc-evrow"><span className="mono">{evCodes.join(", ")}</span></div>}
               {ev.map((e) => {
                 const l = evidenceLine(e);
@@ -112,11 +112,11 @@ function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, 
               })}
             </div>
           )}
-          {f.assumptions?.length > 0 && <List k="ASSUMPTIONS" items={f.assumptions} />}
-          {f.not_tested?.length > 0 && <List k="NOT TESTED" items={f.not_tested} />}
+          {f.assumptions?.length > 0 && <List k="Assumptions" items={f.assumptions} />}
+          {f.not_tested?.length > 0 && <List k="Not tested" items={f.not_tested} />}
           {demo ? null : asking ? (
             <div className="fc-dismiss">
-              <label className="idx" htmlFor={`dr-${f.id}`}>WHY DISMISS IT?</label>
+              <label className="idx" htmlFor={`dr-${f.id}`}>Why dismiss it?</label>
               <input id={`dr-${f.id}`} type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Known and accepted, false positive, ..." autoFocus
                 onKeyDown={(e) => { if (e.key === "Enter" && reason.trim()) { onDismiss(reason.trim()); setAsking(false); } }} />
               <div className="fc-act">
@@ -126,8 +126,8 @@ function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, 
             </div>
           ) : (
             <div className="fc-act">
-              <button className="btn sm" onClick={onAsk}><Icon name="chat" size={11} /> Ask about this</button>
-              <button className="btn sm ghost" onClick={() => setAsking(true)}>Dismiss</button>
+              {onAsk && <button className="btn sm" onClick={onAsk}><Icon name="chat" size={13} /> Ask about this</button>}
+              <button className="btn sm ghost" onClick={() => setAsking(true)}><Icon name="close" size={12} /> Dismiss</button>
             </div>
           )}
         </div>
@@ -152,7 +152,7 @@ function MarksSummary({ marks }: { marks: Mark[] }) {
   const KIND: Record<string, string> = { pin: "pin", object: "highlighted object", path: "route", region: "zone", link: "distance link", sketch: "sketch" };
   return (
     <div className="fc-sec fc-marks">
-      <span className="idx">ON THE BOARD</span>
+      <span className="idx">On the board</span>
       <p>{Object.entries(by).map(([k, n]) => `${n} ${KIND[k] ?? k}${n > 1 ? "s" : ""}`).join(", ")} covering {items} item{items === 1 ? "" : "s"}. {items > 12 ? "Pins are numbered; the rest dim until you select this finding." : ""}</p>
       {zones.size > 0 && <p className="fc-zones">{[...zones.entries()].map(([role, n]) => (<span key={role} className="stamp">{role.replace(/_/g, " ")}{n > 1 ? ` x${n}` : ""}</span>))}</p>}
       {by.sketch > 0 && <p className="dim fc-sketchnote"><svg width="26" height="6" aria-hidden><path d="M1 3h24" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2 4" strokeLinecap="round" /></svg> Dashed sketch: a way it could go, display only. It is never a real route.</p>}

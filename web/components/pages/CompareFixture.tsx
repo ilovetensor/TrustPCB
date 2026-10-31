@@ -13,7 +13,7 @@ import { Icon, Panel, SevGlyph, TopBar } from "../ui";
 
 type Cmp = Awaited<ReturnType<typeof getCompare>>;
 const none = { l: 0, r: 0, t: 0, b: 0 };
-const CH: Record<string, string> = { fixed: "FIXED", new: "NEW", still_present: "STILL PRESENT", changed: "CHANGED" };
+const CH: Record<string, string> = { fixed: "Fixed", new: "New", still_present: "Still present", changed: "Changed" };
 
 function toMarks(fs: Finding[]): ActiveMarkItem[] {
   return fs.flatMap((f) => f.marks.map((m, i) => ({ key: `${f.id}:${i}`, findingId: f.id, severity: f.severity, mark: m })));
@@ -60,15 +60,15 @@ export function CompareFixture() {
       <main className="pg-main" style={{ maxWidth: 1440 }}>
         <div className="pg-head">
           <div>
-            <span className="idx">COMPARE / nRF52840 RF IoT NODE</span>
+            <span className="idx">nRF52840 RF IoT node</span>
             <h1 className="serif">What changed between versions.</h1>
           </div>
           <span className="grow" />
-          <div className="seg" aria-label="Versions"><button aria-pressed>A: v1</button><button aria-pressed>B: v2</button></div>
+          <span className="pg-head-actions"><span className="stamp solid">A: version 1</span><span className="stamp solid">B: version 2</span></span>
         </div>
 
         <div className="cmp">
-          <div className="cmp-board hair panel" ref={box} onPointerMove={move} onPointerUp={() => { drag.current = false; }} onPointerLeave={() => { drag.current = false; }}>
+          <div className="cmp-board" ref={box} onPointerMove={move} onPointerUp={() => { drag.current = false; }} onPointerLeave={() => { drag.current = false; }}>
             {board && (
               <>
                 <div className="cmp-layer"><Board2D board={board} marks={marksA} meta={metaA} selectedId={sel} onSelect={setSel} layers={DEFAULT_LAYERS} insets={none} interactive={false} chrome={false} externalView={view} onViewChange={setView} /></div>
@@ -83,33 +83,33 @@ export function CompareFixture() {
           </div>
 
           <div className="cmp-side">
-            <Panel className="card" idx="RESONANCE" title="Tuning, A over B" delay={100}>
-              <div style={{ padding: 14 }}>
+            <Panel className="card" title="Tuning, A over B">
+              <div>
                 {cmp && <TuningGraph curves={curves} band={TARGET_BAND} height={190} />}
                 {cmp && (
-                  <p className="mono" style={{ fontSize: 12, margin: "8px 0 0" }}>
+                  <p style={{ fontSize: 12.5, margin: "10px 0 0" }}>
                     {cmp.a.f0_ghz.toFixed(3)} GHz &rarr; {cmp.b.f0_ghz.toFixed(3)} GHz <b className={d > 0 ? "" : "signal"}>{d > 0 ? "+" : ""}{d.toFixed(0)} MHz</b>
                     <span className="dim"> &nbsp; min {minOf(cmp.a.curve).db.toFixed(1)} to {minOf(cmp.b.curve).db.toFixed(1)} dB</span>
                   </p>
                 )}
-                <p className="idx" style={{ marginTop: 8 }}>FIXTURE CURVES</p>
+                <p className="idx" style={{ marginTop: 8 }}>Fixture curves</p>
               </div>
             </Panel>
-            <Panel className="card" idx="CHANGES" title="Findings" delay={200}>
+            <Panel className="card" title="Findings">
               <ul className="cmp-list">
                 {cmp?.rows.map((r) => (
                   <li key={r.id} className={r.change}>
                     <span className="stamp">{CH[r.change]}</span>
                     <span className="idx">{r.id}</span>
                     <span className="cmp-t">{r.title}</span>
-                    <span className="mono cmp-v">{r.a} <i>&rarr;</i> {r.b}</span>
+                    <span className="cmp-v">{r.a} <i>&rarr;</i> {r.b}</span>
                     <span className="cmp-s"><SevGlyph sev={r.sevA as Severity} size={10} /><i>&rarr;</i><SevGlyph sev={r.sevB as Severity} size={10} /></span>
                   </li>
                 ))}
               </ul>
-              <p className="dim" style={{ fontSize: 12, padding: "0 14px 14px", margin: 0 }}>Dismissals carry forward by fingerprint. Board copper and part differences are highlighted when the geometry differs. Both versions show the same fixture board here.</p>
+              <p className="dim" style={{ fontSize: 12.5, margin: "8px 0 0" }}>Dismissals carry forward by fingerprint. Board copper and part differences are highlighted when the geometry differs. Both versions show the same fixture board here.</p>
             </Panel>
-            <Link className="btn" href="/reviews/r-0042">Open v2 workspace <Icon name="arrow" size={13} /></Link>
+            <Link className="btn primary" href="/reviews/r-0042"><Icon name="board" size={14} /> Open version 2 in the review</Link>
           </div>
         </div>
       </main>

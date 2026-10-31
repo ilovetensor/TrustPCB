@@ -11,8 +11,8 @@ import type { Zone as FunctionZone } from "../../lib/api";
 import { BoardLayers, ZoneLabels } from "./BoardLayers";
 import type { SceneMarkup } from "./useScene";
 import type { LayerState } from "./layers";
-import { RULER, Rulers, type View } from "./Rulers";
 
+export interface View { scale: number; tx: number; ty: number }
 export interface ActiveMarkItem { key: string; findingId: string | null; severity: Severity; mark: Mark }
 export interface FindingMeta { n: number; title: string; severity: Severity; value?: string }
 export interface Insets { l: number; r: number; t: number; b: number }
@@ -23,14 +23,14 @@ const SEVS: Severity[] = ["critical", "high", "medium", "low", "info"];
 const clampView = (v: View): View => v;
 
 export function Board2D({
-  board, marks, meta, selectedId, onSelect, layers, insets, focus, spotlight, pickedId, onPick, overlay, ghost, className, interactive = true, fitTo, externalView, onViewChange, chrome = true, gridOnly = false, scene = null, zones = [], chromeTop = 12,
+  board, marks, meta, selectedId, onSelect, layers, insets, focus, spotlight, pickedId, onPick, overlay, ghost, className, interactive = true, fitTo, externalView, onViewChange, chrome = true, scene = null, zones = [], chromeTop = 12,
 }: {
   board: Board; marks: ActiveMarkItem[]; meta: Record<string, FindingMeta>; selectedId: string | null;
   onSelect: (id: string | null) => void; layers: LayerState; insets: Insets; focus?: FocusRequest | null;
   spotlight?: { targets: string[]; nonce: number } | null; pickedId?: string | null; onPick?: (id: string | null) => void;
   overlay?: (view: View) => ReactNode; ghost?: Ghost | null; className?: string;
-  interactive?: boolean; fitTo?: BBox | null; externalView?: View | null; onViewChange?: (v: View) => void; chrome?: boolean; gridOnly?: boolean;
-  scene?: SceneMarkup | null; zones?: FunctionZone[]; /** top of the readout and zoom pill, in stage pixels */ chromeTop?: number;
+  interactive?: boolean; fitTo?: BBox | null; externalView?: View | null; onViewChange?: (v: View) => void; chrome?: boolean;
+  scene?: SceneMarkup | null; zones?: FunctionZone[]; /** top of the zoom pill, in stage pixels */ chromeTop?: number;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -38,7 +38,6 @@ export function Board2D({
   const viewRef = useRef<View | null>(null);
   const userMoved = useRef(false);
   const anim = useRef(0);
-  const [cursor, setCursor] = useState<[number, number] | null>(null);
   const index = useMemo(() => indexBoard(board), [board]);
 
   const onViewChangeRef = useRef(onViewChange);
@@ -65,10 +64,8 @@ export function Board2D({
     return () => ro.disconnect();
   }, []);
 
-  // The free stage is what the panels leave. Panels hide the rulers, so only a plain margin is kept inside it.
-  const pad = useMemo(() => ({
-    l: insets.l + (insets.l ? 28 : RULER + 24), r: insets.r + 28, t: insets.t + (insets.t ? 14 : RULER + 24), b: insets.b + (insets.b ? 56 : 28),
-  }), [insets]);
+  // a plain margin around the board, plus whatever the caller keeps free
+  const pad = useMemo(() => ({ l: insets.l + 28, r: insets.r + 28, t: insets.t + 28, b: insets.b + 28 }), [insets]);
   const fitBox = fitTo ?? board.bbox;
   const fitAll = useCallback(() => fitView(fitBox, size.w, size.h, pad), [fitBox, size.w, size.h, pad]);
 
@@ -142,7 +139,6 @@ export function Board2D({
     const [x, y] = local(e);
     const v = viewRef.current;
     if (!v) return;
-    setCursor([x, y]);
     if (!pointers.current.has(e.pointerId)) return;
     const prev = pointers.current.get(e.pointerId)!;
     pointers.current.set(e.pointerId, { x, y });
@@ -288,10 +284,10 @@ export function Board2D({
   }, [v, resolved, showIssues, selectedId]);
 
   const obstacles: Rect[] = useMemo(() => {
-    const out: Rect[] = [{ x: 0, y: 0, w: size.w, h: RULER + 2 }, { x: 0, y: 0, w: RULER + 2, h: size.h }];
-    if (insets.l) out.push({ x: 0, y: 0, w: insets.l + RULER, h: size.h });
+    const out: Rect[] = [];
+    if (insets.l) out.push({ x: 0, y: 0, w: insets.l, h: size.h });
     if (insets.r) out.push({ x: size.w - insets.r, y: 0, w: insets.r, h: size.h });
-    if (insets.t) out.push({ x: 0, y: 0, w: size.w, h: insets.t + RULER });
+    if (insets.t) out.push({ x: 0, y: 0, w: size.w, h: insets.t });
     if (insets.b) out.push({ x: 0, y: size.h - insets.b, w: size.w, h: insets.b });
     return out;
   }, [insets, size.w, size.h]);
@@ -314,7 +310,6 @@ export function Board2D({
 
   const ready = !!v && size.w > 0;
   const px = (n: number) => (v ? n / v.scale : n);
-  const cursorBoard = cursor && v ? (toBoard(v, cursor[0], cursor[1]) as [number, number]) : null;
   // spotlight: everything outside the selected finding's geometry is dimmed
   const veil = useMemo(() => {
     if (!selectedId || !showIssues) return null;
@@ -332,7 +327,6 @@ export function Board2D({
       onPointerMove={interactive ? onPointerMove : undefined}
       onPointerUp={interactive ? onPointerUp : undefined}
       onPointerCancel={interactive ? onPointerUp : undefined}
-      onPointerLeave={() => setCursor(null)}
       style={interactive ? undefined : { cursor: "default", pointerEvents: "none" }}
       tabIndex={0}
       role="application"
@@ -353,7 +347,6 @@ export function Board2D({
     >
       {ready && v && (
         <>
-          <Rulers view={v} width={size.w} height={size.h} cursor={cursor} gridOnly />
           <svg className="b2-svg" width={size.w} height={size.h}>
             <defs>
               <filter id="b2-soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation={px(5)} /></filter>
@@ -371,7 +364,7 @@ export function Board2D({
                     <rect x={board.bbox[0] - 6} y={board.bbox[1] - 6} width={board.bbox[2] - board.bbox[0] + 12} height={board.bbox[3] - board.bbox[1] + 12} fill="white" />
                     <g filter="url(#b2-soft)" fill="black">{veil.holes.map((h, i) => (<rect key={i} x={h[0]} y={h[1]} width={h[2] - h[0]} height={h[3] - h[1]} rx={px(6)} />))}</g>
                   </mask>
-                  <rect x={board.bbox[0] - 6} y={board.bbox[1] - 6} width={board.bbox[2] - board.bbox[0] + 12} height={board.bbox[3] - board.bbox[1] + 12} fill="#04040b" mask="url(#b2-veil-mask)" />
+                  <rect x={board.bbox[0] - 6} y={board.bbox[1] - 6} width={board.bbox[2] - board.bbox[0] + 12} height={board.bbox[3] - board.bbox[1] + 12} fill="#000" mask="url(#b2-veil-mask)" />
                 </g>
               )}
               <g className="b2-marks">
@@ -391,7 +384,6 @@ export function Board2D({
           {overlay && (
             <div className="b2-overlay" style={{ transform: `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})` }}>{overlay(v)}</div>
           )}
-          {!gridOnly && <Rulers view={v} width={size.w} height={size.h} cursor={cursor} />}
           <CalloutLayer
             anchors={anchors} dims={dims} width={size.w} height={size.h} obstacles={obstacles}
             selectedId={selectedId} onSelect={onSelect} onCluster={onClusterClick}
@@ -399,11 +391,6 @@ export function Board2D({
           {ghost && <GhostLabel view={v} ghost={ghost} />}
           {chrome && (
             <div className="b2-pill" style={{ right: insets.r + 12, top: chromeTop }}>
-              <div className="b2-readout mono" aria-label="Cursor position in millimetres">
-                <span>X <b>{cursorBoard ? cursorBoard[0].toFixed(1) : "--.-"}</b></span>
-                <span>Y <b>{cursorBoard ? cursorBoard[1].toFixed(1) : "--.-"}</b></span>
-                <span className="dim">mm</span>
-              </div>
               <div className="b2-controls">
                 <button className="icon-btn" aria-label="Zoom in" onClick={() => { userMoved.current = true; setView(zoomAt(v, size.w / 2, size.h / 2, 1.4)); }}><Icon name="plus" /></button>
                 <button className="icon-btn" aria-label="Zoom out" onClick={() => { userMoved.current = true; setView(zoomAt(v, size.w / 2, size.h / 2, 1 / 1.4)); }}><Icon name="minus" /></button>

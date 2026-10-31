@@ -16,11 +16,11 @@ function Thumb({ curve, id, band, job, source }: { curve: unknown; id: string; b
   const own = normaliseCurve(curve);
   const fetched = useAsync(!own && job && source && job.files.includes("s11.json") ? () => loadCurves(source, job).then((c) => c.antenna) : null, `th:${job?.job_id}:${job?.files.length}`).data ?? null;
   const c = own ?? fetched;
-  return <div className="ex-graph">{c ? <TuningGraph curves={[{ id, label: id, f_ghz: c.f_ghz, s11_db: c.s11_db }]} band={band ?? undefined} height={29} compact /> : <span className="idx dim">NO CURVE</span>}</div>;
+  return <div className="ex-graph">{c ? <TuningGraph curves={[{ id, label: id, f_ghz: c.f_ghz, s11_db: c.s11_db }]} band={band ?? undefined} height={29} compact /> : <span className="idx dim">No curve</span>}</div>;
 }
 
-/** Experiment strip: base, each test, confirmed. Updates live with sim events: queued, progress, done with its curve. */
-export function ExperimentStrip({ state, reviewId, band, rfNote, jobs = [], source = null }: {
+/** The experiments: base, each test, confirmed. Updates live with sim events: queued, progress, done with its curve. */
+export function Experiments({ state, reviewId, band, rfNote, jobs = [], source = null }: {
   state: ReviewState; reviewId: string; band: Band | null; rfNote: string | null; jobs?: SimJob[]; source?: SimSource | null;
 }) {
   const running = Object.values(state.sims).filter((s) => s.status !== "done");
@@ -39,7 +39,7 @@ export function ExperimentStrip({ state, reviewId, band, rfNote, jobs = [], sour
           const job = byRef.get(e.id) ?? null;
           const f0 = e.measurements?.resonance?.value ?? e.measurements?.f_res_hz?.value, s11 = e.measurements?.s11_min?.value ?? e.measurements?.s11_min_db?.value;
           const f0ghz = f0 == null ? null : e.measurements?.resonance ? f0 / 1000 : f0 / 1e9;
-          const label = e.kind === "base" ? "BASE" : e.kind === "confirm" ? "CONFIRMED" : `TEST ${exps.slice(0, i + 1).filter((x) => x.kind === "whatif").length}`;
+          const label = e.kind === "base" ? "Base" : e.kind === "confirm" ? "Confirmed" : `Test ${exps.slice(0, i + 1).filter((x) => x.kind === "whatif").length}`;
           const ok = band && f0ghz != null && s11 != null ? s11 <= band.target_db && f0ghz >= band.lo_ghz && f0ghz <= band.hi_ghz : null;
           // the first series resonance is the length indicator; the deepest dip can jump between unrelated features of the curve
           const shift = e.delta?.series_res_hz as number | undefined;
@@ -48,12 +48,12 @@ export function ExperimentStrip({ state, reviewId, band, rfNote, jobs = [], sour
               <div className="ex-top"><span className="idx">{label}</span>{chip(e.suspect)}<span style={{ flex: 1 }} />{ok === true && <span className="stamp sig">In band</span>}{e.trust !== "ok" && <span className="stamp">Trust {e.trust}</span>}</div>
               <Thumb curve={e.curve} id={e.id} band={band} job={job} source={source} />
               <div className="ex-name" title={e.label}>{e.id} {e.label}</div>
-              <div className="mono ex-num">
+              <div className="ex-num">
                 {shift != null
                   ? <span title={`Shift of the first series resonance against the base run, the indicator that moves with antenna length.${e.measurements ? ` ${measurementLine(e.measurements).slice(0, 2).map((m) => `${m.k} ${m.v} ${m.u}`).join(", ")}.` : ""}`}>1st series <b>{shift >= 0 ? "+" : "−"}{Math.abs(shift / 1e6).toFixed(0)}</b> MHz</span>
                   : e.measurements && Object.keys(e.measurements).length ? measurementLine(e.measurements).slice(0, 2).map((m) => (<span key={m.k}><b>{m.v}</b> {m.u} </span>)) : "-"}
               </div>
-              {e.quality === "screen" && <div className="idx ex-q" title="Screen runs are for comparing. Do not read them as absolute numbers.">SCREEN, COMPARE ONLY</div>}
+              {e.quality === "screen" && <div className="ex-q" title="Screen runs are for comparing. Do not read them as absolute numbers.">Screen, compare only</div>}
             </>
           );
           return job ? (
@@ -64,21 +64,21 @@ export function ExperimentStrip({ state, reviewId, band, rfNote, jobs = [], sour
         })}
         {running.map((s) => (
           <div key={s.id} className="ex-cell run">
-            <div className="ex-top"><span className="idx">{s.kind === "confirm" ? "CONFIRMING" : "RUNNING"}</span>{chip(s.suspect)}<span style={{ flex: 1 }} /><span className="idx blink">{Math.round(s.pct * 100)}%</span></div>
+            <div className="ex-top"><span className="idx">{s.kind === "confirm" ? "Confirming" : "Running"}</span>{chip(s.suspect)}<span style={{ flex: 1 }} /><span className="idx blink">{Math.round(s.pct * 100)}%</span></div>
             <div className="ex-prog"><div className="meter sig"><b style={{ width: `${s.pct * 100}%` }} /></div></div>
             <div className="ex-name" title={s.label}>{s.id} {s.label}</div>
-            <div className="mono ex-num dim">{s.step}</div>
-            {s.quality === "screen" && <div className="idx ex-q">SCREEN, COMPARE ONLY</div>}
+            <div className="ex-num dim">{s.step}</div>
+            {s.quality === "screen" && <div className="ex-q">Screen, compare only</div>}
           </div>
         ))}
         {exps.length === 0 && running.length === 0 && (
           <div className="ex-empty">
-            <span className="idx">EXPERIMENTS / NOT TESTED</span>
+            <span className="idx">Not tested</span>
             <span className="dim">{rfNote ?? "No simulation has run in this review. Each one the agent runs appears here: base first, then every test, then the confirmed result."}</span>
           </div>
         )}
       </div>
-      <Link className="btn sm ex-link" href={`/reviews/${reviewId}/rf`}><Icon name="wave" size={12} /> RF lab</Link>
+      <Link className="btn ex-link" href={`/reviews/${reviewId}/rf`}><Icon name="wave" size={14} /> Open RF lab</Link>
     </div>
   );
 }

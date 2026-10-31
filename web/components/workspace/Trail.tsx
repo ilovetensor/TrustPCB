@@ -10,7 +10,9 @@ import { InvestigationBoard } from "./InvestigationBoard";
 
 type Filter = "all" | "board" | "thoughts" | "tests" | "results";
 
-const STATUS: Record<string, string> = { pending: "QUEUED", testing: "TESTING", confirmed: "CONFIRMED", ruled_out: "RULED OUT", inconclusive: "INCONCLUSIVE" };
+const STATUS: Record<string, string> = { open: "Open", pending: "Queued", testing: "Testing", confirmed: "Confirmed", ruled_out: "Ruled out", inconclusive: "Inconclusive" };
+const FILTERS: [Filter, string][] = [["board", "Summary"], ["all", "Everything"], ["thoughts", "Notes"], ["tests", "Tests"], ["results", "Results"]];
+const toolName = (t?: string) => (t ?? "").replace(/_/g, " ");
 
 export function Trail({ state, onSelectFinding, story = [], tests = [] }: { state: ReviewState; onSelectFinding: (id: string) => void; story?: StoryRound[]; tests?: StoryTest[] }) {
   const [filter, setFilter] = useState<Filter>("all");
@@ -33,9 +35,9 @@ export function Trail({ state, onSelectFinding, story = [], tests = [] }: { stat
   return (
     <div className="trail">
       <div className="trail-filter">
-        <div className="seg" role="tablist" aria-label="Trail filter">
-          {(["all", "board", "thoughts", "tests", "results"] as Filter[]).map((f) => (
-            <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}>{f}</button>
+        <div className="pills" role="tablist" aria-label="Investigation filter">
+          {FILTERS.map(([f, label]) => (
+            <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}>{label}</button>
           ))}
         </div>
       </div>
@@ -67,9 +69,8 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
   if (e.kind === "phase")
     return (
       <li className="tr tr-phase">
-        <span className="idx">PHASE {String(e.phase ?? 0).padStart(2, "0")}{e.substep === "refine" ? " / REFINE" : ""}</span>
+        <span className="idx">Step {e.phase ?? 0}{e.substep === "refine" ? ", refine" : ""}</span>
         <b>{e.text}</b>
-        <hr className="hl" />
       </li>
     );
   if (e.kind === "thought")
@@ -78,16 +79,16 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
     return (
       <li className="tr tr-tool">
         <span className="tr-st error" aria-label="error" />
-        <span className="mono tr-tn">{e.tool}</span>
+        <span className="tr-tn">{toolName(e.tool)}</span>
         <span className="tr-tt">{e.text}</span>
-        {e.result && <span className="tr-res mono">{errorText(e.result)}</span>}
+        {e.result && <span className="tr-res">{errorText(e.result)}</span>}
       </li>
     );
   if (e.kind === "tool")
     return (
       <li className="tr tr-tool">
         <span className={`tr-st ${e.state}`} aria-label={e.state} />
-        <span className="mono tr-tn">{e.tool}</span>
+        <span className="tr-tn">{toolName(e.tool)}</span>
         <span className="tr-tt">{e.text}</span>
       </li>
     );
@@ -95,11 +96,11 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
     const sim = e.simId ? state.sims[e.simId] : null;
     return (
       <li className="tr tr-sim">
-        <div className="tr-simtop"><span className="idx">SIM {sim?.kind ? sim.kind.toUpperCase() : "RUN"}</span><b>{e.text}</b><span className="idx">{e.state === "done" ? "DONE" : e.state === "queued" ? "QUEUED" : `${Math.round((e.pct ?? 0) * 100)}%`}</span></div>
+        <div className="tr-simtop"><span className="idx">Simulation{sim?.kind ? `, ${sim.kind}` : ""}</span><b>{e.text}</b><span className="idx">{e.state === "done" ? "Done" : e.state === "queued" ? "Queued" : `${Math.round((e.pct ?? 0) * 100)}%`}</span></div>
         <Meter value={e.pct ?? 0} signal={e.state === "running"} />
-        {sim?.change && <div className="mono tr-change">{sim.change}</div>}
+        {sim?.change && <div className="tr-change">{sim.change}</div>}
         {sim?.measurements && Object.keys(sim.measurements).length > 0 && (
-          <div className="tr-sum mono">{measurementLine(sim.measurements).map((m) => (<span key={m.k}>{m.k} <b>{m.v}</b> {m.u}</span>))}</div>
+          <div className="tr-sum">{measurementLine(sim.measurements).map((m) => (<span key={m.k}>{m.k} <b>{m.v}</b> {m.u}</span>))}</div>
         )}
       </li>
     );
@@ -112,7 +113,7 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
           <span className="idx">{findingLabel(state.findings[e.findingId] ?? e.findingId)}</span>
           <span>{state.findings[e.findingId]?.title ?? e.text}</span>
           {e.detail && <span className="stamp">{e.detail.replace(/_/g, " ")}</span>}
-          <span className="idx">№{findingNumber(state.findings[e.findingId] ?? e.findingId)}</span>
+          <span className="idx">#{findingNumber(state.findings[e.findingId] ?? e.findingId)}</span>
         </button>
       </li>
     );
@@ -120,12 +121,12 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
     const inv = e.investigationId ? state.investigations[e.investigationId] : null;
     return (
       <li className="tr tr-inv">
-        <span className="idx">INVESTIGATION {inv?.code ?? ""}</span>
-        <p className="serif">{inv?.question ?? e.text}</p>
+        <span className="idx">Investigation {inv?.code ?? ""}</span>
+        <p className="tr-q">{inv?.question ?? e.text}</p>
         <ul>
           {inv?.suspects.map((s, i) => (
             <li key={s.id} className={`sus ${s.status}`}>
-              <span className="idx">{s.code ?? `S${i + 1}`}</span><span>{s.title}</span><span className="stamp">{STATUS[s.status] ?? s.status}</span>
+              <span className="idx">{s.code ?? `S${i + 1}`}</span><span>{s.title}</span><span className="stamp">{STATUS[s.status] ?? s.status.replace(/_/g, " ")}</span>
             </li>
           ))}
         </ul>
@@ -133,8 +134,8 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
     );
   }
   if (e.kind === "suspect")
-    return (<li className="tr tr-thought dim2"><p><span className="stamp">{STATUS[e.status ?? ""] ?? e.status}</span> {e.text}{e.detail ? `. ${e.detail}` : ""}</p></li>);
+    return (<li className="tr tr-thought dim2"><p><span className="stamp">{STATUS[e.status ?? ""] ?? (e.status ?? "").replace(/_/g, " ")}</span> {e.text}{e.detail ? `. ${e.detail}` : ""}</p></li>);
   return (
-    <li className="tr tr-res2"><span className="idx">RESULT</span><b>{e.text}</b>{e.detail && <p>{e.detail}</p>}</li>
+    <li className="tr tr-res2"><span className="idx">Result</span><b>{e.text}</b>{e.detail && <p>{e.detail}</p>}</li>
   );
 }

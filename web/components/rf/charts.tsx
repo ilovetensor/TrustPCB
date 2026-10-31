@@ -1,4 +1,5 @@
 "use client";
+import "../board2d/board2d.css";
 import { useMemo, useRef, useState } from "react";
 import { rgb, FIELD_STOPS } from "../../lib/ramp.mjs";
 import type { S11Data, ZinData } from "../../lib/rf-data";
@@ -46,7 +47,7 @@ export function TuningGraph({ curves, band, marker, onMarker, height = 240, comp
         <g key={v}><line x1={m.l} x2={W - m.r} y1={y(v)} y2={y(v)} stroke="var(--hair)" /><text x={m.l - 6} y={y(v)} textAnchor="end" dy="0.34em" className="rl-t">{v}</text></g>
       ))}
       {band && <line x1={m.l} x2={W - m.r} y1={y(band.target_db)} y2={y(band.target_db)} stroke="var(--signal)" strokeWidth="1" opacity="0.9" />}
-      {band && !compact && <text x={W - m.r - 4} y={y(band.target_db) - 5} textAnchor="end" className="rl-t" fill="var(--signal)">TARGET {band.target_db} dB</text>}
+      {band && !compact && <text x={W - m.r - 4} y={y(band.target_db) - 5} textAnchor="end" className="rl-t" fill="var(--signal)">Target {band.target_db} dB</text>}
       {!compact && ticks.map((f, i) => (
         <g key={f}>
           <line x1={x(f)} x2={x(f)} y1={height - m.b} y2={height - m.b + (i % 2 === 0 ? 6 : 3)} stroke="var(--paper-3)" />
@@ -76,7 +77,7 @@ export function TuningGraph({ curves, band, marker, onMarker, height = 240, comp
           <line x1={x(marker)} x2={x(marker)} y1={m.t} y2={height - m.b} stroke="var(--paper)" strokeWidth="1" />
           <circle cx={x(marker)} cy={y(interp(main.f_ghz, main.s11_db, marker))} r="4" fill="var(--signal)" stroke="var(--stage)" strokeWidth="1.5" />
           <g transform={`translate(${x(marker) > (m.l + W - m.r) / 2 ? m.l + 8 : W - m.r - 112} ${y(-13)})`}>
-            <rect width="108" height="34" fill="var(--panel-solid)" stroke="var(--hair-2)" />
+            <rect width="108" height="34" rx="9" fill="var(--panel-solid)" />
             <text x="6" y="14" className="rl-t" fill="var(--paper)">{marker.toFixed(3)} GHz</text>
             <text x="6" y="27" className="rl-t" fill="var(--signal)">{interp(main.f_ghz, main.s11_db, marker).toFixed(1)} dB</text>
           </g>

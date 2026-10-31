@@ -31,11 +31,17 @@ const P: Record<string, string> = {
   question: "M6 6a2 2 0 114 0c0 1.5-2 1.5-2 3M8 11.5v.5",
   rotate: "M13.5 8a5.5 5.5 0 11-1.6-3.9M13.5 2.5v3h-3",
   explode: "M8 1.5v3M8 11.5v3M3.5 5.5 8 8l4.5-2.5M3.5 10.5 8 8l4.5 2.5",
+  back: "M9.5 3.5 5 8l4.5 4.5",
+  flag: "M3.5 14V2.5h8.5L10 5.5l2 3H3.5",
+  search: "M7 2.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM10.3 10.3 13.5 13.5",
+  gauge: "M2.5 11.5a5.5 5.5 0 1111 0M8 11.5 10.5 7",
+  folder: "M2 4a1 1 0 011-1h3l1.5 2H13a1 1 0 011 1v6a1 1 0 01-1 1H3a1 1 0 01-1-1z",
+  info: "M8 2a6 6 0 100 12A6 6 0 008 2zM8 7.5V11M8 5v.5",
 };
 
 export function Icon({ name, size = 16, ...rest }: { name: keyof typeof P | string; size?: number } & Omit<SVGProps<SVGSVGElement>, "name">) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden {...rest}>
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...rest}>
       <path d={P[name] ?? P.dot} />
     </svg>
   );

@@ -12,7 +12,7 @@ import { VersionChange } from "./VersionChange";
 import { useAsync } from "../../lib/use-async";
 import { cssGradient, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
 import { reducedMotion, useNarrow, useReducedMotion } from "../../lib/hooks";
-import { Icon, Logo, Panel } from "../ui";
+import { Icon, Panel } from "../ui";
 import { SimStage, type SimView } from "./SimStage";
 import { SmithChart, TuningGraph, type CurveSpec } from "./charts";
 import { PartialWin } from "./PartialWin";
@@ -21,14 +21,14 @@ import { ACCEPTED_LABEL, PowerBar } from "./PowerPair";
 export interface Band { lo_ghz: number; hi_ghz: number; target_db: number }
 type Trace = "antenna" | "both" | "as_built";
 
-const VIEWS: { key: SimView; label: string; needs: string[]; why: string }[] = [
-  { key: "wave", label: "Field", needs: ["field.json", "field_xy.bin"], why: "field" },
-  { key: "pulse", label: "Pulse", needs: ["pulse.json", "pulse.bin"], why: "pulse" },
-  { key: "pattern", label: "Pattern", needs: ["pattern.json"], why: "radiation pattern" },
-  { key: "current", label: "Current", needs: ["current.json", "current.bin"], why: "surface current" },
+const VIEWS: { key: SimView; label: string; icon: string; needs: string[]; why: string }[] = [
+  { key: "wave", label: "Field", icon: "wave", needs: ["field.json", "field_xy.bin"], why: "field" },
+  { key: "pulse", label: "Pulse", icon: "bolt", needs: ["pulse.json", "pulse.bin"], why: "pulse" },
+  { key: "pattern", label: "Pattern", icon: "cube", needs: ["pattern.json"], why: "radiation pattern" },
+  { key: "current", label: "Current", icon: "layers", needs: ["current.json", "current.bin"], why: "surface current" },
 ];
 const canShow = (job: SimJob | null, v: SimView) => !!job && VIEWS.find((x) => x.key === v)!.needs.every((f) => job.files.includes(f));
-const OVERLAY_COLORS = ["var(--cu-bot)", "var(--sim-neg)", "var(--paper-3)"];
+const OVERLAY_COLORS = ["var(--paper-3)", "var(--sev-medium)", "var(--paper-4)"];
 const ghz = (hz: number) => (hz / 1e9).toFixed(3);
 const kindLabel = (k: SimJob["kind"]) => (k === "base" ? "Base" : k === "confirm" ? "Confirm" : "What-if");
 
@@ -60,7 +60,7 @@ function JobCard({ job, active, overlaid, onActive, onOverlay }: { job: SimJob; 
           <span className="meter sig"><b style={{ width: `${(job.progress ?? 0) * 100}%` }} /></span>
         )}
       </button>
-      {done && <button className={`rf-job-ov ${overlaid ? "on" : ""}`} onClick={onOverlay} aria-pressed={overlaid} disabled={active} title={active ? "Shown" : overlaid ? "Remove from the tuning graph" : "Overlay on the tuning graph"}><Icon name={overlaid || active ? "check" : "plus"} size={11} /></button>}
+      {done && <button className={`rf-job-ov ${overlaid ? "on" : ""}`} onClick={onOverlay} aria-pressed={overlaid} disabled={active} title={active ? "Shown" : overlaid ? "Remove from the tuning graph" : "Overlay on the tuning graph"}><Icon name={overlaid || active ? "check" : "plus"} size={12} /> {active ? "Shown on the board" : overlaid ? "On the tuning graph" : "Add to the tuning graph"}</button>}
     </div>
   );
 }
@@ -171,20 +171,20 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   const unavailable = active && !canShow(active, view);
 
   const stage = (
-    <div className="rf-stage"><div className="stage-bg" />
+    <div className="rf-stage">
       {bundle && active ? (
         <SimStage
           board={bundle.board} glbUrl={bundle.glbUrl} sceneInfo={bundle.scene} view={view} mode={mode} meta={meta}
           fields={fields.data} current={current.data} pulse={pulse.data} pattern={pattern.data} frame={frame} paused={paused} calm={calm} insets={insets}
         />
-      ) : <div className="stage-loading mono idx">{bundle ? "NO FINISHED RUN YET" : "LOADING THE BOARD"}</div>}
-      {loading && <div className="rf-loading mono idx">LOADING {VIEWS.find((v) => v.key === view)!.why.toUpperCase()} DATA</div>}
-      {unavailable && <div className="rf-loading mono idx">THIS RUN KEPT NO {VIEWS.find((v) => v.key === view)!.why.toUpperCase()} FILES</div>}
+      ) : <div className="rf-loading idx">{bundle ? "No finished run yet" : "Loading the board"}</div>}
+      {loading && <div className="rf-loading idx">Loading the {VIEWS.find((v) => v.key === view)!.why} data</div>}
+      {unavailable && <div className="rf-loading idx">This run kept no {VIEWS.find((v) => v.key === view)!.why} files</div>}
     </div>
   );
 
   const runs = (
-    <Panel className="rf-runs" idx="RUNS" title="Simulations" delay={60} bodyClass="rf-body tight" actions={<span className="idx">{doneJobs.length} OF {jobs.length} DONE</span>}>
+    <Panel className="rf-runs" title="Simulations" bodyClass="rf-body tight" actions={<span className="idx">{doneJobs.length} of {jobs.length} done</span>}>
       <div className="rf-joblist">
         {jobs.map((j) => (
           <JobCard key={j.job_id} job={j} active={j.job_id === active?.job_id} overlaid={overlaid.some((o) => o.job_id === j.job_id)} onActive={() => { setActiveId(j.job_id); setFrame(0); }}
@@ -196,15 +196,15 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
 
   const ramp = view === "wave" ? SIGNED_STOPS : FIELD_STOPS;
   const controls = (
-    <Panel className="rf-ctl" idx="VIEW" title="On the board" delay={140} bodyClass="rf-body">
-      <div className="seg" role="tablist" aria-label="Simulation view" style={{ display: "flex" }}>
+    <Panel className="rf-ctl" title="On the board" bodyClass="rf-body">
+      <div className="seg rf-views" role="tablist" aria-label="Simulation view">
         {VIEWS.map((v) => (
-          <button key={v.key} style={{ flex: 1 }} role="tab" aria-selected={view === v.key} disabled={!canShow(active, v.key)} title={canShow(active, v.key) ? undefined : `This run kept no ${v.why} files`}
-            onClick={() => { setView(v.key); if (v.key === "pulse") { setFrame(0); setPulsePlay(true); } }}>{v.label}</button>
+          <button key={v.key} role="tab" aria-selected={view === v.key} disabled={!canShow(active, v.key)} title={canShow(active, v.key) ? undefined : `This run kept no ${v.why} files`}
+            onClick={() => { setView(v.key); if (v.key === "pulse") { setFrame(0); setPulsePlay(true); } }}><Icon name={v.icon} size={13} /> {v.label}</button>
         ))}
       </div>
       <div className="rf-legend">
-        <span className="idx">{view === "wave" ? "E-FIELD, INSTANTANEOUS, Ez" : view === "pulse" ? "PULSE, |E|" : view === "pattern" ? "DIRECTIVITY" : "SURFACE CURRENT, |Js|"}</span>
+        <span className="idx">{view === "wave" ? "E-field, instantaneous, Ez" : view === "pulse" ? "Pulse, |E|" : view === "pattern" ? "Directivity" : "Surface current, |Js|"}</span>
         <div className="rf-ramp" style={{ background: cssGradient(ramp) }} />
         <div className="rf-ramp-l mono">
           {view === "wave" ? <><span>negative</span><span>0</span><span>positive</span></> : view === "pattern" ? <><span>{pattern.data ? `${(pattern.data.dmax_dbi - 10).toFixed(0)} dBi` : ""}</span><span>{pattern.data ? `${pattern.data.dmax_dbi.toFixed(1)} dBi max` : ""}</span></> : <><span>0</span><span>{view === "current" ? "99.5th pct" : "peak"}</span></>}
@@ -218,7 +218,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
           <button aria-pressed={mode === "3d" || view === "pattern"} onClick={() => setMode("3d")}><Icon name="cube" size={11} /> 3D</button>
           <button aria-pressed={mode === "2d" && view !== "pattern"} disabled={view === "pattern"} onClick={() => setMode("2d")}><Icon name="board" size={11} /> 2D</button>
         </div>
-        <span className="idx rf-dashed" title="The dashed box is the region the solver modelled. The red ring is the port.">- - modelled region</span>
+        <span className="idx rf-dashed" title="The dashed box is the region the solver modelled. The red ring is the port.">Dashed box: modelled region</span>
       </div>
     </Panel>
   );
@@ -235,7 +235,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   const inBand = band && sim?.f_res ? sim.f_res / 1e9 >= band.lo_ghz && sim.f_res / 1e9 <= band.hi_ghz && (sim.s11_min_db ?? 0) <= band.target_db : null;
 
   const charts = (
-    <Panel className="rf-charts" idx="RESPONSE" title="Tuning" delay={200} bodyClass="rf-body" actions={<span className="rf-acts">
+    <Panel className="rf-charts" title="Tuning" bodyClass="rf-body" actions={<span className="rf-acts">
       {active?.trust && <span className={`stamp ${active.trust.status === "ok" ? "" : "sig"}`} title={active.trust.reasons.join("; ") || "Energy decay, passivity, mesh and port checks"}>{active.trust.status === "ok" ? "Trust ok" : "Trust failed"}</span>}
       {inBand != null && <span className={`stamp ${inBand ? "solid" : "sig"}`}>{inBand ? "Dip in band" : "Off target"}</span>}
       {screen ? <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span> : active?.quality === "confirm" ? <span className="stamp solid">Confirm</span> : null}
@@ -245,9 +245,9 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
       {(accepted.asBuilt || accepted.antenna || sumBand.asBuilt != null || sumBand.antenna != null) && (
         <section className="rf-band" aria-label="In-band S11 and accepted power">
           <div className="rf-band-s11">
-            <span className="idx">S11 IN THE BAND, WORST POINT</span>
+            <span className="idx">S11 in the band, worst point</span>
             <div className="rf-band-big mono">{sumBand.asBuilt != null ? <>{sumBand.asBuilt.toFixed(1).replace("-", "−")}<small> dB</small></> : sumBand.antenna != null ? <>{sumBand.antenna.toFixed(1).replace("-", "−")}<small> dB</small></> : "-"}</div>
-            <span className="idx">{sumBand.asBuilt != null ? "AS BUILT" : "ANTENNA ALONE"}</span>
+            <span className="idx">{sumBand.asBuilt != null ? "As built" : "Antenna alone"}</span>
             {sumBand.asBuilt != null && sumBand.antenna != null && <span className="mono rf-band-small">{sumBand.antenna.toFixed(1).replace("-", "−")} dB antenna alone</span>}
             {band && <span className="mono rf-band-small">target {band.target_db} dB</span>}
           </div>
@@ -259,7 +259,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
         </section>
       )}
       <div className="rf-row">
-        <span className="idx">S11 AND BAND</span><span style={{ flex: 1 }} />
+        <span className="idx">S11 and band</span><span style={{ flex: 1 }} />
         {asBuilt && (
           <div className="seg" role="group" aria-label="Which S11 trace">
             <button aria-pressed={trace === "antenna"} onClick={() => setTrace("antenna")}>Antenna</button>
@@ -277,11 +277,11 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
       </div>
       <div className="rf-split">
         <div>
-          <span className="idx">SMITH CHART, 50 OHM</span>
+          <span className="idx">Smith chart, 50 ohm</span>
           {smithMain && band ? <SmithChart zin={smithMain} second={trace !== "antenna" ? smithAsBuilt : null} band={band} marker={marker} size={196} /> : <p className="dim">{band ? "No impedance file for this run." : "The target band is unknown."}</p>}
         </div>
         <div className="rf-dipcol">
-          <span className="idx">S11 DIPS{fromSummary ? "" : ", FOUND ON THE CURVE"}</span>
+          <span className="idx">S11 dips{fromSummary ? "" : ", found on the curve"}</span>
           {dips.length > 0 ? (
             <ol className="rf-dips mono" aria-label="S11 dips">
               {dips.map((d, i) => (
@@ -301,19 +301,19 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
       <div className="rf-stats">
         {numbers.map(([a, b]) => (<div key={a}><span className="idx">{a}</span><b className="mono">{b}</b></div>))}
       </div>
-      <p className="idx rf-note">SIMULATED. NOT A SUBSTITUTE FOR A REAL ANTENNA MEASUREMENT.</p>
+      <p className="idx rf-note">Simulated. Not a substitute for a real antenna measurement.</p>
     </Panel>
   );
 
   const dock = (
-    <div className="rf-dock hair panel">
-      {view === "wave" && (<><button className="btn sm" disabled={calm} title={calm ? "Motion is off: your system asks for reduced motion." : undefined} onClick={() => setPaused(!paused)}><Icon name={paused ? "play" : "pause"} size={11} /> {paused ? "Play" : "Pause"}</button><span className="idx">PHASE ROTATES AT {fields.data ? ghz(fields.data.f_hz) : ""} GHZ, TIME SLOWED</span></>)}
+    <div className="rf-dock">
+      {view === "wave" && (<><button className="btn sm" disabled={calm} title={calm ? "Motion is off: your system asks for reduced motion." : undefined} onClick={() => setPaused(!paused)}><Icon name={paused ? "play" : "pause"} size={11} /> {paused ? "Play" : "Pause"}</button><span className="idx">Phase rotates at {fields.data ? ghz(fields.data.f_hz) : ""} GHz, time slowed</span></>)}
       {view === "pulse" && pulse.data && (<>
         <button className="btn sm" onClick={() => { setFrame(0); setPulsePlay(true); }}><Icon name="rotate" size={11} /> Play once</button>
-        <input type="range" min={0} max={pulse.data.frames.length - 1} value={frame} onChange={(e) => { setPulsePlay(false); setFrame(+e.target.value); }} aria-label="Pulse frame" style={{ width: 220, accentColor: "var(--signal)" }} />
-        <span className="idx">T = {((pulse.data.times_s[Math.min(frame, pulse.data.times_s.length - 1)] ?? 0) * 1e9).toFixed(2)} NS</span></>)}
-      {view === "pattern" && <span className="idx">DRAG TO ORBIT. THE BALLOON IS CENTRED ON THE ANTENNA.</span>}
-      {view === "current" && <span className="idx">TOP COPPER, AT {current.data ? ghz(current.data.f_hz) : ""} GHZ</span>}
+        <input type="range" min={0} max={pulse.data.frames.length - 1} value={frame} onChange={(e) => { setPulsePlay(false); setFrame(+e.target.value); }} aria-label="Pulse frame" style={{ width: 220, accentColor: "var(--paper)" }} />
+        <span className="idx">t = {((pulse.data.times_s[Math.min(frame, pulse.data.times_s.length - 1)] ?? 0) * 1e9).toFixed(2)} ns</span></>)}
+      {view === "pattern" && <span className="idx">Drag to orbit. The balloon is centred on the antenna.</span>}
+      {view === "current" && <span className="idx">Top copper, at {current.data ? ghz(current.data.f_hz) : ""} GHz</span>}
     </div>
   );
 
@@ -321,17 +321,17 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
     <main className="rf">
       {stage}
       <header className="rf-top">
-        <Link href="/projects" aria-label="Projects"><Logo size={20} word={false} /></Link>
-        <span className="idx">/</span>
-        <Link href={sample ? "/" : `/reviews/${reviewId}`} className="idx">{sample ? "SAMPLE" : `REVIEW ${reviewId.slice(0, 8).toUpperCase()}`}</Link>
-        <span className="idx">/</span><b className="rf-title">RF lab</b>
-        <span className="rf-sub dim">{title}</span>
+        <Link className="btn sm" href={sample ? "/" : `/reviews/${reviewId}`}><Icon name="back" size={13} /> {sample ? "Back to home" : "Back to review"}</Link>
+        <div className="rf-top-id">
+          <b className="rf-title">RF lab</b>
+          <span className="rf-sub dim">{title}</span>
+        </div>
         <span style={{ flex: 1 }} />
         <span className="stamp sim" title="Computed by the openEMS solver"><i />Simulated</span>
-        <Link className="btn sm" href={sample ? "/" : `/reviews/${reviewId}`}><Icon name="board" size={12} /> {sample ? "Home" : "Workspace"}</Link>
       </header>
       {notice && <div className="rf-banner mono"><span className="stamp fixture">Bundled sample</span> {notice}</div>}
-      {runs}{controls}{charts}
+      <div className="rf-left">{runs}{controls}</div>
+      {charts}
       {dock}
     </main>
   );

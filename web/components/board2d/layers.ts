@@ -9,9 +9,9 @@ export const DEFAULT_LAYERS: LayerState = {
 export const LAYER_TOGGLES: { key: keyof LayerState; label: string }[] = [
   { key: "issues", label: "Issues" },
   { key: "regions", label: "Zones" },
-  { key: "top", label: "F.Cu" },
-  { key: "bottom", label: "B.Cu" },
-  { key: "silk", label: "Silk" },
-  { key: "rf", label: "RF" },
-  { key: "heat", label: "Heat" },
+  { key: "top", label: "Top copper" },
+  { key: "bottom", label: "Bottom copper" },
+  { key: "silk", label: "Silkscreen" },
+  { key: "rf", label: "RF field" },
+  { key: "heat", label: "Surface current" },
 ];

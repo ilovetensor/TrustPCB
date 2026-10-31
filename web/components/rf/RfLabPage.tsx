@@ -33,12 +33,11 @@ function Shell({ reviewId, meta, children, sample }: { reviewId: string; meta: R
       <main className="pg-main">
         <div className="pg-head">
           <div>
-            <Link href={`/reviews/${reviewId}`} className="idx">REVIEW {reviewId.slice(0, 6).toUpperCase()} /</Link>
             <h1 className="serif">RF lab</h1>
             <p className="pg-sub">{meta ? `${meta.project_name}, ${meta.version_label}` : sample ? "Bundled sample" : ""}</p>
           </div>
           <span className="grow" />
-          <Link className="btn" href={`/reviews/${reviewId}`}><Icon name="board" size={13} /> Workspace</Link>
+          <Link className="btn" href={`/reviews/${reviewId}`}><Icon name="back" size={14} /> Back to review</Link>
         </div>
         {children}
       </main>
@@ -96,12 +95,12 @@ function RfLive({ reviewId, job }: { reviewId: string; job: string | null }) {
     <Shell reviewId={reviewId} meta={meta}>
       {(error || simError) && <p className="chat-err" role="alert">{error ?? simError}</p>}
       {source && source.jobs.length === 0 && (
-        <Panel className="card" idx="NOT TESTED" title="No simulation result for this review" delay={0}>
+        <Panel className="card" title="No simulation result for this review" actions={<span className="stamp">Not tested</span>}>
           <div style={{ padding: 16 }}>
             <p style={{ margin: "0 0 10px" }}>Nothing in this review was simulated, so there is no resonance, S11 curve, field or pattern to show. Nothing here is estimated.</p>
             {meta?.rf?.reason && <p className="dim" style={{ margin: "0 0 10px" }}>{meta.rf.reason}</p>}
             <p className="dim" style={{ margin: 0 }}>Quick reviews run no simulation. Standard and Deep reviews simulate the antenna when the RF lab is installed.</p>
-            <p style={{ margin: "14px 0 0" }}><Link href={`/reviews/${reviewId}/rf?sample=1`} className="signal">View a bundled sample simulation</Link> <span className="dim">(a different board, labelled as a sample)</span></p>
+            <p style={{ margin: "16px 0 0", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><Link href={`/reviews/${reviewId}/rf?sample=1`} className="btn sm"><Icon name="wave" size={13} /> View a bundled sample simulation</Link> <span className="dim">A different board, labelled as a sample</span></p>
           </div>
         </Panel>
       )}

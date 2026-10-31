@@ -1,44 +1,33 @@
-/* TrustPCB: "The Inspection Bench"
-   Ink-and-paper instrument UI. One signal accent (vermilion). Colour belongs to simulation. */
-
-@property --draw {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 1;
-}
+/* TrustPCB interface: black, soft and quiet, so the board and the simulation are what stands out.
+   Surfaces are told apart by tone, not by outlines. Colour belongs to the simulation and to severity. */
 
 :root,
 [data-theme="ink"] {
   color-scheme: dark;
-  /* ink */
-  --ink-0: #05050c;
-  --ink-1: #08081280;
-  --stage: #07070f;
-  --stage-2: #0b0b1a;
-  --panel: rgba(9, 9, 20, 0.94);
-  --panel-solid: #090914;
-  --panel-2: #0f0f20;
-  --panel-3: #15152b;
-  /* paper */
-  --paper: #ece9de;
-  --paper-2: #b4b2c4;
-  --paper-3: #7c7a94;
-  --paper-4: #4b4a63;
-  /* hairlines */
-  --hair: rgba(214, 213, 255, 0.17);
-  --hair-2: rgba(214, 213, 255, 0.3);
-  --hair-3: rgba(214, 213, 255, 0.07);
-  /* signal */
-  --signal: #ff4a1f;
-  --signal-2: #ff7a52;
-  --signal-dim: rgba(255, 74, 31, 0.14);
-  --on-signal: #14090a;
-  /* severity (restrained; shape carries the rest) */
-  --sev-critical: #ff4a1f;
-  --sev-high: #f2883a;
-  --sev-medium: #d9bd55;
-  --sev-low: #86a9cf;
-  --sev-info: #8d8ca6;
+  --ink-0: #000;
+  --ink-1: rgba(0, 0, 0, 0.5);
+  --stage: #000;
+  --stage-2: #0b0b0c;
+  --panel: rgba(28, 28, 30, 0.72);
+  --panel-solid: #161618;
+  --panel-2: rgba(255, 255, 255, 0.055);
+  --panel-3: rgba(255, 255, 255, 0.1);
+  --paper: #f5f5f7;
+  --paper-2: #c7c7cc;
+  --paper-3: #8e8e93;
+  --paper-4: #545458;
+  --hair: rgba(255, 255, 255, 0.08);
+  --hair-2: rgba(255, 255, 255, 0.14);
+  --hair-3: rgba(255, 255, 255, 0.05);
+  --signal: #ff5a36;
+  --signal-2: #ff8163;
+  --signal-dim: rgba(255, 90, 54, 0.15);
+  --on-signal: #140704;
+  --sev-critical: #ff5a36;
+  --sev-high: #ff9f45;
+  --sev-medium: #f2cf5b;
+  --sev-low: #b4b4bb;
+  --sev-info: #8e8e93;
   /* simulation ramp anchors */
   --sim-0: #07041f;
   --sim-1: #4a1d96;
@@ -47,34 +36,37 @@
   --sim-4: #ffa642;
   --sim-5: #fff4d6;
   --sim-neg: #7c6cff;
-  /* copper on the 2D bench */
+  /* copper on the 2D board */
   --cu-top: #d9d2bd;
   --cu-bot: #6f7fb8;
 
-  --font-ui: var(--f-ui), "Helvetica Neue", Arial, sans-serif;
-  --font-mono: var(--f-mono), ui-monospace, "SF Mono", Menlo, monospace;
-  --font-serif: var(--f-serif), "Times New Roman", serif;
+  --font-ui: var(--f-ui), -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-ui);
+  --font-code: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: var(--font-ui);
 
-  --ruler: 22px;
+  --r-lg: 20px;
+  --r-md: 14px;
+  --r-sm: 10px;
   --ease: cubic-bezier(0.2, 0.7, 0.1, 1);
 }
 
 :root[data-theme="paper"],
 [data-theme="paper"] {
   color-scheme: light;
-  --stage: #f3f0e6;
-  --stage-2: #ebe7da;
-  --panel: #fbf9f2;
-  --panel-solid: #fbf9f2;
-  --panel-2: #f1ede0;
-  --panel-3: #e8e3d3;
-  --paper: #15131f;
-  --paper-2: #3d3b52;
-  --paper-3: #6b6980;
-  --paper-4: #9a98ad;
-  --hair: rgba(21, 19, 31, 0.2);
-  --hair-2: rgba(21, 19, 31, 0.4);
-  --hair-3: rgba(21, 19, 31, 0.08);
+  --stage: #f5f5f7;
+  --stage-2: #ececee;
+  --panel: #fff;
+  --panel-solid: #fff;
+  --panel-2: rgba(0, 0, 0, 0.04);
+  --panel-3: rgba(0, 0, 0, 0.08);
+  --paper: #1d1d1f;
+  --paper-2: #3a3a3c;
+  --paper-3: #6e6e73;
+  --paper-4: #a1a1a6;
+  --hair: rgba(0, 0, 0, 0.1);
+  --hair-2: rgba(0, 0, 0, 0.18);
+  --hair-3: rgba(0, 0, 0, 0.05);
   --signal: #d93a12;
   --signal-2: #b92e0b;
   --signal-dim: rgba(217, 58, 18, 0.1);
@@ -83,7 +75,7 @@
   --sev-high: #c4631a;
   --sev-medium: #9b8014;
   --sev-low: #3f6c9c;
-  --sev-info: #6b6980;
+  --sev-info: #6e6e73;
 }
 
 * {
@@ -121,12 +113,20 @@ select {
 button {
   cursor: pointer;
 }
+input,
+textarea,
+select {
+  background: var(--panel-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
+}
 ::selection {
-  background: var(--signal);
-  color: var(--on-signal);
+  background: var(--paper);
+  color: var(--stage);
 }
 :focus-visible {
-  outline: 1px solid var(--signal);
+  outline: 2px solid var(--paper-3);
   outline-offset: 2px;
 }
 * {
@@ -137,25 +137,20 @@ button {
 /* ---------------- type ---------------- */
 .mono,
 .num {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1, "zero" 1;
+}
+.code {
+  font-family: var(--font-code);
 }
 .serif {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 .upper {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-weight: 600;
 }
 .idx {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 12px;
   color: var(--paper-3);
   white-space: nowrap;
 }
@@ -177,71 +172,34 @@ button {
   white-space: nowrap;
 }
 
-/* ---------------- hairline panels ---------------- */
-@keyframes draw-in {
-  from {
-    --draw: 0;
-  }
-  to {
-    --draw: 1;
-  }
-}
-.hair {
-  --draw: 1;
-  --hc: var(--hair);
-  background-image:
-    linear-gradient(var(--hc), var(--hc)), linear-gradient(var(--hc), var(--hc)),
-    linear-gradient(var(--hc), var(--hc)), linear-gradient(var(--hc), var(--hc));
-  background-position: 0 0, 100% 100%, 0 100%, 100% 0;
-  background-size:
-    calc(var(--draw) * 100%) 1px, calc(var(--draw) * 100%) 1px,
-    1px calc(var(--draw) * 100%), 1px calc(var(--draw) * 100%);
-  background-repeat: no-repeat;
-  animation: draw-in 0.9s var(--ease) both;
-}
+/* ---------------- panels ---------------- */
 .panel {
   position: relative;
   background-color: var(--panel);
   color: var(--paper);
-}
-.panel.crop::before {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  pointer-events: none;
-  --c: var(--hair-2);
-  background:
-    linear-gradient(var(--c), var(--c)) 0 5px / 5px 1px no-repeat,
-    linear-gradient(var(--c), var(--c)) 5px 0 / 1px 5px no-repeat,
-    linear-gradient(var(--c), var(--c)) 100% 5px / 5px 1px no-repeat,
-    linear-gradient(var(--c), var(--c)) calc(100% - 5px) 0 / 1px 5px no-repeat,
-    linear-gradient(var(--c), var(--c)) 0 calc(100% - 5px) / 5px 1px no-repeat,
-    linear-gradient(var(--c), var(--c)) 5px 100% / 1px 5px no-repeat,
-    linear-gradient(var(--c), var(--c)) 100% calc(100% - 5px) / 5px 1px no-repeat,
-    linear-gradient(var(--c), var(--c)) calc(100% - 5px) 100% / 1px 5px no-repeat;
-  opacity: 0.9;
+  border-radius: var(--r-lg);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
 }
 .panel-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 34px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--hair);
+  min-height: 48px;
+  padding: 0 16px;
 }
 .panel-head h2,
 .panel-head h3 {
   margin: 0;
-  font: 600 11px/1 var(--font-ui);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 600 15px/1.2 var(--font-ui);
+  letter-spacing: -0.01em;
   color: var(--paper);
 }
 .panel-head .grow {
   flex: 1;
 }
 .panel-body {
-  padding: 12px;
+  padding: 4px 16px 16px;
 }
 .hl {
   height: 1px;
@@ -255,197 +213,218 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 14px;
-  background: transparent;
-  border: 1px solid var(--hair-2);
-  border-radius: 0;
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  background: var(--panel-3);
+  border: 0;
+  border-radius: 999px;
   color: var(--paper);
-  font: 500 11px/1 var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 13px/1 var(--font-ui);
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
 }
 .btn:hover {
-  background: var(--paper);
-  color: var(--stage);
-  border-color: var(--paper);
+  background: var(--hair-2);
+}
+.btn:active {
+  transform: scale(0.98);
 }
 .btn[disabled] {
   opacity: 0.4;
   pointer-events: none;
 }
 .btn.primary {
-  background: var(--signal);
-  border-color: var(--signal);
-  color: var(--on-signal);
+  background: var(--paper);
+  color: var(--stage);
   font-weight: 600;
 }
 .btn.primary:hover {
-  background: var(--paper);
-  border-color: var(--paper);
-  color: var(--stage);
+  background: var(--paper-2);
 }
 .btn.big {
   height: 48px;
-  padding: 0 24px;
-  font-size: 12px;
+  padding: 0 26px;
+  font-size: 15px;
 }
 .btn.sm {
-  height: 24px;
-  padding: 0 8px;
-  font-size: 10px;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
 }
 .btn.ghost {
-  border-color: transparent;
+  background: transparent;
+  color: var(--paper-2);
 }
 .btn.ghost:hover {
-  border-color: var(--paper);
+  background: var(--panel-2);
+  color: var(--paper);
+}
+.btn.danger {
+  background: var(--signal-dim);
+  color: var(--signal-2);
 }
 .btn.danger:hover {
   background: var(--signal);
-  border-color: var(--signal);
   color: var(--on-signal);
 }
 .icon-btn {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
+  border-radius: 999px;
   color: var(--paper-2);
   padding: 0;
+  transition: background 0.15s, color 0.15s;
 }
 .icon-btn:hover,
 .icon-btn[aria-pressed="true"] {
   color: var(--paper);
-  border-color: var(--hair-2);
-}
-.icon-btn[aria-pressed="true"] {
   background: var(--panel-3);
 }
 
 /* segmented toggle */
 .seg {
   display: inline-flex;
-  border: 1px solid var(--hair-2);
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel-2);
+  border-radius: 999px;
 }
 .seg button {
-  height: 26px;
-  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
   background: transparent;
   border: 0;
-  border-right: 1px solid var(--hair);
-  font: 500 10px/1 var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  border-radius: 999px;
+  font: 500 12.5px/1 var(--font-ui);
   color: var(--paper-3);
-}
-.seg button:last-child {
-  border-right: 0;
+  transition: background 0.15s, color 0.15s;
 }
 .seg button:hover {
   color: var(--paper);
 }
 .seg button[aria-pressed="true"],
 .seg button[aria-selected="true"] {
-  background: var(--paper);
-  color: var(--stage);
+  background: var(--hair-2);
+  color: var(--paper);
 }
 
-/* check toggles (layers) */
+/* switches (board layers) */
 .tog {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 8px;
-  height: 26px;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
   background: transparent;
   border: 0;
-  font: 500 10px/1 var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--paper-3);
+  border-radius: var(--r-sm);
+  font: 500 13px/1 var(--font-ui);
+  color: var(--paper-2);
+}
+.tog:hover {
+  background: var(--panel-2);
+  color: var(--paper);
 }
 .tog i {
-  width: 8px;
-  height: 8px;
-  border: 1px solid var(--paper-3);
-  display: inline-block;
+  position: relative;
+  flex: none;
+  order: 2;
+  width: 28px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  transition: background 0.15s;
+}
+.tog i::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--paper-2);
+  transition: transform 0.15s;
 }
 .tog[aria-pressed="true"] {
   color: var(--paper);
 }
 .tog[aria-pressed="true"] i {
   background: var(--paper);
-  border-color: var(--paper);
 }
-.tog:hover {
-  color: var(--paper);
+.tog[aria-pressed="true"] i::after {
+  background: var(--stage);
+  transform: translateX(11px);
 }
 
-/* ---------------- stamps and glyph badges ---------------- */
+/* ---------------- chips ---------------- */
 .stamp {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 18px;
-  padding: 0 6px;
-  border: 1px solid var(--hair-2);
-  font: 500 9px/1 var(--font-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  height: 22px;
+  padding: 0 9px;
+  background: var(--panel-3);
+  border: 0;
+  border-radius: 999px;
+  font: 500 11.5px/1 var(--font-ui);
   color: var(--paper-2);
   white-space: nowrap;
 }
 .stamp.solid {
-  background: var(--paper);
-  color: var(--stage);
-  border-color: var(--paper);
+  background: var(--hair-2);
+  color: var(--paper);
 }
 .stamp.sig {
-  color: var(--signal);
-  border-color: var(--signal);
+  background: var(--signal-dim);
+  color: var(--signal-2);
 }
 .stamp.fixture {
-  color: var(--signal);
-  border: 1px dashed var(--signal);
   background: var(--signal-dim);
+  color: var(--signal-2);
 }
 .stamp.sim i {
   width: 8px;
   height: 8px;
+  border-radius: 50%;
   background: linear-gradient(135deg, var(--sim-1), var(--sim-2) 50%, var(--sim-4));
   display: inline-block;
 }
 
 /* ---------------- misc primitives ---------------- */
 .kbd {
-  font: 500 10px/1 var(--font-mono);
-  padding: 2px 5px;
-  border: 1px solid var(--hair-2);
+  font: 500 11px/1 var(--font-ui);
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: var(--panel-3);
   color: var(--paper-2);
 }
 .meter {
   position: relative;
-  height: 3px;
-  background: var(--hair);
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--panel-3);
 }
 .meter > b {
   position: absolute;
   inset: 0 auto 0 0;
+  border-radius: 999px;
   background: var(--paper);
   transition: width 0.5s var(--ease);
 }
 .meter.sig > b {
   background: var(--signal);
-}
-.rule-ticks {
-  height: 6px;
-  background: repeating-linear-gradient(to right, var(--hair-2) 0 1px, transparent 1px 8px);
 }
 .link-arrow::after {
   content: " \2192";
@@ -460,7 +439,7 @@ button {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -497,7 +476,7 @@ button {
   }
 }
 .rise {
-  animation: rise 0.5s var(--ease) both;
+  animation: rise 0.4s var(--ease) both;
 }
 .blink {
   animation: blink 1.2s steps(2, jump-none) infinite;
@@ -538,9 +517,7 @@ button {
 }
 .kv dt {
   color: var(--paper-3);
-  font: 500 10px/1.8 var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 400 13px/1.45 var(--font-ui);
 }
 .kv dd {
   margin: 0;
