@@ -11,7 +11,7 @@ BRIEF = {'tool': 'submit_board_brief', 'args': {'purpose': 'Battery powered Blue
 def finding_script(candidate, title, what):
     return [BRIEF, {'tool': 'advance_phase'}, {'tool': 'list_candidates'},
             {'tool': 'record_finding', 'args': {'title': title, 'severity': 'medium', 'what': what, 'why_it_matters': 'A long loop weakens decoupling.',
-                                                'recommendation': 'Move the capacitor closer in your layout tool.', 'candidate_ids': [candidate]}},
+                                                'recommendation': 'Move the capacitor closer in your layout tool.', 'candidate_ids': [candidate], 'severity_reason': 'A long loop on the supply of the radio matters more than the hint says.'}},
             {'tool': 'advance_phase'}, {'tool': 'submit_summary', 'args': {'summary': 'One issue was recorded.', 'top_actions': ['Move the capacitor closer.']}}]
 
 

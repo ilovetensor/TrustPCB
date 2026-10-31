@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 
+from trustpcb.review.findings import untested_line
+
 
 SCRIPTS = Path(__file__).parent / 'scripts'
 
@@ -97,7 +99,7 @@ async def test_the_screens_parts_that_fail_at_confirm_are_retuned_and_both_are_r
     assert confirmation['best']['mode'] == 'free_retune' and confirmation['best_gain_db'] == 5.0 and 'not met' in confirmation['statement']
     assert confirmation['confirm_gain_db'] == 0.4 and confirmation['free_gain_db'] == 5.0
     finding = env.store.get_finding_by_code(review['id'], 'F-001')
-    assert confirmation['statement'] in finding['not_tested']
+    assert untested_line(confirmation['statement']) in finding['not_tested'] and confirmation['statement'] not in finding['not_tested']     # what is untested, not the result sentence
 
 
 async def test_early_close_is_refused_naming_what_is_missing_then_allowed(env):

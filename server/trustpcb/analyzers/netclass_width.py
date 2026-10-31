@@ -16,7 +16,7 @@ from typing import Any
 from ..pcb.model import Board
 from .base import AnalyzerContext, Emitter, mark, meas
 from .classify import is_rf_net
-from .impedance import estimate, width_for_target
+from .impedance import estimate, stackup_assumptions, width_for_target
 from .project import net_class_info, net_classes
 from .radiating import radiating
 
@@ -61,11 +61,15 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
         }
         first = board._track[tracks[0]]
         layer = first.layer
+        extra: dict[str, Any] = {}
         if is_rf_net(net, ctx) or info["name"].upper() == "RF":
             # only a line that carries RF has an impedance target to compare the class width with
             z = estimate(board, layer, cls_w)
             if z is not None:
                 m["class_width_z0_estimate"] = meas(z["z0"], "ohm", 1)
+                m["target_impedance"] = meas(float(ctx.target_ohms), "ohm", 1)
+                m["class_width_error_pct"] = meas(abs(z["z0"] - float(ctx.target_ohms)) / float(ctx.target_ohms) * 100.0, "%", 1)
+                extra["stackup_assumptions"] = stackup_assumptions(board, z)
             need = width_for_target(board, layer, float(ctx.target_ohms))
             if need is not None:
                 m["width_for_target"] = meas(need, "mm", 3)
@@ -80,6 +84,7 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             net_class=info,
             narrow_by_width=by_width,
             layer=layer,
+            **extra,
             details=["Measured against the project's own net class track width. KiCad's design rule check does not enforce a class width."],
         )
     return em.items

@@ -74,3 +74,16 @@ def test_stackup_confirmation_and_assumptions(nrf_board):
     assert abs(sum(x["thickness_mm"] for x in s["layers"]) - 0.8) < 1e-3
     assert nrf_board.stackup["assumed"] is True  # original untouched
     assert any(a["source"] == "user" for a in assumptions(nrf_board, s))
+
+
+def test_usb_regulator_sample_parses_and_is_not_wireless():
+    from trustpcb.rf.setup import plan_setup
+
+    board = parse_board_text((SAMPLES / "usb-ldo-led" / "usb_ldo_led_node.kicad_pcb").read_text())
+    assert len(board.footprints) == 15 and [round(v) for v in board.bbox] == [0, 0, 40, 30]
+    # every schematic pin that is left open has its own unconnected-(...) net, which keeps KiCad's parity check quiet
+    assert {p.net for p in board.pads if (p.net or "").startswith("unconnected-")} >= {"unconnected-(U1-NC-Pad4)", "unconnected-(J1-D+-PadA6)"}
+    d = detect(board, SAMPLES / "usb-ldo-led" / "usb_ldo_led_node.kicad_sch")
+    assert not d.wireless and d.antenna is None and d.band is None
+    setup = plan_setup(board, d)
+    assert setup.simulatable is False and setup.code == "not_wireless"

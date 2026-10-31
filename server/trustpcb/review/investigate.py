@@ -14,7 +14,7 @@ from . import partial
 from .budgets import IMPROVEMENT_DB, PARTIAL_WIN_DB, REFINE_MATCHING, REFINE_SCREENS, Experiment
 from . import restate
 from . import verdict as confirm_verdict
-from .findings import SCREEN_ONLY, FindingRejected, check_claims, check_fixed_dip_claims, check_numbers, check_wording
+from .findings import SCREEN_ONLY, FindingRejected, untested_line, check_claims, check_fixed_dip_claims, check_numbers, check_wording
 from .handlers import OpError, validate_ops
 from .lab import BadMatchingRequest, LabUnavailable, scenario_hash, scenario_key
 from .tools import ToolResult, fail, ok
@@ -913,8 +913,8 @@ class InvestigationMixin:
             return
         ids = list(dict.fromkeys(list(finding['evidence_ids'] or []) + [r['id'] for r in rows]))
         not_tested = [t for t in (finding['not_tested'] or []) if t != SCREEN_ONLY]
-        if outcome in ('not_held', 'held_after_retune', 'held_smaller', partial.OUTCOME) and statement not in not_tested:
-            not_tested.append(statement)
+        if outcome in ('not_held', 'held_after_retune', 'held_smaller', partial.OUTCOME) and untested_line(statement) not in not_tested:
+            not_tested.append(untested_line(statement))      # what the result leaves untested, not the result itself
         updated = self.store.update_finding(finding['id'], 'review', 'confirm result attached', evidence_ids=ids, not_tested=not_tested)
         await self.publish_finding(updated)
 
@@ -932,6 +932,20 @@ class InvestigationMixin:
                         'that the target is not met, and name the best parts (' + partial.parts_text(win['best']) + '). ' + partial.facts_text(win, ev.target_db(s.goal, s.rf)))
         return None
 
+    _ALL_RESULTS = re.compile(r'\b(?:all|every|each\s+of)\s+(?:the\s+)?(\d{1,4})\s+(?:(?:analy[sz]er|kicad|rule|candidate)\s+)*(?:results?|candidates?|records?)\b', re.I)
+
+    def result_count_problem(self, texts: dict[str, str]) -> str | None:
+        """"I reviewed all 37 analyzer results" when the review holds 41 candidates (16 from the analyzers, 25 from KiCad checks): the count must be a real one."""
+        candidates = list(self.s.candidates.values())
+        kicad = sum(1 for c in candidates if c.get('source') == 'kicad')
+        real = {len(candidates), kicad, len(candidates) - kicad}
+        for name, text in texts.items():
+            for match in self._ALL_RESULTS.finditer(text or ''):
+                if int(match.group(1)) not in real:
+                    return (f'In {name}: "{match.group(0)}" does not match the review: it has {len(candidates)} results in all ({len(candidates) - kicad} from the analyzers, {kicad} from KiCad checks). '
+                            f'Write {len(candidates)} (or the group you mean), or leave the count out.')
+        return None
+
     async def submit_summary(self, args: dict) -> ToolResult:
         s = self.s
         vc = self.version_change()
@@ -940,6 +954,9 @@ class InvestigationMixin:
         unknown = [c for text in texts.values() for c in re.findall(r'\bF-\d{3}\b', text) if self.store.get_finding_by_code(s.review_id, c) is None]
         try:
             check_wording(texts)
+            counted = self.result_count_problem(texts)
+            if counted:
+                raise FindingRejected('result_count_mismatch', counted)
             check_numbers(texts, allowed)
             check_claims(texts, scope_rows=s.engine.evidence_rows(), universe=s.engine.evidence_rows(), allowed=allowed, board=s.board, target_db=s.engine.target_db, require_attached=False)
             lead = restate.simulated_problem(texts)

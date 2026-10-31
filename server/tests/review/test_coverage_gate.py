@@ -66,7 +66,7 @@ async def test_one_finding_can_cover_a_whole_rule_group(env):
 async def test_a_rule_group_can_be_split_into_several_findings(env):
     env.lab.candidates = env.lab.candidates + return_path(6)
     first = finding(candidate_ids=['candidate:return_path:1', 'candidate:return_path:2'], title='Two fast tracks lose their ground return', targets=['point:20.4,14'])
-    second = finding(rule_group='return_path', title='The other fast tracks lose their ground return', severity='medium')
+    second = finding(rule_group='return_path', title='The other fast tracks lose their ground return', severity='medium', severity_reason='These tracks carry slow signals, so the loss matters less than for the first two.')
     review = await env.review(TO_REVIEW + [first, second])
     assert len(env.store.list_findings(review['id'])) == 2
     assert states(env, review)['return_path'] == {'recorded': 6}
