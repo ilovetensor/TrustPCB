@@ -17,6 +17,7 @@ import math
 import re
 from typing import TYPE_CHECKING, Any
 
+from ..partvalue import parse_value as _parse_part_value
 from ..pcb import geom
 from ..pcb.model import Board, Footprint
 
@@ -87,26 +88,13 @@ def rf_nets(board: Board, ctx: AnalyzerContext) -> list[str]:
 
 # ---------------------------------------------------------------------------- values
 
-_UNIT = {"p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "m": 1e-3, "k": 1e3, "meg": 1e6, "g": 1e9, "": 1.0}
-_VALUE_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+(?:[.,]\d+)?)\s*(p|n|u|µ|m|k|meg|g|r)?\s*(f|h|ohm|Ω|hz)?(?![A-Za-z])", re.I)
-_RKM_RE = re.compile(r"^(\d+)([pnuµmkrgf])(\d+)\s*(f|h)?$", re.I)
+def parse_value(value: str, kind: str | None = None) -> float | None:
+    """Numeric value in base units (farad, henry, ohm) from strings like ``100nF``, ``4u7`` or ``2R2``.
 
-
-def parse_value(value: str) -> float | None:
-    """Numeric value in base units (farad, henry, ohm) from strings like ``100nF``, ``4u7`` or ``2.2nH``."""
-    text = (value or "").strip().replace(",", ".")
-    if not text:
-        return None
-    m = _RKM_RE.match(text)
-    if m:
-        mult = _UNIT.get(m.group(2).lower(), 1.0 if m.group(2).lower() == "r" else None)
-        if mult is not None:
-            return float(f"{m.group(1)}.{m.group(3)}") * mult
-    m = _VALUE_RE.search(text)
-    if not m:
-        return None
-    mult = _UNIT.get((m.group(2) or "").lower().replace("r", ""), 1.0)
-    return float(m.group(1)) * mult
+    ``kind`` is ``"R"``, ``"L"`` or ``"C"`` when the part is known; without it the unit in the text decides.
+    A bare number on a capacitor or inductor is ``None`` (the unit cannot be known). See ``trustpcb.partvalue``.
+    """
+    return _parse_part_value(value, kind)
 
 
 # ---------------------------------------------------------------------------- parts
@@ -441,7 +429,7 @@ def classify_parts(board: Board, ctx: AnalyzerContext) -> dict[str, str]:
             continue
         if kind == "ind":
             nets = nets_of.get(f.ref, [])
-            value = parse_value(f.value)
+            value = parse_value(f.value, "L")
             if any(is_rf_net(n, ctx) for n in nets) or (value is not None and value < 100e-9):
                 roles[f.ref] = "rf"
             elif any(_SW_NET_RE.search(n.upper()) for n in nets) or (has_switcher and value is not None and value >= 1e-6):
