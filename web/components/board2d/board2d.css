@@ -30,7 +30,7 @@
   will-change: transform;
 }
 .bl {
-  --bl-board: #0b1a18;
+  --bl-board: #17181a;
   --bl-fcu: #ff6f52;
   --bl-bcu: #4da6ff;
   --bl-pad: #ffdc8f;
@@ -45,7 +45,7 @@
   stroke: none;
 }
 .bl-substrate-inner {
-  fill: rgba(96, 255, 214, 0.035);
+  fill: rgba(255, 255, 255, 0.03);
   stroke: none;
 }
 .bl-edge {
