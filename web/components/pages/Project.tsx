@@ -72,22 +72,15 @@ export function Project({ id }: { id: string }) {
         <div className="cards2">
           <Panel className="card" title="Open findings per version">
             {trend.length === 0 ? <p className="empty">No finished review yet.</p> : (
-              <svg viewBox="0 0 360 150" width="100%" role="img" aria-label="Open findings per version">
-                {trend.map((t, i) => {
-                  // a fixed pitch keeps a few bars together; only many versions tighten it
-                  const pitch = Math.min(56, 320 / trend.length);
-                  const barW = Math.min(28, pitch * 0.6);
-                  const x = 180 + (i - (trend.length - 1) / 2) * pitch;
-                  const h = (t / max) * 100;
-                  return (
-                    <g key={i}>
-                      <rect x={x - barW / 2} y={120 - h} width={barW} height={h} rx={Math.min(7, barW / 3)} fill="var(--paper)" opacity={i === trend.length - 1 ? 0.85 : 0.25} />
-                      <text x={x} y={120 - h - 6} textAnchor="middle" className="rl-t" fill="var(--paper)">{t}</text>
-                      <text x={x} y="138" textAnchor="middle" className="rl-t">{reviewed[i].label}</text>
-                    </g>
-                  );
-                })}
-              </svg>
+              <ul className="fbars">
+                {trend.map((t, i) => (
+                  <li key={i} className={i === trend.length - 1 ? "now" : undefined}>
+                    <span>{reviewed[i].label}</span>
+                    <i><b style={{ width: `${(t / max) * 100}%` }} /></i>
+                    <strong className="num">{t}</strong>
+                  </li>
+                ))}
+              </ul>
             )}
           </Panel>
           {project.rf !== "n/a" && (
