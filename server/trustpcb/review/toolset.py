@@ -28,7 +28,7 @@ FINDING_PROPS = {
     'what': text(5, 1200), 'why_it_matters': text(5, 1200), 'recommendation': text(5, 1200),
     'rule': text(1, 60), 'candidate_ids': arr(text(1, 80), 0, 60), 'evidence_ids': arr(text(1, 20), 0, 12),
     'targets': arr(text(1, 80), 0, 20), 'marks': arr(MARK_SCHEMA, 0, 12),
-    'scope': {'type': 'string', 'enum': ['targets', 'board']}, 'assumptions': arr(text(1, 300), 0, 8), 'not_tested': arr(text(1, 300), 0, 8),
+    'severity_reason': text(1, 300), 'scope': {'type': 'string', 'enum': ['targets', 'board']}, 'assumptions': arr(text(1, 300), 0, 8), 'not_tested': arr(text(1, 300), 0, 8),
 }
 
 
@@ -46,8 +46,9 @@ def build_review_tools(h: AllHandlers) -> list[ToolDef]:
                phases=P({2, 3, 4, 5}), free=True, closing=True, trail=lambda a: 'Moving to the next phase'),
         define('get_board_summary', 'Parts, nets, layers, stackup, goal, assumptions and candidate counts for this board.', obj({}), h.get_board_summary,
                phases=P({2}), trail=lambda a: 'Reading the board summary'),
-        define('read_schematic', 'Paged part and net data. kind: parts, part, nets or net. query filters the list or names the part or net.',
-               obj({'kind': {'type': 'string', 'enum': ['parts', 'part', 'nets', 'net']}, 'query': text(1, 80), 'page': {'type': 'integer', 'minimum': 1, 'maximum': 200}}, ['kind']),
+        define('read_schematic', 'Paged part and net data. kind: parts, part, nets or net. query filters the list or names the part or net. kind state with refs: what the schematic file says now '
+               '(no_connect markers, do-not-populate flags, pin names, board nets); read it before recommending a schematic or board change.',
+               obj({'kind': {'type': 'string', 'enum': ['parts', 'part', 'nets', 'net', 'state']}, 'query': text(1, 80), 'refs': arr(text(1, 20), 1, 12), 'page': {'type': 'integer', 'minimum': 1, 'maximum': 200}}, ['kind']),
                h.read_schematic, phases=P({2, 3}), levels=ALL_LEVELS, trail=lambda a: f'Reading {a.get("kind")} data' + (f' ({a["query"]})' if a.get('query') else '')),
         define('read_datasheet', 'List uploaded datasheets, or read one page of one as text.',
                obj({'name': text(1, 120), 'page': {'type': 'integer', 'minimum': 1, 'maximum': 500}}), h.read_datasheet,

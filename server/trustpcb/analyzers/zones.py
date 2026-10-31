@@ -14,7 +14,7 @@ from shapely.ops import unary_union
 
 from ..pcb.model import Board
 from .base import AnalyzerContext, Emitter, mark, meas, polygon_geometry
-from .classify import classify_parts, footprint_ring
+from .classify import classify_parts, footprint_ring, role_basis
 
 RULE = "zones"
 
@@ -72,6 +72,20 @@ def role_refs(regions: list[dict[str, Any]]) -> dict[str, list[str]]:
     return {k: sorted(set(v)) for k, v in out.items()}
 
 
+def _basis_lines(region: dict[str, Any], basis: dict[str, dict[str, Any]]) -> list[str]:
+    """Why passives sit in this zone: each was grouped with the active part it shares a net with (its own pull-ups, filter or decoupling). That is a grouping
+    by net, so it says nothing about noise between the passive and that part."""
+    follows: dict[str, tuple[list[str], set[str]]] = {}
+    for ref in region["refs"]:
+        b = basis.get(ref)
+        if b:
+            refs, nets = follows.setdefault(b["follows"], ([], set()))
+            refs.append(ref)
+            nets.update(b["via_nets"])
+    return [f"{region['role']} zone: {', '.join(sorted(refs))} follow{'s' if len(refs) == 1 else ''} {anchor} (shared nets {', '.join(sorted(nets)[:4])}); they are {anchor}'s own connected parts grouped by net, not separate {region['role']} parts."
+            for anchor, (refs, nets) in sorted(follows.items())]
+
+
 def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
     regions = compute_regions(board, ctx)
     ctx.cache["zone_regions"] = regions
@@ -96,6 +110,7 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             ring=r["ring"],
         )
     # overlaps between different roles
+    basis = role_basis(board, ctx)
     min_area = float(ctx.t("zone_overlap_min_mm2"))
     for i, a in enumerate(regions):
         for b in regions[i + 1 :]:
@@ -112,6 +127,7 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
                 ov = mark("region", [ta, tb], label=f"{a['role']} / {b['role']} overlap", role="overlap")
                 ov["resolved"] = [polygon_geometry(ring, ta)]
                 marks.append(ov)
+            details = _basis_lines(a, basis) + _basis_lines(b, basis)
             em.add(
                 f"Zones {a['role']} and {b['role']} overlap",
                 {"overlap_area": meas(inter.area, "mm2", 2), "overlap_share_of_smaller": meas(100.0 * inter.area / smaller if smaller else 0.0, "percent", 1)},
@@ -119,7 +135,9 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
                 marks,
                 "low",
                 position=inter.centroid.coords[0],
+                details=details or None,
                 roles=[a["role"], b["role"]],
+                zone_parts={a["role"]: list(a["refs"]), b["role"]: list(b["refs"])},
             )
     return em.items
 

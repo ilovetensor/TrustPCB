@@ -14,15 +14,17 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import claims, verdict
+from . import claims, lint, verdict
 from . import evidence as ev
 from .fingerprint import TargetIndex, fingerprint, rule_of
-from .number_check import Problem, Quantity, check_text, extract
+from .lint import Problem
+from .number_check import Quantity, check_text, extract
 
 MAX_GROUP_PARTS = 80          # a net can hold hundreds of pads: keep the stored geometry, and the events, small
 SEVERITIES = ('critical', 'high', 'medium', 'low', 'info')
 MARK_TYPES = ('pin', 'object', 'path', 'region', 'link', 'sketch')
 TEXT_FIELDS = ('title', 'what', 'why_it_matters', 'recommendation')
+MIN_SEVERITY_REASON = 15       # characters of severity_reason that justify a severity other than the analyzers' hint
 MAX_AUTO_MARKS = 10           # analyzer marks drawn automatically on a finding made from candidates
 SCREEN_ONLY = 'Result is from screen-quality simulation runs only; no confirm run supports it.'
 MAX_CLAIM_TRIES = 2           # refusals of one finding for an unsupported claim; the third time the server removes the sentence (as the summary and partial win gates do)
@@ -117,6 +119,38 @@ def check_fixed_dip_claims(texts: dict[str, str], all_rows: list[dict], cited_ro
 _COMPARE_MARK = re.compile(r'\b(?:screen|compar\w*|versus|vs|base run|than the base|relative to the base|against the base|better than|worse than)\b', re.I)
 
 
+NOT_HELD_LINE = 'The screen improvement did not hold at confirm quality.'
+SCREEN_NOT_RELIED = ('Screen-quality numbers are not relied on (the screen result overstated the improvement or did not hold at confirm quality); '
+                     'real part tolerance, the real stackup and a built board were not tested.')
+
+
+def untested_line(statement: str) -> str:
+    """What goes under "not tested" for a confirm comparison. The plain "did not hold" sentence says what was not confirmed and stays; a statement that reports a
+    result (held but smaller, a partial win, parts re-tuned) is replaced by what the result leaves untested, so the list holds no result."""
+    text = statement.strip()
+    prefix = 'Refine round: ' if text.startswith('Refine round: ') else ''
+    return statement if text.removeprefix('Refine round: ').strip() == NOT_HELD_LINE else prefix + SCREEN_NOT_RELIED
+
+
+def fixed_dip_caveat(all_rows: list[dict], cited_sims: list[dict]) -> str | None:
+    """When runs of changed antenna geometry kept a dip at the same frequency (`fixed_dip` data), a finding that stands on those simulations says that the model's
+    dips do not track antenna length. Nothing is said when no run shows it."""
+    if not cited_sims:
+        return None
+    seen: list[tuple[float, str]] = []
+    for row in all_rows:
+        values = row.get('values') or {}
+        for name, item in (values.get('measurements') or {}).items():
+            if name.startswith('fixed_dip_') and isinstance(item, dict) and isinstance(item.get('value'), (int, float)):
+                seen.append((float(item['value']), str(values.get('label') or values.get('ref') or row.get('code'))))
+    if not seen:
+        return None
+    freqs = ', '.join(f'{f:g}' for f, _ in seen[:4])
+    labels = ', '.join(dict.fromkeys(label for _, label in seen[:4]))
+    return (f'In simulation a dip stayed at {freqs} MHz when the antenna geometry changed ({labels}), so the model\'s dips do not track antenna length '
+            'and its sensitivity to length is not established; a length change is untested as a way to tune.')
+
+
 def _sentence_at(text: str, position: int) -> str:
     start = 0
     for part in re.finditer(r'[^\n]*?(?:[.!?](?=\s|$)|\n|$)', text):
@@ -156,6 +190,8 @@ def claim_problems(texts: dict[str, str], *, scope_rows: list[dict], universe: l
     rounds = verdict.rounds_from_rows(universe)
     found = verdict.problems(texts, rounds, target_db=target_db, rows=universe)
     found += claims.check(texts, scope_rows=scope_rows, universe=universe, allowed=allowed, board=board, require_attached=require_attached)
+    if require_attached:       # a finding: wording the evidence cannot show (refused once, see lint.py). A summary is judged by its own gate.
+        found += lint.problems(texts, board=board, rows=universe, codes=[r.get('code') for r in scope_rows if r.get('code')])
     return found
 
 
@@ -167,8 +203,9 @@ def raise_first(problems: list[Problem], **extra: Any) -> None:
 
 def check_claims(texts: dict[str, str], *, scope_rows: list[dict], universe: list[dict], allowed: list[Quantity], board: Any = None,
                  target_db: float | None = None, require_attached: bool = True) -> None:
-    """Raise FindingRejected for the first unsupported claim. For callers that have no retry state of their own."""
-    raise_first(claim_problems(texts, scope_rows=scope_rows, universe=universe, allowed=expand_allowed(allowed, texts, universe), board=board, target_db=target_db, require_attached=require_attached))
+    """Raise FindingRejected for the first unsupported claim. For callers that have no retry state of their own (they never see the once-only wording checks)."""
+    found = claim_problems(texts, scope_rows=scope_rows, universe=universe, allowed=expand_allowed(allowed, texts, universe), board=board, target_db=target_db, require_attached=require_attached)
+    raise_first([p for p in found if p.code not in lint.SOFT_CODES])
 
 
 @dataclass
@@ -192,6 +229,7 @@ class FindingEngine:
         self.previous = previous or {}
         self.target_db: float | None = None        # the tuning target, for messages that quote the confirm verdict
         self.claim_tries: dict[str, int] = {}      # refusals per finding for unsupported claims (bounded: see MAX_CLAIM_TRIES)
+        self.once = lint.Once()                    # wording problems already refused (each is refused once: see lint.py)
 
     # ---- evidence ---------------------------------------------------------------------
     def evidence_rows(self) -> list[dict]:
@@ -270,6 +308,24 @@ class FindingEngine:
         return out
 
     # ---- the checks -------------------------------------------------------------------
+    @staticmethod
+    def severity_problems(merged: dict, args: dict, existing: dict | None, candidate_ids: list[str], known: dict[str, dict]) -> list[lint.Problem]:
+        """A finding covering analyzer results has the analyzers' worst severity hint as its usual severity. Another severity needs `severity_reason`
+        (a consequence on this board), so two reviews of one board do not drift apart without cause. A change is never blocked: it is refused once without a reason."""
+        if not candidate_ids or 'severity' not in args:
+            return []
+        hints = [str(known[c].get('severity_hint')) for c in candidate_ids if known.get(c) and known[c].get('severity_hint') in SEVERITIES]
+        if not hints:
+            return []
+        usual = min(hints, key=SEVERITIES.index)
+        chosen = merged['severity']
+        if chosen == usual or len(str(args.get('severity_reason') or '').strip()) >= MIN_SEVERITY_REASON:
+            return []
+        label = f'severity {chosen} for {", ".join(sorted(candidate_ids)[:3])}'
+        return [Problem(lint.SEVERITY_CODE, 'severity', label,
+                        f'Severity {chosen} differs from the analyzers\' worst hint for these results ({usual}). Keep {usual}, or give severity_reason: the consequence on this board that justifies {chosen} '
+                        f'(at least {MIN_SEVERITY_REASON} characters, with evidence where you have it). The server refuses this once.', {'usual': usual, 'chosen': chosen})]
+
     def prepare(self, args: dict, *, existing: dict | None = None, candidates: dict[str, dict] | None = None) -> Prepared:
         merged = {**(existing or {}), **{k: v for k, v in args.items() if v is not None}}
         missing = [name for name in ('title', 'severity', 'what', 'why_it_matters', 'recommendation') if not str(merged.get(name) or '').strip()]
@@ -354,6 +410,9 @@ class FindingEngine:
         notes = []
         universe = self.evidence_rows()
         problems = claim_problems(texts, scope_rows=rows, universe=universe, allowed=allowed, board=self.board, target_db=self.target_db)
+        soft = [p for p in problems if p.code in lint.SOFT_CODES]
+        problems = [p for p in problems if p.code not in lint.SOFT_CODES]
+        soft += self.severity_problems(merged, args, existing, candidate_ids, known)
         if problems:
             key = str((existing or {}).get('code') or ','.join(sorted(args.get('candidate_ids') or [])[:3] + sorted(args.get('evidence_ids') or [])[:3]) or merged['title'])[:120]
             tries = self.claim_tries.get(key, 0)
@@ -371,6 +430,11 @@ class FindingEngine:
                 first = problems[0]
                 raise FindingRejected(first.code, first.message + (f' You can retry {left} more time(s); after that the server removes the sentence.' if left else ''),
                                       field=first.field, sentence=first.sentence, tries_left=left, others=len(problems) - 1, **(first.data or {}))
+        # wording the evidence cannot show: refused once, kept when sent again (and a causal sentence that stays is listed as not tested)
+        fresh, kept = self.once.split(soft)
+        if fresh:
+            first = fresh[0]
+            raise FindingRejected(first.code, first.message, field=first.field, sentence=first.sentence, others=len(fresh) - 1, refused_once=True, **(first.data or {}))
         # identity ------------------------------------------------------------------------
         rule = args.get('rule') or (rule_of(existing['fingerprint']) if existing else None)
         if not rule and candidate_ids:
@@ -387,10 +451,27 @@ class FindingEngine:
             not_tested.remove(line)       # a confirm run now supports it
         for row in sim_rows:              # a screen improvement that did not hold at confirm quality stays on the finding, whatever the agent writes
             values = row['values'] or {}
-            if values.get('confirm_held') is False and values.get('statement') and values['statement'] not in not_tested:
-                not_tested.append(values['statement'])
-                notes.append(values['statement'])
+            if values.get('confirm_held') is False and values.get('statement') and untested_line(values['statement']) not in not_tested:
+                not_tested.append(untested_line(values['statement']))
+                notes.append(untested_line(values['statement']))
+        for p in kept:      # a causal sentence the agent sent again after the refusal stays, listed as not shown so the report does not present it as evidence
+            if p.code == lint.CAUSAL_CODE:
+                line = f'Not backed by cited evidence: "{p.sentence[:140]}"'
+                if line not in not_tested:
+                    not_tested.append(line)
+                    notes.append(line)
+        caveat = fixed_dip_caveat(self.evidence_rows(), sim_rows)
+        if caveat and caveat not in not_tested and not any('do not track' in t for t in not_tested) and not any('do not track' in v for v in texts.values()):
+            not_tested.append(caveat)
+            notes.append(caveat)
         assumption_names = list(args.get('assumptions') if args.get('assumptions') is not None else (existing or {}).get('assumptions') or [])
+        reason = str(args.get('severity_reason') or '').strip()
+        if reason and len(reason) >= MIN_SEVERITY_REASON and candidate_ids:
+            hints = [str(known[c].get('severity_hint')) for c in candidate_ids if known.get(c) and known[c].get('severity_hint') in SEVERITIES]
+            if hints and merged['severity'] != min(hints, key=SEVERITIES.index):
+                line = f"Severity {merged['severity']}, the analyzers' worst hint is {min(hints, key=SEVERITIES.index)}: {reason}"
+                if line not in assumption_names:
+                    assumption_names.append(line)
         fields = {
             'title': merged['title'].strip()[:200], 'severity': merged['severity'], 'what': merged['what'].strip(),
             'why_it_matters': merged['why_it_matters'].strip(), 'recommendation': merged['recommendation'].strip(),

@@ -1,8 +1,10 @@
 """decoupling: capacitor distance from the IC power pin, and vias on the way.
 
 A decoupling capacitor here is a capacitor with one pad on a power net and the other on ground.
-Its IC pin is the nearest pad of an active part on the same power net. The distance is pad centre
-to pad centre. The track path between the two is followed through vias for the via count.
+Its IC pin is the nearest supply pad of an active part on the same power net: when the schematic is
+there, the pins that are named or typed as power (VIN, VDD, DEC4 ...) are preferred over other pins that
+only share the net (an enable pin tied to the input), and the pin name is stated. Without a schematic the
+nearest pad is used and its function is not known. The distance is pad centre to pad centre. The track path between the two is followed through vias for the via count.
 
 ESD, TVS and other protection parts, found from their symbol value, are not treated as parts that
 need decoupling, and neither are capacitors that are not fitted (do-not-populate). Candidates are
@@ -23,6 +25,7 @@ from typing import Any
 from ..pcb.model import Board, Pad
 from .base import AnalyzerContext, Emitter, mark, meas
 from .classify import is_dnp, is_ground, is_power, is_protection_part, part_kind, parse_value
+from .schematic import schematic_info
 from .topology import Topology, get_topology
 
 RULE = "decoupling"
@@ -95,6 +98,7 @@ def measure(board: Board, ctx: AnalyzerContext) -> dict[str, Any]:
     if cached is not None and cached[0] is board:
         return cached[1]
     topo = get_topology(board, ctx)
+    sch = schematic_info(board, ctx)
     ic_refs: set[str] = set()
     excluded: list[dict[str, str]] = []
     for f in board.footprints:
@@ -126,15 +130,21 @@ def measure(board: Board, ctx: AnalyzerContext) -> dict[str, Any]:
         targets = [p for p in pins_by_net.get(cap_pad.net, []) if p.ref != fp.ref]
         if not targets:
             continue
-        pin = min(targets, key=lambda p: (math.dist((p.x, p.y), (cap_pad.x, cap_pad.y)), p.id))
+        # a pin the schematic names or types as a supply pin is the one the capacitor serves; an enable or other pin that shares the net is passed over
+        supply = [p for p in targets if sch.is_supply_pin(p.ref, p.number)]
+        candidates_pins = supply or targets
+        pin = min(candidates_pins, key=lambda p: (math.dist((p.x, p.y), (cap_pad.x, cap_pad.y)), p.id))
+        passed_over = [f"{p.ref} pin {p.number} ({sch.pin_name(p.ref, p.number)})" for p in targets if supply and p not in supply and p.ref == pin.ref and sch.pin_name(p.ref, p.number)]
         d = math.dist((pin.x, pin.y), (cap_pad.x, cap_pad.y))
         path = track_path(topo, cap_pad.net, cap_pad.id, pin.id)
-        rows.append({"fp": fp, "cap_pad": cap_pad, "pin": pin, "distance": d, "path": path, "vias": path[1] if path else 0, "pin_class": pin_class(cap_pad.net)})
+        rows.append({"fp": fp, "cap_pad": cap_pad, "pin": pin, "distance": d, "path": path, "vias": path[1] if path else 0, "pin_class": pin_class(cap_pad.net),
+                     "pin_name": sch.pin_name(pin.ref, pin.number), "passed_over": passed_over})
     classes: dict[str, dict[str, Any]] = {}
     for r in sorted(rows, key=lambda r: (r["pin_class"], r["distance"], r["fp"].ref)):
         c = classes.setdefault(r["pin_class"], {"pin_class": r["pin_class"], "capacitors": []})
         c["capacitors"].append(
-            {"capacitor": r["fp"].ref, "ic": r["pin"].ref, "ic_pin": r["pin"].number, "net": r["cap_pad"].net, "distance_mm": round(r["distance"], 2), "vias": r["vias"]}
+            {"capacitor": r["fp"].ref, "ic": r["pin"].ref, "ic_pin": r["pin"].number, **({"ic_pin_name": r["pin_name"]} if r["pin_name"] else {}), "net": r["cap_pad"].net,
+             "distance_mm": round(r["distance"], 2), "vias": r["vias"]}
         )
     max_mm = float(ctx.t("decoupling_max_mm"))
     for c in classes.values():
@@ -162,12 +172,16 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             m["track_length"] = meas(path[0], "mm", 2)
         cap_value = parse_value(fp.value)
         cls = data["classes"][r["pin_class"]]
+        name = r["pin_name"]
+        details = [f"Pin {pin.number} of {pin.ref} is named {name} in the schematic." if name else "No schematic pin name is available: the nearest pad of the net is used and its function is not known."]
+        if r["passed_over"]:
+            details.append(f"{', '.join(r['passed_over'])} share{'s' if len(r['passed_over']) == 1 else ''} the net but {'is' if len(r['passed_over']) == 1 else 'are'} not a supply pin, so the distance is to the supply pin.")
         em.add(
-            f"{fp.ref} is {d:.1f} mm from {pin.ref} pin {pin.number} ({cap_pad.net})",
+            f"{fp.ref} is {d:.1f} mm from {pin.ref} pin {pin.number}{f' {name}' if name and name != cap_pad.net else ''} ({cap_pad.net})",
             m,
             [fp.id, cap_pad.id, pin.id],
             [
-                mark("link", [cap_pad.id, pin.id], label=f"{fp.ref} to {pin.ref}.{pin.number}", value=meas(d, "mm", 2)),
+                mark("link", [cap_pad.id, pin.id], label=f"{fp.ref} to {pin.ref}.{pin.number}{f' {name}' if name else ''}", value=meas(d, "mm", 2)),
                 mark("object", [fp.id], label=fp.ref),
             ],
             "medium" if d > 2 * max_mm or vias > 0 else "low",
@@ -177,6 +191,8 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             capacitance_f=cap_value,
             ic=pin.ref,
             ic_pin=pin.number,
+            ic_pin_name=name,
+            details=details,
             pin_class=r["pin_class"],
             class_summary=cls,
             measured_capacitors=len(data["rows"]),

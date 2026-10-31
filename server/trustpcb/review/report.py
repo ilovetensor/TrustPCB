@@ -147,7 +147,8 @@ def _method(store, review: dict, evidence_rows: list[dict]) -> dict:
                               'solve_s': v.get('solve_s'), 'trust': (v.get('trust') or {}).get('status')})
     profile = review.get('profile') or {}
     return {'kicad_version': baseline.get('kicad_version'), 'default_rules': baseline.get('default_rules'), 'runner': {k: profile.get(k) for k in ('name', 'runner', 'model')},
-            'depth': review.get('depth'), 'scenarios': scenarios, 'note': 'Screen runs compare a change with the base at the same mesh. Confirm runs use a finer mesh and longer time.'}
+            'depth': review.get('depth'), 'scenarios': scenarios,
+            'note': 'Screen runs compare a change with the base at the same mesh. Confirm runs use a finer mesh and longer time.' if scenarios else ''}
 
 
 def build_snapshot(store, review_id: str, *, cause: str, incomplete: bool = False, previous: dict | None = None, number: int = 1) -> dict:
@@ -546,7 +547,7 @@ def render_html(snap: dict, images: dict | None = None) -> str:
     method = snap['method']
     out.append('<h2>Method</h2>')
     out.append(f'<p class="small">KiCad {esc(method.get("kicad_version") or "not recorded")}{"; default design rules were used" if method.get("default_rules") else ""}. '
-               f'{esc(method.get("note"))}</p>')
+               f'{esc(method.get("note"))}</p>'.replace(' </p>', '</p>'))
     if method['scenarios']:
         out.append('<table><tr><th>Run</th><th>Quality</th><th>Scenario hash</th><th>Changes</th><th>Solve s</th><th>Trust</th></tr>' + ''.join(
             f'<tr><td>{esc(s.get("ref"))}</td><td>{esc(s.get("quality"))}</td><td class="mono small">{esc(s["hash"])}</td><td class="small">{esc(json.dumps(s.get("ops") or "none"))}</td>'

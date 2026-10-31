@@ -63,6 +63,7 @@ def _candidate_core(candidate: dict) -> dict:
         'source': candidate.get('source'), 'targets': list(candidate.get('targets', [])), 'severity_hint': candidate.get('severity_hint'),
         'measurements': candidate.get('measurements') or {}, 'details': (candidate.get('details') or [])[:5],
         'downgraded': bool(candidate.get('downgraded')),
+        **({'schematic_state': candidate['schematic_state']} if candidate.get('schematic_state') else {}),
     }
 
 

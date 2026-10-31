@@ -8,7 +8,7 @@ from shapely.geometry import Polygon
 
 from ..pcb.model import Board
 from .base import AnalyzerContext, Emitter, mark, meas, shortest_between
-from .classify import NOISE_ROLES, SENSITIVE_ROLES, classify_parts, footprint_ring, part_kind
+from .classify import NOISE_ROLES, SENSITIVE_ROLES, classify_parts, footprint_ring, is_ground, is_power, part_kind, role_basis
 
 RULE = "noise_proximity"
 _PASSIVE = {"cap", "res", "ferrite", "diode", "led", "switch", "fuse", "testpoint", "fiducial", "mounting", "connector"}
@@ -19,6 +19,8 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
     per_source = int(ctx.t("noise_max_per_source"))
     roles = classify_parts(board, ctx)
     ctx.cache["part_roles"] = roles
+    basis = role_basis(board, ctx)       # a passive grouped with an active part by a shared net is that part's own bus, not a noise source for it
+    signal_nets = {f.ref: {p.net for p in board.pads_of(f.ref) if p.net and not is_ground(p.net) and not is_power(p.net, ctx)} for f in board.footprints}
     given = {k for k in (ctx.part_roles or {})}
     polys = {f.ref: Polygon(footprint_ring(f)).buffer(0) for f in board.footprints}
     kinds = {f.ref: part_kind(f) for f in board.footprints}
@@ -32,6 +34,10 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
         for t in sensitive:
             if t.ref == s.ref or frozenset((s.ref, t.ref)) in seen:
                 continue
+            if (basis.get(s.ref) or {}).get("follows") == t.ref or (basis.get(t.ref) or {}).get("follows") == s.ref:
+                continue
+            if (kinds[s.ref] in _PASSIVE and signal_nets[s.ref] & signal_nets[t.ref]) or (kinds[t.ref] in _PASSIVE and signal_nets[s.ref] & signal_nets[t.ref]):
+                continue            # a passive wired to the other part by a signal net is that part's own pull-up, filter or termination: no noise question between them
             d = polys[s.ref].distance(polys[t.ref])
             if d < limit:
                 pairs.append((d, t))

@@ -84,7 +84,7 @@ async def test_refine_failure_states_both_attempts_honestly(refine_env):
     finding = env.store.get_finding_by_code(review['id'], 'F-001')
     notes = ' '.join(finding['not_tested'])
     assert 'The screen improvement did not hold at confirm quality.' in notes
-    assert 'Refine round: The improvement held at confirm quality but the screen overstated it' in notes and 'target is still not met at confirm quality' in notes
+    assert 'Refine round: Screen-quality numbers are not relied on' in notes and 'The improvement held at confirm quality' not in notes     # not tested holds what is untested, not the result
     assert 'neither' in finding['title'].lower() or 'Neither' in finding['title']
     suspects = env.store.list_suspects(investigation['id'])
     assert suspects[-1]['status'] == 'inconclusive'

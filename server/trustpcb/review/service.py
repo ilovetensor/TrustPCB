@@ -293,7 +293,6 @@ class ReviewRun:
         await ctx.emit('candidate_batch', {'total': len(candidates), 'carried_dismissals': carried,
                                            'counts': _count_states(store, self.review_id)})
         goal = review['goal'] or {}
-        self.record_assumptions(review, version, goal, baseline or {})
         try:
             self.rf = await self.lab.rf_status(version_id=version['id'], goal=goal)
         except asyncio.CancelledError:
@@ -302,13 +301,14 @@ class ReviewRun:
             self.rf = {'simulatable': False, 'reason': f'The RF check failed: {str(exc)[:200]}', 'kind': 'none'}
         if not self.rf.get('band_hz') and band_from_goal(goal):
             self.rf = {**self.rf, 'band_hz': band_from_goal(goal)}
+        self.record_assumptions(review, version, goal, baseline or {}, no_radio=self.rf.get('code') == 'not_wireless')
         summary = {'board': self.board_summary, 'rf': {k: self.rf.get(k) for k in ('simulatable', 'reason', 'kind', 'band_hz', 'target_s11_db', 'antenna_id')},
                    'previous_review_id': previous['review']['id'] if previous else None, 'previous_version_number': previous['version_number'] if previous else None,
                    'phases': [], 'limits': [], 'baseline': {k: (baseline or {}).get(k) for k in ('warnings', 'default_rules', 'kicad_version')}}
         store.update_review(self.review_id, summary=summary)
         await self.agent(review, version, previous)
 
-    def record_assumptions(self, review: dict, version: dict, goal: dict, baseline: dict) -> None:
+    def record_assumptions(self, review: dict, version: dict, goal: dict, baseline: dict, no_radio: bool = False) -> None:
         add = lambda name, value, source, note=None: self.store.add_assumption(self.review_id, name, value, source, note=note)
         stack = self.board.stackup if self.board is not None else (version.get('stackup') or {})
         assumed = bool(stack.get('assumed'))
@@ -318,8 +318,9 @@ class ReviewRun:
             if layer.get('epsilon_r'):
                 add('dielectric_permittivity', {'value': layer['epsilon_r'], 'unit': ''}, 'default' if assumed else 'detected', f'{layer.get("material") or "dielectric"} {layer.get("name") or ""}'.strip())
                 break
-        add('tuning_target_s11_db', {'value': goal.get('target_s11_db', -10), 'unit': 'dB'}, 'user_provided' if 'target_s11_db' in goal else 'default',
-            None if 'target_s11_db' in goal else 'Default tuning target: S11 better than -10 dB across the band.')
+        if not no_radio:        # a tuning target means nothing for a board with no radio
+            add('tuning_target_s11_db', {'value': goal.get('target_s11_db', -10), 'unit': 'dB'}, 'user_provided' if 'target_s11_db' in goal else 'default',
+                None if 'target_s11_db' in goal else 'Default tuning target: S11 better than -10 dB across the band.')
         band = band_from_goal(goal)
         if band:
             add('wireless_band_hz', {'low': band[0], 'high': band[1]}, 'user_provided')

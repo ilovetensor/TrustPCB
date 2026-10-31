@@ -396,6 +396,7 @@ def classify_parts(board: Board, ctx: AnalyzerContext) -> dict[str, str]:
     nets_of = {ref: sorted({p.net for p in pads if p.net and not is_ground(p.net)}) for ref, pads in pads_by_ref.items()}
     has_switcher = any(_module_role(f) == "switching" for f in board.footprints) or any(_SW_NET_RE.search(n.name.upper()) for n in board.nets)
     anchors: list[tuple[Footprint, str]] = []
+    bases: dict[str, dict[str, Any]] = {}
 
     conflicts: dict[str, dict[str, Any]] = ctx.cache.setdefault("role_conflicts", {}) if ctx is not None else {}
     for f in board.footprints:
@@ -408,6 +409,8 @@ def classify_parts(board: Board, ctx: AnalyzerContext) -> dict[str, str]:
                 conflicts[f.ref] = {"brief_role": given[f.ref], "role_used": roles[f.ref], "message": chk["message"]}
                 continue
             roles[f.ref] = given[f.ref]
+            if part_kind(f) == "ic":
+                anchors.append((f, roles[f.ref]))      # an active part the brief names is still the part its own pull-ups and filters belong with
             continue
         kind = part_kind(f)
         if kind in ("testpoint", "fiducial", "mounting"):
@@ -463,7 +466,8 @@ def classify_parts(board: Board, ctx: AnalyzerContext) -> dict[str, str]:
             continue
         nets = set(nets_of.get(f.ref, []))
         signal = {n for n in nets if not is_power(n, ctx)}
-        best: tuple[float, str] | None = None
+        best: tuple[float, str, str, list[str]] | None = None
+        matched_signal = False
         # a shared signal net says more than a shared supply: try those first
         for pool in (signal, nets):
             if not pool:
@@ -473,11 +477,23 @@ def classify_parts(board: Board, ctx: AnalyzerContext) -> dict[str, str]:
                     continue
                 d = math.dist((f.x, f.y), (a.x, a.y))
                 if best is None or d < best[0]:
-                    best = (d, role)
+                    best = (d, role, a.ref, sorted(pool & set(nets_of.get(a.ref, []))))
             if best:
+                matched_signal = pool is signal
                 break
         roles[f.ref] = best[1] if best else ("power" if any(is_power(n, ctx) for n in nets) else "digital")
+        if best:
+            bases[f.ref] = {"follows": best[2], "via_nets": best[3], "signal": matched_signal}
+    ctx.cache["role_basis"] = bases
     return roles
+
+
+def role_basis(board: Board, ctx: AnalyzerContext) -> dict[str, dict[str, Any]]:
+    """For a passive whose role was taken from an active part: {ref: {follows, via_nets, signal}}. Roles of passives are a grouping
+    heuristic ("belongs with the active part it shares a net with"), so a pull-up on a sensor's bus is in the sensor's zone because it is that part's own bus."""
+    if "role_basis" not in ctx.cache:
+        classify_parts(board, ctx)
+    return ctx.cache["role_basis"]
 
 
 def role_of(roles: dict[str, str], ref: str) -> str:

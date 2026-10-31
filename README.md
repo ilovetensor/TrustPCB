@@ -1,6 +1,6 @@
 # TrustPCB
 
-**Others read your datasheets. TrustPCB tests your board.**
+**Catch board problems before you pay to build them.**
 
 TrustPCB is an open-source inspection layer for circuit boards. You upload a KiCad project and say what the board must do. An AI agent, Meta's Muse Spark, then studies the board like a senior engineer: it looks at it, forms ideas about what could go wrong, runs real checks and electromagnetic simulations to test those ideas, and writes a report in which every claim is tied to a place on the board and to the evidence behind it.
 
@@ -185,6 +185,7 @@ With `TRUSTPCB_DEMO_READONLY=1` the backend refuses every `POST`, `PATCH`, `PUT`
 | `samples/nrf52840-node/` | An nRF52840 Bluetooth node (KiCad project with schematic) with an antenna keep-out; the integration tests run it through the RF lab |
 | `samples/nrf52840-node-v2/` | The same board after hand edits to three matching parts (L1, C19, C20), with copper unchanged. Upload it as version 2 of the first board to try a recheck |
 | `samples/patch-2g5/` | A 2.5 GHz patch antenna on FR-4 (`geometry.json` holds the design values it was generated from) |
+| `samples/usb-ldo-led/` | A USB-C powered 3.3 V regulator board with an LED and no radio; a review skips the simulation phases |
 
 Zip a sample folder (or drag the folder in) on the upload screen.
 
@@ -237,7 +238,8 @@ All settings are optional environment variables; see `.env.example` for the full
 | `KICAD_CLI_PATH` | Path to `kicad-cli` if it is not found automatically |
 | `TRUSTPCB_EMS_IMAGE` | Solver image name (default `trustpcb-ems:dev`) |
 | `TRUSTPCB_DEMO_READONLY` | `1` refuses every change and hides upload and start (read-only demo) |
-| `TRUSTPCB_REPO_URL` | Repository link shown in the read-only demo notice |
+| `TRUSTPCB_REPO_URL` | Repository link shown in the read-only demo notice and used by the GitHub chip on the landing page |
+| `NEXT_PUBLIC_DISCORD_URL` | Discord invite for the "Join Discord" chip on the landing page; the chip is hidden while this is unset. Read when the web app starts or builds |
 | `TRUSTPCB_MAX_PCB_MB` | Largest board file read, in MB (default 150) |
 | `TRUSTPCB_PARSE_TIMEOUT_S` | Longest time spent reading a board file (default 240) |
 | `TRUSTPCB_MAX_UPLOAD_MB` | Largest whole upload in MiB (default 512). A zip is capped at 100 MB whatever this is set to |

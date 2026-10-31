@@ -33,10 +33,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
 Progress = Callable[[dict], Awaitable[None]]
+
+
+logger = logging.getLogger('trustpcb')
 
 
 class LabUnavailable(RuntimeError):
@@ -124,7 +128,20 @@ class BaselineLab:
             drc_summary.annotate(found)       # older versions have no distinct counts: add them on read (pure, idempotent)
         except ImportError:
             pass
+        await self._schematic_facts(version_id, found)
         return found + await self._analyze(version_id, part_roles)
+
+    async def _schematic_facts(self, version_id, found: list[dict]) -> None:
+        """Parity results get what the schematic already says (a no-connect marker, the do-not-populate parts), so no fix is recommended that the file already has."""
+        if not any(str(c.get('rule', '')).startswith('parity_') for c in found):
+            return
+        try:
+            from ..analyzers.base import AnalyzerContext
+            from ..analyzers.schematic import annotate_parity
+            board = await self.load_board(version_id=version_id)
+            annotate_parity(found, board, AnalyzerContext(version_dir=str(self._dir(version_id))))
+        except Exception:       # the facts are extra: a schematic that cannot be read must not stop the review
+            logger.warning('Version %s: the schematic could not be read for parity facts', version_id, exc_info=True)
 
     async def _analyze(self, version_id, part_roles=None, only=None) -> list[dict]:
         import asyncio
