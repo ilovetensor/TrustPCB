@@ -15,13 +15,13 @@ from typing import Any
 from shapely.geometry import Point, box
 from shapely.ops import unary_union
 
+from ..partvalue import parse_value as read_value
 from ..pcb.model import Board
 from . import geometry as geo
 from .types import C0, MatchElement, MatchNetwork, NotSimulatable, RfSetup
 
 PASSIVE_PREFIXES = {"R": "R", "L": "L", "C": "C", "FB": "FB"}
 IC_SKIP_PREFIXES = {"H", "MH", "TP", "MK", "FID", "G", "LOGO", "REF"}
-_UNIT = {"p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "m": 1e-3, "k": 1e3, "M": 1e6, "G": 1e9, "": 1.0}
 
 DEFAULT_PORT_OHM = 50.0
 MIN_RESOLVED_GAP_MM = 0.25
@@ -37,27 +37,14 @@ def ref_prefix(ref: str) -> str:
 
 
 def parse_value(kind: str, text: str) -> tuple[float | None, bool]:
-    """Read a part value such as ``2.2nH``, ``DNP 0.5pF`` or ``100k``. Returns (value, dnp)."""
+    """Read a part value such as ``2.2nH``, ``DNP 0.5pF`` or ``100k``. Returns (value, dnp).
+
+    The value comes from ``trustpcb.partvalue``: ``None`` when the unit cannot be known (a bare number on
+    a capacitor or inductor) or the text is not one value.
+    """
     t = (text or "").strip()
     dnp = bool(re.search(r"\b(DNP|DNF|NC|NP|NOT[_ ]FITTED)\b|^DNP", t, re.I)) or bool(re.search(r"(^|[_\s])DNP", t, re.I))
-    t2 = re.sub(r"\b(DNP|DNF|NP|NC)\b", " ", t, flags=re.I).strip()
-    m = re.search(r"(\d+(?:[.,]\d+)?)\s*([pnuµmkMG]?)\s*([HhFfΩRr]?)", t2)
-    if not m or not re.search(r"\d", t2):
-        return None, dnp
-    num = float(m.group(1).replace(",", "."))
-    unit = m.group(2)
-    tail = m.group(3)
-    # "4n7" style: digit-letter-digit
-    m2 = re.search(r"(\d+)([pnuµkMG])(\d+)", t2)
-    if m2:
-        num = float(f"{m2.group(1)}.{m2.group(3)}")
-        unit = m2.group(2)
-    val = num * _UNIT.get(unit, 1.0)
-    if kind == "R" and not unit and not tail and not re.search(r"[RΩr]", t2):
-        return None, dnp  # a bare number is ambiguous
-    if kind in ("L", "C") and not unit and not tail:
-        return None, dnp
-    return val, dnp
+    return read_value(t, kind), dnp
 
 
 def infer_kind(ref_kind: str, text: str) -> str:
