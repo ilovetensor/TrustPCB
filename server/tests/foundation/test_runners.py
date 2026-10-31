@@ -129,7 +129,8 @@ def test_result_payload_shape(fakes):
 def test_resolve_profile_default_follows_environment(monkeypatch):
     assert runners.resolve_profile()['name'] == 'scripted'  # conftest sets TRUSTPCB_RUNNER=scripted
     monkeypatch.delenv('TRUSTPCB_RUNNER')
-    assert runners.resolve_profile()['name'] in {'local_agent', 'scripted'}
+    monkeypatch.delenv('TRUSTPCB_RUNNER_MODULE', raising=False)
+    assert runners.resolve_profile()['name'] == 'scripted'
     with pytest.raises(ValueError):
         runners.resolve_profile('nonsense')
 
@@ -145,4 +146,57 @@ def test_load_runner_scripted_and_no_silent_provider_fallback():
 
 def test_profiles_never_name_a_model_family_other_than_muse():
     assert runners.PROFILES['muse_api']['model'] == 'muse-spark-1.3'
-    assert runners.PROFILES['local_agent']['model'] is None
+    assert set(runners.PROFILES) == {'muse_api', 'scripted'}   # no other runner is named in tracked code
+
+
+@pytest.fixture
+def extension(tmp_path, monkeypatch):
+    """A runner module outside the package, selected through TRUSTPCB_RUNNER_MODULE."""
+    (tmp_path / 'my_ext_runner.py').write_text(
+        "PROFILE = {'model': 'm-1', 'effort': 'low'}\n"
+        "class Runner:\n"
+        "    def __init__(self, profile): self.profile = profile\n"
+        "def create_runner(profile=None): return Runner(profile)\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delenv('TRUSTPCB_RUNNER')
+    monkeypatch.setenv('TRUSTPCB_RUNNER_MODULE', 'my_ext_runner')
+    return 'my_ext_runner'
+
+
+def test_extension_module_becomes_the_default_runner(extension):
+    profile = runners.resolve_profile()
+    assert profile['name'] == 'my_ext_runner' and profile['runner'] == 'my_ext_runner'
+    assert profile['model'] == 'm-1' and profile['effort'] == 'low'      # the module's PROFILE fills these in
+    assert profile['static_tool_list'] is True and 'my_ext_runner' in profile['description']
+    assert runners.available('my_ext_runner') and 'my_ext_runner' in runners.profile_names()
+    runner = runners.load_runner(profile)
+    assert runner.profile == profile
+    assert runners.load_runner('my_ext_runner').profile['name'] == 'my_ext_runner'    # a review stored the name only
+
+
+def test_extension_is_not_used_when_another_runner_is_chosen(extension, monkeypatch):
+    monkeypatch.setenv('TRUSTPCB_RUNNER', 'scripted')
+    assert runners.resolve_profile()['name'] == 'scripted'
+    assert isinstance(runners.load_runner(None), ScriptedRunner)
+    assert runners.resolve_profile('my_ext_runner')['name'] == 'my_ext_runner'
+
+
+def test_extension_that_is_missing_or_malformed_is_an_error_not_a_fallback(monkeypatch):
+    monkeypatch.delenv('TRUSTPCB_RUNNER')
+    monkeypatch.setenv('TRUSTPCB_RUNNER_MODULE', 'no_such_runner_module')
+    assert not runners.available('no_such_runner_module')
+    with pytest.raises(RuntimeError, match='not installed'):
+        runners.resolve_profile()
+    monkeypatch.setenv('TRUSTPCB_RUNNER_MODULE', 'not a module; rm -rf')
+    with pytest.raises(RuntimeError, match='dotted Python module name'):
+        runners.resolve_profile()
+    assert runners.profile_names() == list(runners.PROFILES)
+    monkeypatch.setenv('TRUSTPCB_RUNNER_MODULE', 'somewhere.scripted')
+    with pytest.raises(RuntimeError, match='reserved'):
+        runners.resolve_profile()
+
+
+def test_extension_name_is_unknown_when_the_setting_is_absent(monkeypatch):
+    monkeypatch.delenv('TRUSTPCB_RUNNER_MODULE', raising=False)
+    with pytest.raises(ValueError, match='Unsupported'):
+        runners.resolve_profile('my_ext_runner')

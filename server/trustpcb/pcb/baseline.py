@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -30,6 +31,8 @@ from ..intake import detect as detect_mod
 from ..intake import stackup as stackup_mod
 from . import kicad_cli, render_svg
 from .model import Board, UnknownTarget, parse_board
+
+logger = logging.getLogger("trustpcb")
 
 Progress = Callable[[str, str], Awaitable[None] | None]
 
@@ -257,6 +260,7 @@ async def run_baseline(version_dir: str | Path, options: BaselineOptions | None 
         except kicad_cli.KicadError as exc:
             step.status, step.error = "failed", f"{exc} {exc.detail[-400:]}".strip()
         except Exception as exc:  # a step must never take the baseline down
+            logger.exception("Baseline step %s failed", step.name)
             step.status, step.error = "failed", f"{type(exc).__name__}: {exc}"
         finally:
             step.seconds = time.monotonic() - t0
@@ -269,6 +273,7 @@ async def run_baseline(version_dir: str | Path, options: BaselineOptions | None 
         board = await asyncio.to_thread(parse_board, paths["pcb"], version_dir.name)
         steps["parse"].status = "ok"
     except Exception as exc:
+        logger.exception("The board could not be parsed")
         steps["parse"].status, steps["parse"].error = "failed", f"{type(exc).__name__}: {exc}"
         result = _finish_failed(version_dir, art, steps, warnings, f"board could not be parsed: {exc}")
         return result
@@ -288,6 +293,7 @@ async def run_baseline(version_dir: str | Path, options: BaselineOptions | None 
         steps["kicad_version"].status = "ok"
         steps["kicad_version"].extra["version"] = ".".join(map(str, v))
     except kicad_cli.KicadError as exc:
+        logger.warning("KiCad is unavailable, so its checks are skipped: %s", exc)
         kicad_ok = False
         steps["kicad_version"].status, steps["kicad_version"].error = "failed", str(exc)
         warnings.append(f"KiCad unavailable: {exc}. Checks, statistics and the 3D model were skipped.")

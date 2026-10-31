@@ -1,7 +1,7 @@
-"""Loopback-only HTTP boundary for TrustPCB (spec section 18).
+"""Loopback-only HTTP boundary for TrustPCB.
 
-Routes that need work owned by another lane call one clearly named function in that lane's
-module and answer 501 until the module and function exist. The hooks are:
+The routes that do review work call one named function in a service module, looked up when the
+request arrives:
 
   trustpcb.intake.service.ingest(*, store, version, upload_path, filename) -> dict | None
       Called by POST /api/projects/{id}/versions after the upload was streamed to disk. `version`
@@ -11,6 +11,7 @@ module and answer 501 until the module and function exist. The hooks are:
       Return None, or a dict of versions fields to store (status, stackup, detection, label).
       The temporary upload folder is deleted after the call, so copy what you keep.
   trustpcb.review.service.start_review(*, store, manager, version_id, goal, depth) -> dict
+  trustpcb.review.sims.list_sims(*, store, review_id) -> list
   trustpcb.review.followup.start_thread(*, store, manager, review_id, body) -> dict
   trustpcb.review.followup.send_message(*, store, manager, thread_id, text, selected, request_id) -> dict
   trustpcb.review.report.render_revision(*, store, review, revision, fmt) -> bytes     fmt: html | pdf
@@ -22,7 +23,6 @@ import asyncio
 import hashlib
 import hmac
 import importlib
-import importlib.util
 import inspect
 import logging
 import mimetypes
@@ -77,6 +77,7 @@ async def kicad_status() -> dict:
         _kicad_ok = (configured, found)
         return {'available': True, 'version': found, 'reason': None}
     except Exception as exc:  # missing, wrong version, not runnable
+        logger.debug('kicad-cli is not usable: %s', exc, exc_info=True)
         return {'available': False, 'version': None, 'reason': str(exc)[:300]}
 
 
@@ -85,6 +86,11 @@ async def warn_if_kicad_missing() -> None:
     if not status['available']:
         logger.warning('kicad-cli is not available (%s). Uploads still work, but KiCad checks, statistics and the 3D model are skipped. '
                        'Set KICAD_CLI_PATH or install KiCad 9 or newer.', status['reason'])
+
+
+def token_matches(given: str, expected: str) -> bool:
+    """Constant-time token check. Compares bytes, because a header with non-ASCII text would make a str comparison raise."""
+    return hmac.compare_digest(given.encode('utf-8'), expected.encode('utf-8'))
 
 
 def demo_readonly() -> bool:
@@ -319,7 +325,7 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
         origin = request.headers.get('origin')
         if origin is not None and origin not in ALLOWED_ORIGINS:
             return JSONResponse({'detail': 'Origin is not allowed'}, status_code=403)
-        if request.url.path not in {'/health', '/api/health'} and not hmac.compare_digest(request.headers.get(TOKEN_HEADER, ''), launch_token):
+        if request.url.path not in {'/health', '/api/health'} and not token_matches(request.headers.get(TOKEN_HEADER, ''), launch_token):
             return JSONResponse({'detail': 'Authorization required'}, status_code=401)
         if request.method in MUTATING_METHODS and demo_readonly():
             return JSONResponse({'detail': DEMO_READONLY_MESSAGE, 'code': 'demo_readonly'}, status_code=403)
@@ -351,18 +357,12 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
             raise HTTPException(404, f'{what} not found')
         return row
 
-    def lane_function(module: str, name: str):
-        """The function another lane owns, or HTTP 501 while it does not exist yet."""
-        try:
-            present = importlib.util.find_spec(module) is not None
-        except ModuleNotFoundError:
-            present = False
-        function = getattr(importlib.import_module(module), name, None) if present else None
-        if function is None:
-            raise HTTPException(501, f'Not implemented yet: needs {module}.{name}')
-        return function
+    def hook(module: str, name: str):
+        """The service function a route calls, looked up when the request arrives."""
+        return getattr(importlib.import_module(module), name)
 
-    async def call_lane(function, **kwargs):
+    async def call_hook(function, **kwargs):
+        """Run a service function that may be sync (in a thread) or async."""
         if inspect.iscoroutinefunction(function):
             return await function(**kwargs)
         result = await asyncio.to_thread(function, **kwargs)
@@ -380,7 +380,7 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
             try:
                 after = max(after, int(header_cursor))
             except ValueError:
-                raise HTTPException(400, 'Invalid event cursor')
+                raise HTTPException(400, 'Invalid event cursor') from None
         return StreamingResponse(
             sse_events(store(), chat_id, max(0, after), request.is_disconnected, poll=poll, keepalive=keepalive),
             media_type='text/event-stream', headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
@@ -397,13 +397,14 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
 
     @app.get('/api/bootstrap')
     async def bootstrap():
-        from .runners import PROFILES, available, resolve_profile
+        from .runners import available, profile_names, resolve_profile
         try:
             profile = resolve_profile()
         except Exception as exc:  # an unusable default must not break the page
+            logger.warning('The default runner profile cannot be used: %s', exc, exc_info=True)
             profile = {'name': None, 'error': str(exc)[:300]}
         return {'projects': store().list_projects(), 'profile': profile,
-                'runners': {name: available(name) for name in PROFILES}, 'max_upload_bytes': MAX_UPLOAD_BYTES,
+                'runners': {name: available(name) for name in profile_names()}, 'max_upload_bytes': MAX_UPLOAD_BYTES,
                 'kicad': await kicad_status(), 'demo_readonly': demo_readonly(), 'repo_url': os.getenv('TRUSTPCB_REPO_URL') or None}
 
     # ---- projects and versions --------------------------------------------------------
@@ -435,7 +436,7 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     @app.post('/api/projects/{id}/versions')
     async def upload_version(id: str, request: Request):
         found(store().get_project(id), 'Project')
-        ingest = lane_function('trustpcb.intake.service', 'ingest')  # refuse before reading a large body
+        ingest = hook('trustpcb.intake.service', 'ingest')
         upload_dir = store().upload_dir(uuid.uuid4().hex)
         try:
             sink = await receive_upload(request, upload_dir)
@@ -453,7 +454,7 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
             label = (sink.fields.get('label') or request.query_params.get('label') or '').strip()[:200] or None
             version = store().create_version(id, label=label, upload_hash=digest)
             try:
-                result = await call_lane(ingest, store=store(), version=version, upload_path=upload_path, filename=filename)
+                result = await call_hook(ingest, store=store(), version=version, upload_path=upload_path, filename=filename)
             except ValueError as exc:
                 store().update_version(version['id'], status='failed', error=str(exc)[:2000])
                 return JSONResponse({'detail': str(exc), 'version_id': version['id']}, status_code=422)
@@ -478,8 +479,8 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     @app.post('/api/versions/{id}/reviews')
     async def start_review(id: str, body: ReviewBody):
         found(store().get_version(id), 'Version')
-        function = lane_function('trustpcb.review.service', 'start_review')
-        return await call_lane(function, store=store(), manager=manager(), version_id=id, goal=body.goal, depth=body.depth)
+        function = hook('trustpcb.review.service', 'start_review')
+        return await call_hook(function, store=store(), manager=manager(), version_id=id, goal=body.goal, depth=body.depth)
 
     # ---- reviews ----------------------------------------------------------------------
 
@@ -492,8 +493,8 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     @app.get('/api/reviews/{id}/sims')
     async def review_sims(id: str):
         review_row(id)
-        function = lane_function('trustpcb.review.sims', 'list_sims')
-        return await call_lane(function, store=store(), review_id=id)
+        function = hook('trustpcb.review.sims', 'list_sims')
+        return await call_hook(function, store=store(), review_id=id)
 
     @app.get('/api/sim/{job_id}/files/{name}')
     async def sim_file(job_id: str, name: str):
@@ -525,8 +526,8 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     @app.post('/api/reviews/{id}/threads')
     async def start_thread(id: str, body: ThreadBody):
         review_row(id)
-        function = lane_function('trustpcb.review.followup', 'start_thread')
-        return await call_lane(function, store=store(), manager=manager(), review_id=id, body=body.model_dump())
+        function = hook('trustpcb.review.followup', 'start_thread')
+        return await call_hook(function, store=store(), manager=manager(), review_id=id, body=body.model_dump())
 
     @app.get('/api/reviews/{id}/findings')
     async def review_findings(id: str, status: str | None = None):
@@ -558,8 +559,8 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
         fmt = match.group(2)
         if fmt == 'json':
             return JSONResponse(revision['snapshot'], headers={'Content-Disposition': f'inline; filename="report-r{revision["number"]}.json"'})
-        function = lane_function('trustpcb.review.report', 'render_revision')
-        body = await call_lane(function, store=store(), review=review, revision=revision, fmt=fmt)
+        function = hook('trustpcb.review.report', 'render_revision')
+        body = await call_hook(function, store=store(), review=review, revision=revision, fmt=fmt)
         media = 'text/html; charset=utf-8' if fmt == 'html' else 'application/pdf'
         headers = {'X-Content-Type-Options': 'nosniff'}
         if fmt == 'html':
@@ -599,8 +600,8 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
             raise HTTPException(400, 'Pass from=<version id>&to=<version id>')
         found(store().get_version(from_id), 'Version')
         found(store().get_version(to_id), 'Version')
-        function = lane_function('trustpcb.review.compare', 'compare_versions')
-        return await call_lane(function, store=store(), from_id=from_id, to_id=to_id)
+        function = hook('trustpcb.review.compare', 'compare_versions')
+        return await call_hook(function, store=store(), from_id=from_id, to_id=to_id)
 
     @app.get('/api/artifacts/{id}')
     async def get_artifact(id: str):
@@ -618,8 +619,8 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     @app.post('/api/threads/{id}/messages')
     async def thread_message(id: str, body: MessageBody):
         thread_row(id)
-        function = lane_function('trustpcb.review.followup', 'send_message')
-        return await call_lane(function, store=store(), manager=manager(), thread_id=id, text=body.text,
+        function = hook('trustpcb.review.followup', 'send_message')
+        return await call_hook(function, store=store(), manager=manager(), thread_id=id, text=body.text,
                                selected=body.selected, request_id=body.request_id)
 
     @app.get('/api/threads/{id}/events')

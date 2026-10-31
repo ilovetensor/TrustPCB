@@ -7,7 +7,6 @@ a coarse patch scenario and validates what it writes.
 from __future__ import annotations
 
 import json
-import math
 import os
 import pathlib
 import shutil

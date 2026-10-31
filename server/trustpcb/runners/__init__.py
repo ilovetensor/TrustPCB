@@ -1,36 +1,78 @@
 """Runner profiles and loading.
 
-`local_agent` (development) is a git-ignored module, `muse_api` is the real-review runner, and
-`scripted` is the deterministic default when nothing else exists. There is never an automatic
-fallback from one real provider to another: asking for a runner that is missing is an error.
+`muse_api` is the real-review runner and `scripted` is the deterministic default when nothing else is
+configured. There is never an automatic fallback from one real provider to another: asking for a
+runner that is missing is an error.
+
+Extension point: set `TRUSTPCB_RUNNER_MODULE` to the dotted name of a Python module and that module
+becomes an additional runner. The module must expose `create_runner(profile) -> Runner` and may expose
+`PROFILE = {...}` to set its `model`, `effort`, `description` or `static_tool_list`. The profile is
+named after the last part of the module path, and it is the default runner when `TRUSTPCB_RUNNER` is
+not set. Reviews remember the profile name they started with, so keep the module name stable.
 """
 from __future__ import annotations
 
 import importlib
 import importlib.util
 import os
+import re
 
 from .base import RunRequest, Runner
 
-# Only generic facts live here. A local runner module may expose PROFILE = {...} to fill in
-# its own model and effort; nothing in tracked code names it.
+EXTENSION_VARIABLE = 'TRUSTPCB_RUNNER_MODULE'
+_MODULE_PATH = re.compile(r'^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$')
+
 PROFILES = {
-    'local_agent': {'runner': 'local_agent', 'model': None, 'effort': None, 'static_tool_list': True, 'description': 'Local development runner (git-ignored)'},
     'muse_api': {'runner': 'muse_api', 'model': 'muse-spark-1.3', 'effort': None, 'static_tool_list': False, 'description': 'Muse via the Messages API'},
     'scripted': {'runner': 'scripted', 'model': None, 'effort': None, 'description': 'Deterministic scripted runner; calls no model'},
 }
-__all__ = ['PROFILES', 'RunRequest', 'Runner', 'available', 'load_runner', 'resolve_profile']
+__all__ = ['EXTENSION_VARIABLE', 'PROFILES', 'RunRequest', 'Runner', 'available', 'extension_profile_name', 'load_runner', 'profile_names', 'resolve_profile']
+
+
+def _extension_module() -> str | None:
+    """The module named by the environment, or None. A malformed value is an error, not silently ignored."""
+    module = (os.environ.get(EXTENSION_VARIABLE) or '').strip()
+    if not module:
+        return None
+    if not _MODULE_PATH.match(module):
+        raise RuntimeError(f'{EXTENSION_VARIABLE} must be a dotted Python module name, got {module!r}.')
+    return module
+
+
+def extension_profile_name() -> str | None:
+    """The profile name of the configured extension runner: the last part of its module path."""
+    module = _extension_module()
+    name = module.rsplit('.', 1)[-1] if module else None
+    if name in PROFILES:
+        raise RuntimeError(f'{EXTENSION_VARIABLE} cannot use the reserved runner name {name!r}.')
+    return name
+
+
+def profile_names() -> list[str]:
+    """Every profile name this process knows: the built-in ones plus the configured extension, if any."""
+    try:
+        extension = extension_profile_name()
+    except RuntimeError:
+        extension = None
+    return [*PROFILES, *([extension] if extension else [])]
 
 
 def _module_for(name: str) -> str | None:
-    return {'local_agent': 'trustpcb.runners.local_agent', 'muse_api': 'trustpcb.runners.muse'}.get(name)
+    if name == 'muse_api':
+        return 'trustpcb.runners.muse'
+    if name == extension_profile_name():
+        return _extension_module()
+    return None
 
 
 def available(name: str) -> bool:
     if name == 'scripted':
         return True
-    module = _module_for(name)
-    return bool(module) and importlib.util.find_spec(module) is not None
+    try:
+        module = _module_for(name)
+        return bool(module) and importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError, RuntimeError):  # a parent package that cannot be imported, or a bad setting
+        return False
 
 
 def _import(name: str):
@@ -40,15 +82,13 @@ def _import(name: str):
 def resolve_profile(name: str | None = None) -> dict:
     """The profile dict a review or thread is bound to.
 
-    No name: TRUSTPCB_RUNNER, else local_agent when its module exists and imports, else scripted.
-    A local_agent that exists but cannot import (for example its extra requirements are not
-    installed) resolves to scripted with a `note` saying why, so the UI shows what really runs.
+    No name: TRUSTPCB_RUNNER, else the extension runner when TRUSTPCB_RUNNER_MODULE is set, else scripted.
+    A configured extension that is missing or cannot be imported is an error that says why, never a
+    silent switch to another runner.
     """
-    name = name or os.environ.get('TRUSTPCB_RUNNER') or None
-    explicit = name is not None
-    if name is None:
-        name = 'local_agent' if available('local_agent') else 'scripted'
-    if name not in PROFILES:
+    name = name or os.environ.get('TRUSTPCB_RUNNER') or extension_profile_name() or 'scripted'
+    extension = None if name in PROFILES else extension_profile_name()
+    if name not in PROFILES and name != extension:
         raise ValueError(f'Unsupported runner profile: {name}')
     if name == 'scripted':
         return {**PROFILES['scripted'], 'name': 'scripted'}
@@ -57,10 +97,13 @@ def resolve_profile(name: str | None = None) -> dict:
     try:
         module = _import(name)
     except ImportError as exc:
-        if explicit:
-            raise RuntimeError(f'Runner profile {name} could not be imported: {exc}') from exc
-        return {**PROFILES['scripted'], 'name': 'scripted', 'note': f'local_agent present but not importable ({exc}); using scripted'}
-    return {**PROFILES[name], **getattr(module, 'PROFILE', {}), 'name': name}
+        raise RuntimeError(f'Runner profile {name} could not be imported: {exc}') from exc
+    if name == extension:
+        # An extension reads its tool list once per session unless its own PROFILE says otherwise.
+        base = {'runner': name, 'model': None, 'effort': None, 'static_tool_list': True, 'description': f'Runner from {_extension_module()}'}
+    else:
+        base = PROFILES[name]
+    return {**base, **getattr(module, 'PROFILE', {}), 'name': name}
 
 
 def load_runner(profile: dict | str | None = None) -> Runner:

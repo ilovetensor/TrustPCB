@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from shapely.geometry import LineString, Point, box
+from shapely.geometry import Point, box
 
 from . import geometry as geo
 from .types import C0, RfSetup
@@ -356,7 +356,6 @@ def _cells_across(model, setup: RfSetup, x: np.ndarray, y: np.ndarray):
                 n = math.hypot(dx, dy)
                 if n < 1e-9:
                     continue
-                nx_, ny_ = -dy / n, dx / n
                 mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
                 hx, hy = _local_cell(x, mx), _local_cell(y, -my)
                 c = i.width / max(hx, hy)

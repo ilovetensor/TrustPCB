@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """A stand-in for the docker CLI in queue tests: ``run`` writes worker-like output, ``kill`` stops it."""
-import json, os, signal, sys, time
+import json, os, sys, time
 from pathlib import Path
 
 args = sys.argv[1:]
 state = Path(os.environ["FAKE_DOCKER_STATE"])
 if args[0] == "ps":          # containers an earlier process left behind: names listed in state/orphans
+    (state / "ps_args.json").write_text(json.dumps(args))
     orphans = state / "orphans"
     print(orphans.read_text() if orphans.exists() else "", end="")
     sys.exit(0)

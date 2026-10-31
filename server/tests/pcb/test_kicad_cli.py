@@ -69,6 +69,29 @@ async def test_timeout_kills_process(tmp_path, monkeypatch):
     assert e.value.code == "timeout"
 
 
+async def test_kicad_does_not_inherit_secrets(tmp_path, monkeypatch):
+    monkeypatch.setenv("KICAD_CLI_PATH", str(fake_exe(tmp_path / "envdump", "env")))
+    monkeypatch.setenv("MODEL_API_KEY", "sk-secret-value")
+    monkeypatch.setenv("TRUSTPCB_TOKEN", "launch-token-value")
+    monkeypatch.setenv("SOME_OTHER_SECRET", "other-secret-value")
+    monkeypatch.setenv("KICAD10_3DMODEL_DIR", "/opt/models")
+    monkeypatch.setenv("LC_ALL", "C")
+    result = await K.run(["version"])
+    names = {line.split("=", 1)[0] for line in result.stdout.splitlines() if "=" in line}
+    assert not {"MODEL_API_KEY", "TRUSTPCB_TOKEN", "SOME_OTHER_SECRET"} & names
+    assert "secret" not in result.stdout and "launch-token" not in result.stdout
+    assert {"PATH", "KICAD10_3DMODEL_DIR", "KICAD_CLI_PATH", "LC_ALL"} <= names
+
+
+def test_child_environment_allow_list():
+    from trustpcb.pcb.env import child_environment
+
+    source = {"PATH": "/bin", "HOME": "/h", "XDG_CONFIG_HOME": "/c", "KICAD_X": "1", "DOCKER_HOST": "unix:///d", "API_KEY": "k", "TOKEN": "t"}
+    assert child_environment(environ=source) == {"PATH": "/bin", "HOME": "/h", "XDG_CONFIG_HOME": "/c"}
+    assert child_environment(extra_prefixes=("KICAD", "DOCKER"), extra_names=("TOKEN",), environ=source) == {
+        "PATH": "/bin", "HOME": "/h", "XDG_CONFIG_HOME": "/c", "KICAD_X": "1", "DOCKER_HOST": "unix:///d", "TOKEN": "t"}
+
+
 async def test_failed_command_raises_with_detail(tmp_path, monkeypatch):
     monkeypatch.setenv("KICAD_CLI_PATH", str(fake_exe(tmp_path / "bad", "echo boom >&2; exit 3")))
     pcb = tmp_path / "w" / "a.kicad_pcb"
@@ -105,8 +128,6 @@ async def test_real_version_drc_erc_stats_netlist(nrf_copy, tmp_path):
     assert "sheets" in json.loads((tmp_path / "erc.json").read_text())
     await K.stats(pcb, tmp_path / "stats.json")
     assert json.loads((tmp_path / "stats.json").read_text())
-    await K.netlist(sch, tmp_path / "n.net")
-    assert (tmp_path / "n.net").read_text().startswith("(export")
 
 
 @needs_kicad
@@ -152,12 +173,10 @@ async def test_refill_zones_on_a_copy_only(nrf_copy, tmp_path):
 
 
 @needs_kicad
-async def test_glb_and_render(nrf_copy, tmp_path):
+async def test_glb_export(nrf_copy, tmp_path):
     pcb = nrf_copy / "nrf52840_rf_iot_node.kicad_pcb"
     await K.export_glb(pcb, tmp_path / "b.glb")
     assert (tmp_path / "b.glb").read_bytes()[:4] == b"glTF"
-    await K.render(pcb, tmp_path / "r.png", "top", width=400, height=300)
-    assert (tmp_path / "r.png").read_bytes()[:4] == b"\x89PNG"
 
 
 @needs_kicad

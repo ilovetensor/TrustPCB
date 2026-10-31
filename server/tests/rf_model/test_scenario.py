@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from trustpcb.rf import mesh as meshmod
 from trustpcb.rf import scenario as S
 from trustpcb.rf import whatif as W
 

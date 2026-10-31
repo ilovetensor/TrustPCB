@@ -1,4 +1,3 @@
-import asyncio
 import importlib.machinery
 import sys
 import types
@@ -39,24 +38,13 @@ class FakeRegistry:
 
 
 def fake_module(monkeypatch, name, **functions):
-    """Install a stand-in for a module another lane will own."""
+    """Install a stand-in for a service module."""
     module = types.ModuleType(name)
     module.__spec__ = importlib.machinery.ModuleSpec(name, None)
     for key, value in functions.items():
         setattr(module, key, value)
     monkeypatch.setitem(sys.modules, name, module)
     return module
-
-
-def lane_present(module, function):
-    import importlib
-    import importlib.util
-    try:
-        if importlib.util.find_spec(module) is None:
-            return False
-    except ModuleNotFoundError:
-        return False
-    return hasattr(importlib.import_module(module), function)
 
 
 @pytest.fixture
@@ -84,6 +72,6 @@ def seeded(store):
 def fakes(monkeypatch):
     """Helpers shared by the foundation tests (importlib mode cannot import siblings)."""
     return types.SimpleNamespace(
-        Result=FakeResult, Spec=FakeSpec, Registry=FakeRegistry, lane_present=lane_present,
+        Result=FakeResult, Spec=FakeSpec, Registry=FakeRegistry,
         module=lambda name, **functions: fake_module(monkeypatch, name, **functions),
     )

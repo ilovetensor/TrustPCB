@@ -5,7 +5,6 @@ import dataclasses
 import pytest
 
 from trustpcb.intake.detect import Detection
-from trustpcb.pcb.model import parse_board_text
 from trustpcb.rf.setup import parse_value, plan_setup
 from trustpcb.rf.types import NotSimulatable
 

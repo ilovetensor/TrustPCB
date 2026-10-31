@@ -11,8 +11,8 @@ if (existsSync(path.join(root, '.env'))) process.loadEnvFile(path.join(root, '.e
 const BACKEND_PORT = 8118;
 const WEB_PORT = 3118;
 const hasWeb = existsSync(path.join(root, 'web', 'package.json'));
-// Optional local-only extras (git-ignored): extra packages for a development runner.
-const localRequirements = path.join(root, 'server', 'requirements.local.txt');
+// Optional: a requirements file with the extra Python packages an extension runner needs (TRUSTPCB_RUNNER_MODULE).
+const extraRequirements = process.env.TRUSTPCB_EXTRA_REQUIREMENTS ? path.resolve(root, process.env.TRUSTPCB_EXTRA_REQUIREMENTS) : null;
 
 async function available(port) {
   await new Promise((resolve, reject) => {
@@ -61,7 +61,13 @@ function launch(command, args, cwd) {
 }
 
 const uvArgs = ['run', '--project', 'server'];
-if (existsSync(localRequirements)) uvArgs.push('--with-requirements', 'server/requirements.local.txt');
+if (extraRequirements) {
+  if (!existsSync(extraRequirements)) {
+    console.error(`TRUSTPCB_EXTRA_REQUIREMENTS points to ${extraRequirements}, which does not exist.`);
+    process.exit(1);
+  }
+  uvArgs.push('--with-requirements', extraRequirements);
+}
 uvArgs.push('uvicorn', 'trustpcb.api:app', '--app-dir', 'server', '--host', '127.0.0.1', '--port', String(BACKEND_PORT), '--timeout-graceful-shutdown', '3');
 launch('uv', uvArgs, root);
 if (hasWeb) launch('npm', ['run', 'dev'], path.join(root, 'web'));

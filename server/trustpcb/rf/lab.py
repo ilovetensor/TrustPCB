@@ -22,7 +22,7 @@ from . import matching, postprocess
 from .queue import SimQueue, ProgressCb
 from .scenario import Scenario, build_job, scenario_for  # noqa: F401  (re-exported)
 from .setup import plan_setup  # noqa: F401
-from .types import NotSimulatable, RfSetup
+from .types import RfSetup
 from .whatif import WhatIfError, op_from_dict, validate_ops  # noqa: F401
 
 
