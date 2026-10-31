@@ -74,11 +74,14 @@ export function Project({ id }: { id: string }) {
             {trend.length === 0 ? <p className="empty">No finished review yet.</p> : (
               <svg viewBox="0 0 360 150" width="100%" role="img" aria-label="Open findings per version">
                 {trend.map((t, i) => {
-                  const x = 60 + i * (trend.length > 1 ? 260 / (trend.length - 1) : 100);
+                  // a fixed pitch keeps a few bars together; only many versions tighten it
+                  const pitch = Math.min(56, 320 / trend.length);
+                  const barW = Math.min(28, pitch * 0.6);
+                  const x = 180 + (i - (trend.length - 1) / 2) * pitch;
                   const h = (t / max) * 100;
                   return (
                     <g key={i}>
-                      <rect x={x - 16} y={120 - h} width="32" height={h} rx="7" fill="var(--paper)" opacity={i === trend.length - 1 ? 0.85 : 0.25} />
+                      <rect x={x - barW / 2} y={120 - h} width={barW} height={h} rx={Math.min(7, barW / 3)} fill="var(--paper)" opacity={i === trend.length - 1 ? 0.85 : 0.25} />
                       <text x={x} y={120 - h - 6} textAnchor="middle" className="rl-t" fill="var(--paper)">{t}</text>
                       <text x={x} y="138" textAnchor="middle" className="rl-t">{reviewed[i].label}</text>
                     </g>
