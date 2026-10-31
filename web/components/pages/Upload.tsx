@@ -124,8 +124,8 @@ function UploadInner() {
     return (
       <div className="pg">
         <TopBar current="upload" />
-        <main className="pg-main">
-          <div className="pg-head"><div><h1 className="serif">Uploads are off in this demo.</h1><p className="pg-sub">Everything here is a finished review you can read, not a service you can feed.</p></div></div>
+        <main id="main" tabIndex={-1} className="pg-main">
+          <div className="pg-head"><div><h1 className="heading">Uploads are off in this demo.</h1><p className="pg-sub">Everything here is a finished review you can read, not a service you can feed.</p></div></div>
           <DemoNotice block />
           <p><Link href="/projects" className="btn primary"><Icon name="folder" size={14} /> Browse the finished reviews</Link></p>
         </main>
@@ -136,11 +136,11 @@ function UploadInner() {
   return (
     <div className="pg">
       <TopBar current="upload" />
-      <main className="pg-main">
+      <main id="main" tabIndex={-1} className="pg-main">
         <div className="pg-head">
           <div>
             <span className="idx">Step {version ? "2" : "1"} of 2</span>
-            <h1 className="serif">{existing ? `New version of ${existingName ?? "this board"}.` : "Bring a board to review."}</h1>
+            <h1 className="heading">{existing ? `New version of ${existingName ?? "this board"}.` : "Bring a board to review."}</h1>
             <p className="pg-sub">Drop a KiCad project as a zip or a folder. The server unpacks it on a copy and never edits your files.</p>
           </div>
         </div>
@@ -156,7 +156,7 @@ function UploadInner() {
             >
               <div>
                 <span className="drop-ic"><Icon name="upload" size={26} /></span>
-                <h2 className="serif">Drop a project here</h2>
+                <h2 className="heading">Drop a project here</h2>
                 <p>{picked ? "Drop again to replace it." : "A .zip of the project, or the project folder. The .kicad_pcb is required. The .kicad_pro is strongly recommended."}</p>
                 <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 18, flexWrap: "wrap" }}>
                   <button className="btn" onClick={() => zipRef.current?.click()} disabled={uploading}><Icon name="file" size={14} /> Choose a zip</button>
@@ -170,8 +170,8 @@ function UploadInner() {
             {picked && !version && (
               <Panel className="card rise" title="What you chose" style={{ marginTop: 14 }}>
                 <dl className="kv">
-                  <dt>Files</dt><dd className="code" style={{ wordBreak: "break-all", fontSize: 12.5 }}>{picked.names.length > 4 ? `${picked.names.slice(0, 4).join(", ")} and ${picked.names.length - 4} more` : picked.names.join(", ")}</dd>
-                  <dt>Board file</dt><dd>{picked.zip ? "Inside the zip. Detected after upload." : picked.pcb ? <span className="code">{picked.pcb}</span> : <span className="signal">No .kicad_pcb found</span>}</dd>
+                  <dt>Files</dt><dd className="num" style={{ wordBreak: "break-all", fontSize: 12.5 }}>{picked.names.length > 4 ? `${picked.names.slice(0, 4).join(", ")} and ${picked.names.length - 4} more` : picked.names.join(", ")}</dd>
+                  <dt>Board file</dt><dd>{picked.zip ? "Inside the zip. Detected after upload." : picked.pcb ? <span className="num">{picked.pcb}</span> : <span className="signal">No .kicad_pcb found</span>}</dd>
                   <dt>Design rules</dt><dd>{picked.zip ? "Checked after upload." : picked.pro ? ".kicad_pro found. Real rules are used." : <span className="signal">Missing</span>}</dd>
                   <dt>Schematic</dt><dd>{picked.zip ? "Checked after upload." : picked.sch ? "Found" : "Not found. ERC and part intent are skipped."}</dd>
                 </dl>
@@ -202,7 +202,7 @@ function UploadInner() {
                 {st?.layers && (
                   <table className="rp-tbl" style={{ margin: "14px 0 0", width: "100%", fontSize: 12.5 }}>
                     <thead><tr><th>Layer</th><th>Kind</th><th>Thickness</th><th>Er</th></tr></thead>
-                    <tbody>{st.layers.map((l) => (<tr key={l.name}><td className="mono">{l.name}</td><td>{l.kind}</td><td className="num">{l.thickness_mm} mm</td><td className="num">{l.epsilon_r ?? "-"}</td></tr>))}</tbody>
+                    <tbody>{st.layers.map((l) => (<tr key={l.name}><td className="num">{l.name}</td><td>{l.kind}</td><td className="num">{l.thickness_mm} mm</td><td className="num">{l.epsilon_r ?? "-"}</td></tr>))}</tbody>
                   </table>
                 )}
                 {st?.assumptions && st.assumptions.length > 0 && (

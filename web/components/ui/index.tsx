@@ -26,10 +26,6 @@ export function Logo({ size = 22, word = true }: { size?: number; word?: boolean
   );
 }
 
-export function Idx({ children, style }: { children: ReactNode; style?: CSSProperties }) {
-  return <span className="idx" style={style}>{children}</span>;
-}
-
 export function Panel({
   title, actions, children, className = "", style, bodyClass, bodyStyle,
 }: {
@@ -91,7 +87,7 @@ export function DemoNotice({ block = false }: { block?: boolean }) {
   if (!block) return <span className="stamp" role="note" data-testid="demo-notice" title={title}>Read-only demo{repo && <> <span aria-hidden>·</span> {repo}</>}</span>;
   return (
     <p className="warn" role="note" data-testid="demo-notice-block">
-      <span className="signal mono">!</span>
+      <span className="signal num">!</span>
       <span><b>Read-only demo.</b> Uploading and starting reviews are switched off here. {repoUrl ? <>The code is in the <a href={repoUrl} target="_blank" rel="noreferrer" className="signal">repository</a>: run it on your own board.</> : "Run TrustPCB on your own machine to review your own board."}</span>
     </p>
   );
@@ -110,7 +106,7 @@ export function SevBar({ counts, size = "md" }: { counts: Record<Severity, numbe
   return (
     <span style={{ display: "inline-flex", gap: size === "sm" ? 8 : 12, alignItems: "center" }}>
       {order.map((s) => (
-        <span key={s} className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: size === "sm" ? 11 : 12, opacity: counts[s] ? 1 : 0.3 }} title={`${counts[s]} ${s}`}>
+        <span key={s} className="num" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: size === "sm" ? 11 : 12, opacity: counts[s] ? 1 : 0.6 }} title={`${counts[s]} ${s}`}>
           <SevGlyph sev={s} size={size === "sm" ? 10 : 12} />
           {counts[s]}
         </span>

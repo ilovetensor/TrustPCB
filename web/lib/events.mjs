@@ -37,7 +37,3 @@ export function isReviewRunning(events, fallbackStatus = "") {
 export function nextAfter(events) {
   return events.length ? events[events.length - 1].sequence : 0;
 }
-
-export function streamUrl(base, after) {
-  return `${base}/stream?after=${after}`;
-}

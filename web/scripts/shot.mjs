@@ -7,7 +7,8 @@ import path from "node:path";
 
 const [, , outDir, ...specs] = process.argv;
 fs.mkdirSync(outDir, { recursive: true });
-const exe = path.join(os.homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell");
+// CHROME_BIN overrides the Playwright cache location (the default is the macOS headless shell)
+const exe = process.env.CHROME_BIN ?? path.join(os.homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell");
 const browser = await chromium.launch({
   executablePath: exe,
   args: ["--use-gl=angle", "--use-angle=metal", "--enable-webgl", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"],

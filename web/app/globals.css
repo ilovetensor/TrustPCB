@@ -4,8 +4,6 @@
 :root,
 [data-theme="ink"] {
   color-scheme: dark;
-  --ink-0: #000;
-  --ink-1: rgba(0, 0, 0, 0.5);
   --stage: #000;
   --stage-2: #0b0b0c;
   --panel: rgba(28, 28, 30, 0.72);
@@ -14,7 +12,7 @@
   --panel-3: rgba(255, 255, 255, 0.1);
   --paper: #f5f5f7;
   --paper-2: #c7c7cc;
-  --paper-3: #8e8e93;
+  --paper-3: #9c9ca1;
   --paper-4: #545458;
   --hair: rgba(255, 255, 255, 0.08);
   --hair-2: rgba(255, 255, 255, 0.14);
@@ -29,21 +27,11 @@
   --sev-low: #b4b4bb;
   --sev-info: #8e8e93;
   /* simulation ramp anchors */
-  --sim-0: #07041f;
   --sim-1: #4a1d96;
   --sim-2: #ba2480;
-  --sim-3: #f04e38;
   --sim-4: #ffa642;
-  --sim-5: #fff4d6;
-  --sim-neg: #7c6cff;
-  /* copper on the 2D board */
-  --cu-top: #d9d2bd;
-  --cu-bot: #6f7fb8;
 
   --font-ui: var(--f-ui), -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: var(--font-ui);
-  --font-code: ui-monospace, "SF Mono", Menlo, monospace;
-  --font-serif: var(--font-ui);
 
   --r-lg: 20px;
   --r-md: 14px;
@@ -126,8 +114,33 @@ select {
   color: var(--stage);
 }
 :focus-visible {
-  outline: 2px solid var(--paper-3);
+  outline: 2px solid var(--paper-2);
   outline-offset: 2px;
+}
+/* fields are told apart by tone, so their ring hugs the field */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: 1px;
+}
+main:focus {
+  outline: none;
+}
+/* skip link: hidden until it takes keyboard focus, then a plain pill at the top left */
+.skip:focus-visible {
+  position: fixed;
+  z-index: 1000;
+  top: 12px;
+  left: 12px;
+  width: auto;
+  height: auto;
+  padding: 10px 18px;
+  overflow: visible;
+  clip: auto;
+  background: var(--paper);
+  color: var(--stage);
+  border-radius: 999px;
+  font: 600 13px/1 var(--font-ui);
 }
 * {
   scrollbar-width: thin;
@@ -135,19 +148,12 @@ select {
 }
 
 /* ---------------- type ---------------- */
-.mono,
 .num {
   font-variant-numeric: tabular-nums;
 }
-.code {
-  font-family: var(--font-code);
-}
-.serif {
+.heading {
   font-weight: 600;
   letter-spacing: -0.02em;
-}
-.upper {
-  font-weight: 600;
 }
 .idx {
   font-size: 12px;
@@ -197,15 +203,6 @@ select {
 }
 .panel-head .grow {
   flex: 1;
-}
-.panel-body {
-  padding: 4px 16px 16px;
-}
-.hl {
-  height: 1px;
-  background: var(--hair);
-  border: 0;
-  margin: 0;
 }
 
 /* ---------------- buttons ---------------- */
@@ -402,13 +399,6 @@ select {
 }
 
 /* ---------------- misc primitives ---------------- */
-.kbd {
-  font: 500 11px/1 var(--font-ui);
-  padding: 3px 6px;
-  border-radius: 6px;
-  background: var(--panel-3);
-  color: var(--paper-2);
-}
 .meter {
   position: relative;
   height: 4px;
@@ -425,9 +415,6 @@ select {
 }
 .meter.sig > b {
   background: var(--signal);
-}
-.link-arrow::after {
-  content: " \2192";
 }
 
 /* ---------------- animation ---------------- */

@@ -1,23 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { SceneInfo } from "../../lib/api";
+import { sanitizeSvgInner } from "../../lib/svg-sanitize.mjs";
 
 /** Inner markup of the scene SVG layers, ready to place in the board's own <g>. */
 export interface SceneMarkup { silkTop?: string; silkBottom?: string; refsTop?: string; refsBottom?: string; courtyardTop?: string }
 
 const cache = new Map<string, Promise<string | null>>();
-const BAD = /<script|<foreignObject|<iframe|<object|<embed|\son[a-z]+\s*=|javascript:|<!ENTITY|<style/i;
 
-/** Fetch one layer SVG and return what sits inside the root element. Refuses anything that is not plain drawing markup. */
+/** Fetch one layer SVG and return what sits inside the root element, rebuilt from an allow-list of drawing elements and attributes. */
 function inner(url: string): Promise<string | null> {
   let p = cache.get(url);
   if (!p) {
-    p = fetch(url).then((r) => (r.ok ? r.text() : null)).then((t) => {
-      if (!t || BAD.test(t)) return null;
-      const open = t.indexOf(">", t.indexOf("<svg"));
-      const close = t.lastIndexOf("</svg>");
-      return open < 0 || close < 0 ? null : t.slice(open + 1, close);
-    }).catch(() => null);
+    p = fetch(url).then((r) => (r.ok ? r.text() : null)).then((t) => (t ? sanitizeSvgInner(t) : null)).catch(() => null);
     cache.set(url, p);
   }
   return p;

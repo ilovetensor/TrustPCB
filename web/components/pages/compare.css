@@ -194,7 +194,6 @@
 .cmp-rf-tbl td { vertical-align: top; }
 
 .cmp-counts { padding: 0 0 6px; margin: 0; white-space: normal; line-height: 1.5; }
-.cmp-group { padding: 10px 0 2px; }
 .cmp-group-h { padding: 6px 14px; color: var(--paper-3); font-size: 12px; }
 .cmp-stack { display: grid; gap: 10px; }
 .cmp-row { display: flex; gap: 12px; align-items: center; }

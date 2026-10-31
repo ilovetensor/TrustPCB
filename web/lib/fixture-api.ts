@@ -122,9 +122,6 @@ export async function listFindings(_reviewId: string): Promise<Finding[]> {
 export function getEvidence(ids: string[]): Evidence[] {
   return ids.map((i) => EVIDENCE[i]).filter(Boolean);
 }
-export async function listAssumptions(_reviewId: string) {
-  return { assumptions: ASSUMPTIONS, not_tested: NOT_TESTED };
-}
 
 export function resolveCurve(c: string | Curve | undefined | null): Curve | null {
   if (!c) return null;

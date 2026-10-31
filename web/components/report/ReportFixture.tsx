@@ -82,7 +82,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
         {/* 1 cover */}
         <section className="rp-cover">
           <span className="kicker">TrustPCB inspection report, r{rep.revision}</span>
-          <h1 className="serif">{rep.review.project_name}</h1>
+          <h1 className="heading">{rep.review.project_name}</h1>
           <p className="dim" style={{ margin: 0, maxWidth: "52ch" }}>{rep.review.goal_text}</p>
           <div className="rp-meta">
             <div><span className="idx">Version</span><b>{rep.review.version_label}</b></div>
@@ -96,7 +96,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
 
         {/* 2 summary */}
         <section className="rp-sec">
-          <header><h2 className="serif">Summary</h2></header>
+          <header><h2 className="heading">Summary</h2></header>
           <p>{rep.summary}</p>
           <span className="idx">Top actions</span>
           <ol className="rp-actions" style={{ marginTop: 12, paddingBottom: 30 }}>{rep.actions.map((a) => (<li key={a}>{a}</li>))}</ol>
@@ -104,7 +104,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
 
         {/* 3 overview */}
         <section className="rp-sec">
-          <header><h2 className="serif">Board overview</h2></header>
+          <header><h2 className="heading">Board overview</h2></header>
           <Plate board={board} marks={allMarks} meta={meta} height={430} caption={<><span>66.0 x 53.0 mm. 2 copper layers. Numbered balloons match the findings below.</span><span>Top view</span></>} />
           <div className="rp-grid2" style={{ marginTop: 24 }}>
             <div>
@@ -124,7 +124,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
 
         {/* 4 RF */}
         <section className="rp-sec">
-          <header><h2 className="serif">RF result</h2><ClassStamp cls="simulated" /></header>
+          <header><h2 className="heading">RF result</h2><ClassStamp cls="simulated" /></header>
           <div className="rp-grid2">
             <div>
               <span className="idx">This review: S11, base and confirmed fix</span> <span className="stamp fixture">Fixture curves</span>
@@ -151,10 +151,10 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
 
         {/* 5 investigation */}
         <section className="rp-sec">
-          <header><h2 className="serif">Investigation story</h2></header>
+          <header><h2 className="heading">Investigation story</h2></header>
           {inv.map((v) => (
             <div key={v.id} style={{ marginBottom: 24 }}>
-              <p className="serif" style={{ fontSize: 24, lineHeight: 1.2, margin: "0 0 12px" }}>{v.question}</p>
+              <p className="heading" style={{ fontSize: 24, lineHeight: 1.2, margin: "0 0 12px" }}>{v.question}</p>
               {v.suspects.map((s, i) => (<div key={s.id} className="rp-sus"><span className="idx">S{i + 1}</span><span>{s.title}{s.conclusion ? <span className="dim"> . {s.conclusion}</span> : ""}</span><span className="stamp">{s.status.replace("_", " ")}</span></div>))}
             </div>
           ))}
@@ -168,7 +168,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
 
         {/* 6 findings */}
         <section className="rp-sec">
-          <header><h2 className="serif">Findings</h2></header>
+          <header><h2 className="heading">Findings</h2></header>
           {findings.map((f) => {
             const ev = getEvidence(f.evidence_ids ?? []);
             return (
@@ -182,7 +182,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
                   <span className="idx sub" style={{ display: "block" }}>What</span><p>{f.what}</p>
                   <span className="idx sub" style={{ display: "block" }}>Why it matters</span><p>{f.why_it_matters}</p>
                   <span className="idx sub" style={{ display: "block" }}>Recommendation</span><p>{f.recommendation}</p>
-                  {ev.length > 0 && (<><span className="idx sub" style={{ display: "block" }}>Evidence</span><ul>{ev.map((e) => (<li key={e.id}><span className="code">{e.id}</span> {e.source_tool}: {Object.entries(e.values).map(([k, v]) => `${k.replace(/_/g, " ")} ${v.value} ${v.unit}`).join(", ")}</li>))}</ul></>)}
+                  {ev.length > 0 && (<><span className="idx sub" style={{ display: "block" }}>Evidence</span><ul>{ev.map((e) => (<li key={e.id}><span className="num">{e.id}</span> {e.source_tool}: {Object.entries(e.values).map(([k, v]) => `${k.replace(/_/g, " ")} ${v.value} ${v.unit}`).join(", ")}</li>))}</ul></>)}
                 </div>
               </article>
             );
@@ -192,7 +192,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
         {/* 7 version changes */}
         {cmp && (
           <section className="rp-sec">
-            <header><h2 className="serif">Version changes</h2></header>
+            <header><h2 className="heading">Version changes</h2></header>
             <table className="rp-tbl" style={{ marginBottom: 30 }}>
               <thead><tr><th>Change</th><th>Finding</th><th>{cmp.a.label}</th><th>{cmp.b.label}</th></tr></thead>
               <tbody>{cmp.rows.map((r) => (<tr key={r.id}><td><span className="stamp">{r.change.replace("_", " ")}</span></td><td><span className="idx">{r.id}</span> {r.title}</td><td className="num">{r.a}</td><td className="num">{r.b}</td></tr>))}</tbody>
@@ -202,7 +202,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
 
         {/* 8 limits */}
         <section className="rp-sec">
-          <header><h2 className="serif">Not tested, assumptions, limits</h2></header>
+          <header><h2 className="heading">Not tested, assumptions, limits</h2></header>
           <div className="rp-two" style={{ paddingBottom: 30 }}>
             <div><span className="idx">Not tested</span><ul className="rp-list" style={{ marginTop: 8 }}>{rep.not_tested.map((n) => (<li key={n}>{n}</li>))}</ul></div>
             <div><span className="idx">Assumptions</span><ul className="rp-list" style={{ marginTop: 8 }}>{rep.assumptions.map((a) => (<li key={a.id}>{a.text} <span className="stamp">{a.source}</span></li>))}</ul></div>
@@ -211,7 +211,7 @@ export function ReportFixture({ reviewId }: { reviewId: string }) {
 
         {/* 9 method */}
         <section className="rp-sec">
-          <header><h2 className="serif">Method</h2></header>
+          <header><h2 className="heading">Method</h2></header>
           <dl className="kv" style={{ gridTemplateColumns: "140px 1fr", paddingBottom: 20 }}>{rep.method.map(([k, v]) => (<Fragment key={k}><dt>{k}</dt><dd style={{ fontSize: 12.5 }}>{v}</dd></Fragment>))}</dl>
           <p className="dim" style={{ fontSize: 12 }}>Numbers in this report are assembled by code from stored evidence, so they match the app. Run time shown: {state?.budget?.wall_s ? fmtClock(state.budget.wall_s.used) : "-"}.</p>
         </section>

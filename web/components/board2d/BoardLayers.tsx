@@ -14,11 +14,11 @@ const ROLE_COLORS: Record<string, string> = {
   rf: "#ff9a5c", power: "#f2d36b", usb: "#6fd6e8", digital: "#a99cff", analog: "#7fe0a0", clock: "#f08ad0",
   connector: "#9fb6d8", protection: "#e88a8a", sensor: "#8fe0c8", radio: "#ff9a5c",
 };
-export const roleColor = (role: string) => ROLE_COLORS[role] ?? "#9d9bc0";
+const roleColor = (role: string) => ROLE_COLORS[role] ?? "#9d9bc0";
 
 const ROLE_ACRONYMS = new Set(["rf", "usb", "swd", "gpio", "adc", "dac"]);
 /** Sentence case for a zone role: "clock" -> "Clock", "usb" -> "USB", "power_in" -> "Power in". */
-export function roleLabel(role: string): string {
+function roleLabel(role: string): string {
   const t = role.replace(/_/g, " ").trim();
   if (ROLE_ACRONYMS.has(t.toLowerCase())) return t.toUpperCase();
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
@@ -123,7 +123,7 @@ export const BoardLayers = memo(function BoardLayers({ board, layers, scene, fun
               <path d={g.silkD} />
               {g.silkCircles.map((c, i) => (<circle key={i} cx={c.c[0]} cy={c.c[1]} r={c.r} />))}
               {g.silkText.map((t, i) => t.kind === "text" && (
-                <text key={i} x={t.x} y={t.y} fontSize={t.size} fill="var(--bl-silk)" stroke="none" textAnchor="middle" style={{ font: `500 ${t.size}px var(--font-mono)` }}>{t.text}</text>
+                <text key={i} x={t.x} y={t.y} fontSize={t.size} fill="var(--bl-silk)" stroke="none" textAnchor="middle" style={{ font: `500 ${t.size}px var(--font-ui)` }}>{t.text}</text>
               ))}
             </g>
           )}
@@ -155,7 +155,7 @@ export function ZoneLabels({ zones, px, show }: { zones: FunctionZone[]; px: (n:
       {zones.map((z) => {
         const xs = z.ring.map((p) => p[0]), ys = z.ring.map((p) => p[1]);
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = Math.min(...ys);
-        return <text key={`${z.role}-${z.index}`} x={cx} y={cy - px(4)} textAnchor="middle" fontSize={px(9)} fill={roleColor(z.role)} fillOpacity="0.8" style={{ font: `500 ${px(9)}px var(--font-mono)`, letterSpacing: "0.02em" }}>{roleLabel(z.role)}</text>;
+        return <text key={`${z.role}-${z.index}`} x={cx} y={cy - px(4)} textAnchor="middle" fontSize={px(9)} fill={roleColor(z.role)} fillOpacity="0.8" style={{ font: `500 ${px(9)}px var(--font-ui)`, letterSpacing: "0.02em" }}>{roleLabel(z.role)}</text>;
       })}
     </g>
   );

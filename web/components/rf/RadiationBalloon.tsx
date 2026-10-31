@@ -16,7 +16,7 @@ export function RadiationBalloon({ pattern, center, scale = 28, spin = false, ra
 }) {
   const ref = useRef<THREE.Group>(null);
   const { geo, maxPos } = useMemo(() => {
-    const th = pattern.theta_deg, ph = pattern.phi_deg, floor = pattern.floor_dbi;
+    const th = pattern.theta_deg, ph = pattern.phi_deg;
     const nt = th.length, np = ph.length;
     const pos: number[] = [], col: number[] = [], idx: number[] = [];
     let mx = new THREE.Vector3();

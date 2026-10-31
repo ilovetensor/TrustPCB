@@ -4,9 +4,13 @@
   overflow: hidden;
   cursor: grab;
   touch-action: none;
-  outline: none;
   user-select: none;
   -webkit-user-select: none;
+}
+.b2:focus-visible {
+  outline: 2px solid var(--paper-2);
+  outline-offset: -4px;
+  border-radius: var(--r-lg);
 }
 .b2:active {
   cursor: grabbing;
@@ -17,7 +21,7 @@
   pointer-events: none;
 }
 .rl-t {
-  font: 400 9px var(--font-mono);
+  font: 400 9px var(--font-ui);
   font-variant-numeric: tabular-nums;
   fill: var(--paper-3);
 }

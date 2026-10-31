@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReviewState, TrailEntry } from "../../lib/review-reducer.mjs";
 import { findingLabel, findingNumber } from "../../lib/review-view";
 import { measurementLine } from "../../lib/review-view";
+import { tabProps, tablistKeys } from "../../lib/hooks";
 import { SevGlyph } from "../ui";
 import { Meter } from "../ui";
 import type { StoryRound, StoryTest } from "../../lib/story.mjs";
@@ -35,9 +36,9 @@ export function Trail({ state, onSelectFinding, story = [], tests = [] }: { stat
   return (
     <div className="trail">
       <div className="trail-filter">
-        <div className="pills" role="tablist" aria-label="Investigation filter">
+        <div className="pills" role="tablist" aria-label="Investigation filter" onKeyDown={tablistKeys()}>
           {FILTERS.map(([f, label]) => (
-            <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}>{label}</button>
+            <button key={f} {...tabProps(filter === f)} onClick={() => setFilter(f)}>{label}</button>
           ))}
         </div>
       </div>

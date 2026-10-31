@@ -4,6 +4,7 @@
 // no fixture module is ever loaded and no invented number can appear.
 
 import { netId } from "./geometry.mjs";
+import { loadFixtures } from "./fixture-loader";
 import { apiGet, apiSend, ApiError, uploadFiles } from "./live";
 import type { ChangeState, VersionChange } from "./story.mjs";
 import type { Board, Evidence, Finding, ProjectSummary, Severity } from "./types";
@@ -13,7 +14,7 @@ export const FIXTURE_MODE = process.env.NEXT_PUBLIC_TRUSTPCB_FIXTURES === "1";
 export const DATA_SOURCE: "fixture" | "live" = FIXTURE_MODE ? "fixture" : "live";
 export const FIXTURE_NOTE = "Dev fixture data. Not a real review.";
 
-const fx = () => import("./fixture-api");
+const fx = loadFixtures;
 
 /* ------------------------------ view models ------------------------------ */
 
@@ -66,7 +67,7 @@ export interface Snapshot {
 const STATE_OF: Record<string, ProjectSummary["state"]> = {
   complete: "complete", complete_with_limits: "complete_with_limits", agent_stopped: "agent_stopped", canceled: "canceled", pipeline_failed: "failed",
 };
-export function reviewState(r: { status?: string; end_state?: string | null } | null | undefined): ProjectSummary["state"] {
+function reviewState(r: { status?: string; end_state?: string | null } | null | undefined): ProjectSummary["state"] {
   if (!r) return "no_review";
   if (r.status === "queued") return "queued";
   if (r.status === "running") return "running";
@@ -302,13 +303,4 @@ export interface CompareResult {
 }
 export async function getCompare(from: string, to: string): Promise<CompareResult> {
   return apiGet(`compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-}
-
-/* ------------------------------ events (plain fetch) ------------------------------ */
-
-export async function getReviewEvents(reviewId: string, after = 0): Promise<any[]> {
-  return apiGet(`reviews/${reviewId}/events?after=${after}`);
-}
-export async function getThreadEvents(threadId: string, after = 0): Promise<any[]> {
-  return apiGet(`threads/${threadId}/events?after=${after}`);
 }

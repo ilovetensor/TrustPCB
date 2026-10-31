@@ -30,10 +30,10 @@ function Shell({ reviewId, meta, children, sample }: { reviewId: string; meta: R
   return (
     <div className="pg">
       <TopBar current="projects" />
-      <main className="pg-main">
+      <main id="main" tabIndex={-1} className="pg-main">
         <div className="pg-head">
           <div>
-            <h1 className="serif">RF lab</h1>
+            <h1 className="heading">RF lab</h1>
             <p className="pg-sub">{meta ? `${meta.project_name}, ${meta.version_label}` : sample ? "Bundled sample" : ""}</p>
           </div>
           <span className="grow" />

@@ -33,7 +33,7 @@ export function Project({ id }: { id: string }) {
     return () => { live = false; };
   }, [data]);
   if (data === undefined) return <div className="pg"><TopBar current="projects" /></div>;
-  if (data === null) return <div className="pg"><TopBar current="projects" /><main className="pg-main"><h1 className="serif">{error ? "Could not load this project" : "No such project"}</h1>{error && <p className="dim">{error}</p>}<Link href="/projects" className="btn"><Icon name="back" size={14} /> Back to projects</Link></main></div>;
+  if (data === null) return <div className="pg"><TopBar current="projects" /><main id="main" tabIndex={-1} className="pg-main"><h1 className="heading">{error ? "Could not load this project" : "No such project"}</h1>{error && <p className="dim">{error}</p>}<Link href="/projects" className="btn"><Icon name="back" size={14} /> Back to projects</Link></main></div>;
   const { project, versions } = data;
   const reviewed = versions.filter((v) => v.counts);
   const trend = reviewed.map((v) => total(v.counts!));
@@ -43,11 +43,11 @@ export function Project({ id }: { id: string }) {
   return (
     <div className="pg">
       <TopBar current="projects" />
-      <main className="pg-main">
+      <main id="main" tabIndex={-1} className="pg-main">
         <div className="pg-head">
           <div>
             <Link href="/projects" className="pg-back"><Icon name="back" size={13} /> Back to projects</Link>
-            <h1 className="serif">{project.name}</h1>
+            <h1 className="heading">{project.name}</h1>
             <p className="pg-sub">{project.kind}</p>
           </div>
           <span className="grow" />
@@ -120,7 +120,7 @@ export function Project({ id }: { id: string }) {
             {last?.review_id ? (
               <>
                 <dl className="kv">
-                  <dt>Review</dt><dd className="code">{last.review_id.slice(0, 6)}</dd>
+                  <dt>Review</dt><dd className="num">{last.review_id.slice(0, 6)}</dd>
                   <dt>Version</dt><dd>{last.label}</dd>
                   <dt>State</dt><dd>{STATE[last.state]}</dd>
                   <dt>Open</dt><dd>{last.counts ? <SevBar counts={last.counts} size="sm" /> : "-"}</dd>

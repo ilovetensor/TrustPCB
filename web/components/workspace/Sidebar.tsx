@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { tabProps, tablistKeys } from "../../lib/hooks";
 import { DemoNotice, FixtureBadge, Icon, Logo } from "../ui";
 
 export type ViewId = "findings" | "result" | "investigation" | "sims" | "chat";
@@ -27,9 +28,9 @@ export function Sidebar({ projectId, projectName, summary, status, nav, view, on
         <p>{summary}</p>
         <p className="ws-status">{status}</p>
       </div>
-      <nav className="ws-nav" role="tablist" aria-orientation="vertical" aria-label="Review views">
+      <nav className="ws-nav" role="tablist" aria-orientation="vertical" aria-label="Review views" onKeyDown={tablistKeys(true)}>
         {nav.map((n) => (
-          <button key={n.id} id={`ws-tab-${n.id}`} role="tab" aria-selected={view === n.id} aria-controls="ws-panel" className="navitem" onClick={() => onView(n.id)}>
+          <button key={n.id} id={`ws-tab-${n.id}`} {...tabProps(view === n.id)} aria-controls="ws-panel" className="navitem" onClick={() => onView(n.id)}>
             <Icon name={VIEWS[n.id].icon} size={17} />
             {VIEWS[n.id].title}
             {n.dot && <i className="ws-dot" aria-label="Waiting for your approval" />}

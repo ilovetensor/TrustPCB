@@ -64,7 +64,7 @@ function ScreenConfirm({ rounds }: { rounds: StoryRound[] }) {
             const over = x.screen != null && x.confirm != null && x.screen < x.confirm - 0.5;
             return (
               <p key={x.label} className="ib-pc">
-                <b>{x.label}.</b> Screen predicted <span className="mono">{db(x.screen)}</span> in the band{x.screenRef ? <span className="idx"> {x.screenRef}</span> : null}. Confirm run gave <span className="mono ib-meas">{db(x.confirm)}</span>{x.confirmRef ? <span className="idx"> {x.confirmRef}</span> : null}.
+                <b>{x.label}.</b> Screen predicted <span className="num">{db(x.screen)}</span> in the band{x.screenRef ? <span className="idx"> {x.screenRef}</span> : null}. Confirm run gave <span className="num ib-meas">{db(x.confirm)}</span>{x.confirmRef ? <span className="idx"> {x.confirmRef}</span> : null}.
                 {over && <span className="dim"> The screen was too optimistic by {(x.confirm! - x.screen!).toFixed(1)} dB.</span>}
               </p>
             );
@@ -107,7 +107,7 @@ export function InvestigationBoard({ state, story, tests = [] }: { state: Review
           <button className="btn sm ghost" onClick={() => setShowCleared(!showCleared)} aria-expanded={showCleared}>{showCleared ? "Hide" : "Show"} checked and cleared ({clearedTotal} results)</button>
           <p className="idx">Checked and cleared: judged harmless on this board. The reason is the agent&apos;s own.</p>
           {showCleared && (
-            <ul className="ib-clr">{state.cleared.map((c) => (<li key={c.id}><span className="mono">{c.rule ?? "candidates"}</span><span className="num">{c.count}</span><span className="dim">{c.reason}</span></li>))}</ul>
+            <ul className="ib-clr">{state.cleared.map((c) => (<li key={c.id}><span className="num">{c.rule ?? "candidates"}</span><span className="num">{c.count}</span><span className="dim">{c.reason}</span></li>))}</ul>
           )}
         </section>
       )}

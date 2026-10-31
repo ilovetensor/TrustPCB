@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FIXTURE_MODE, getBoardBundle, getEvidenceByCode, getSnapshot, listRevisions, type BoardBundle } from "../../lib/api";
 import { changeByCode, headlineOf, screenVsConfirm, testsOf, versionChangeOf, type ChangeState, type Headline, type StoryRound, type StoryTest, type VersionChange } from "../../lib/story.mjs";
 import { indexBoard, resolveMark, bboxUnion } from "../../lib/geometry.mjs";
-import { useNarrow } from "../../lib/hooks";
+import { tabProps, tablistKeys, useNarrow } from "../../lib/hooks";
 import { activeMarks } from "../../lib/review-reducer.mjs";
 import { buildMeta, fmtClock, findingLabel } from "../../lib/review-view";
 import { useReview, type Selected } from "../../lib/use-review";
@@ -241,7 +241,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
 
   if (narrow) {
     return (
-      <main className="ws narrow">
+      <main id="main" tabIndex={-1} className="ws narrow">
         <header className="ws-narrow-head">
           <Link className="navitem" href={meta ? `/projects/${meta.project_id}` : "/projects"}><Icon name="back" size={17} /><span className="ws-ellip">{projectName}</span></Link>
           <p>{meta?.version_label ? `${meta.version_label}, ` : ""}{status.toLowerCase()}</p>
@@ -253,9 +253,9 @@ export function Workspace({ reviewId }: { reviewId: string }) {
         </header>
         {progress}
         <div className="ws-stage">{stage}{replay}</div>
-        <div className="pills ws-tabs" role="tablist" aria-label="Review views">
+        <div className="pills ws-tabs" role="tablist" aria-label="Review views" onKeyDown={tablistKeys()}>
           {nav.map((n) => (
-            <button key={n.id} role="tab" aria-selected={shown === n.id} onClick={() => setView(n.id)}>
+            <button key={n.id} id={`ws-tab-${n.id}`} {...tabProps(shown === n.id)} aria-controls="ws-panel" onClick={() => setView(n.id)}>
               <Icon name={VIEWS[n.id].icon} size={14} /> {VIEWS[n.id].title}{n.count != null ? ` ${n.count}` : ""}{n.dot && <i className="ws-dot" aria-label="Waiting for your approval" />}
             </button>
           ))}
@@ -266,7 +266,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     );
   }
   return (
-    <main className="ws wide">
+    <main id="main" tabIndex={-1} className="ws wide">
       <Sidebar
         projectId={meta?.project_id} projectName={projectName} summary={summary} status={status} nav={nav} view={shown} onView={setView}
         reviewId={reviewId} revision={revision} progress={progress}

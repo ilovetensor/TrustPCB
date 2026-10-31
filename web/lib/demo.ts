@@ -9,7 +9,7 @@ export interface AppEnv { demo: boolean; repoUrl: string | null; kicad: { availa
 const OFF: AppEnv = { demo: false, repoUrl: null, kicad: null };
 let pending: Promise<AppEnv> | null = null;
 
-export function loadEnv(): Promise<AppEnv> {
+function loadEnv(): Promise<AppEnv> {
   if (process.env.NEXT_PUBLIC_TRUSTPCB_FIXTURES === "1") return Promise.resolve(OFF);
   pending ??= apiGet<{ demo_readonly?: boolean; repo_url?: string | null; kicad?: AppEnv["kicad"] }>("bootstrap")
     .then((b) => ({ demo: !!b.demo_readonly, repoUrl: b.repo_url ?? null, kicad: b.kicad ?? null }))

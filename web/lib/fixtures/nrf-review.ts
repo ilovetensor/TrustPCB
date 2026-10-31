@@ -1,7 +1,7 @@
 // DEV-ONLY FIXTURE. Review data for the bundled nRF52840 node board.
 // Geometry-derived numbers (distances, lengths) were measured from the board file.
-// Simulation numbers and curves are ILLUSTRATIVE placeholders until the RF lane's
-// real solver output is wired in through lib/api.ts. The UI labels this everywhere.
+// Simulation numbers and curves are ILLUSTRATIVE placeholders. Live pages read the real solver output through
+// lib/api.ts and lib/sims.ts instead. The UI labels this everywhere.
 
 import type { Evidence, Finding } from "../types";
 
@@ -9,7 +9,7 @@ export const FIXTURE_NOTE = "Dev fixture. Not a real review.";
 
 export const NRF_ASSETS = {
   board: "/fixtures/nrf/board.json",
-  glb: "/fixtures/nrf/board.glb",
+  glb: "/fixtures/nrf/board.glb.gz",
 };
 
 /* ----------------------------- curves (illustrative) ----------------------------- */

@@ -19,10 +19,10 @@ export function Projects() {
   return (
     <div className="pg">
       <TopBar current="projects" />
-      <main className="pg-main">
+      <main id="main" tabIndex={-1} className="pg-main">
         <div className="pg-head">
           <div>
-            <h1 className="serif">Projects</h1>
+            <h1 className="heading">Projects</h1>
             <p className="pg-sub">{projects ? `${projects.length} ${projects.length === 1 ? "board" : "boards"}, ${total} open ${total === 1 ? "finding" : "findings"}` : "Loading projects."}</p>
           </div>
           <span className="grow" />

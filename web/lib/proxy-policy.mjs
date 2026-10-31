@@ -1,6 +1,6 @@
-// Same-origin API proxy policy. Only the contracted routes (spec section 18) pass.
+// Same-origin API proxy policy. Only the routes listed below pass.
 const ids = "[a-zA-Z0-9_-]+";
-// The processed files of a simulation job (docs/specs/contracts.md, "Simulation jobs for the dashboard").
+// The processed files of a simulation job (the API's simulation job files).
 const simFile = "(?:(?:s11|s11_as_built|zin|pattern|field|pulse|current|result|summary|meta)\\.json|(?:field_xy|field_xz|pulse|current)\\.bin|model\\.png)";
 const routes = [
   ["GET", /^health$/],

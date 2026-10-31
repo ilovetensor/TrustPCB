@@ -2,12 +2,16 @@
 import "./report.css";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FIXTURE_MODE, getReview, listRevisions, reportUrl, type ReviewMeta, type RevisionRow } from "../../lib/api";
+import { getReview, listRevisions, reportUrl, type ReviewMeta, type RevisionRow } from "../../lib/api";
 import { Icon } from "../ui";
-import { ReportFixture } from "./ReportFixture";
+import dynamic from "next/dynamic";
+
+// The fixture report is a design aid. The flag is read in this file so the build can drop it from production.
+const FIXTURES = process.env.NEXT_PUBLIC_TRUSTPCB_FIXTURES === "1";
+const ReportFixture = FIXTURES ? dynamic(() => import("./ReportFixture").then((m) => m.ReportFixture)) : null;
 
 /**
- * The report is rendered by the server from a frozen snapshot (spec section 16), so what is on this page is
+ * The report is rendered by the server from a frozen snapshot, so what is on this page is
  * what the backend wrote. The page frames it: revision picker, open, print and PDF.
  */
 function ReportLive({ reviewId }: { reviewId: string }) {
@@ -39,7 +43,7 @@ function ReportLive({ reviewId }: { reviewId: string }) {
   };
 
   return (
-    <div className="rp rp-live">
+    <main id="main" tabIndex={-1} className="rp rp-live">
       <div className="rp-bar no-print">
         <Link className="btn sm" href={`/reviews/${reviewId}`}><Icon name="back" size={13} /> Back to review</Link>
         <div className="rp-bar-title">
@@ -60,7 +64,7 @@ function ReportLive({ reviewId }: { reviewId: string }) {
       {!error && revs && revs.length === 0 && (
         <div className="rp-page" style={{ paddingTop: 60 }}>
           <span className="idx">No report yet</span>
-          <p className="serif" style={{ fontSize: 24 }}>{meta && (meta.status === "running" || meta.status === "queued") ? "The review is still running. The report is written when it ends." : "This review did not produce a report."}</p>
+          <p className="heading" style={{ fontSize: 24 }}>{meta && (meta.status === "running" || meta.status === "queued") ? "The review is still running. The report is written when it ends." : "This review did not produce a report."}</p>
           <Link className="btn" href={`/reviews/${reviewId}`}><Icon name="back" size={14} /> Back to review</Link>
         </div>
       )}
@@ -74,10 +78,10 @@ function ReportLive({ reviewId }: { reviewId: string }) {
           />
         </div>
       )}
-    </div>
+    </main>
   );
 }
 
 export function Report({ reviewId }: { reviewId: string }) {
-  return FIXTURE_MODE ? <ReportFixture reviewId={reviewId} /> : <ReportLive reviewId={reviewId} />;
+  return ReportFixture ? <ReportFixture reviewId={reviewId} /> : <ReportLive reviewId={reviewId} />;
 }

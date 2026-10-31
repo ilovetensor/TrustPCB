@@ -1,8 +1,9 @@
-// Typed loaders for RF lane output (worker/run_scenario.py). Real solver data only:
+// Typed loaders for the RF solver output (worker/run_scenario.py). Real solver data only:
 // when a result is missing, callers show "Not tested". Nothing is synthesised.
 // Coordinates are scenario millimetres: x right, y UP, z up from the bottom copper face.
 // Scene mapping used by every RF component: scene = (x, z, -y).
 
+import { decodePulseFrames } from "./pulse-codec.mjs";
 import type { Board, Pt, Ring } from "./types";
 
 export interface FieldSlice {
@@ -63,7 +64,7 @@ async function json<T = any>(url: string): Promise<T> {
 }
 
 /** Load the worker's output directory (served from `base`, e.g. /fixtures/patch-sim). */
-export async function loadWorkerOutput(base: string, label: string, bandHalfWidthGhz = 0.05): Promise<RfBundle> {
+async function loadWorkerOutput(base: string, label: string, bandHalfWidthGhz = 0.05): Promise<RfBundle> {
   const [s11, zin, pattern, field, current, pulse, result, scn] = await Promise.all([
     json(`${base}/s11.json`), json(`${base}/zin.json`), json(`${base}/pattern.json`).catch(() => null),
     json(`${base}/field.json`).catch(() => null), json(`${base}/current.json`).catch(() => null),
@@ -104,14 +105,16 @@ export async function loadWorkerOutput(base: string, label: string, bandHalfWidt
     out.current = { nx: cols, ny: rows, u: current.u_mm, v: current.v_mm, at_mm: current.plane_mm, mag: await f32(`${base}/${current.file}`), f_hz: current.f_hz };
   }
   if (pulse) {
-    const [fr, rows, cols] = pulse.shape as number[];
-    const buf = await f32(`${base}/${pulse.file}`);
-    out.pulse = { nx: cols, ny: rows, u: pulse.u_mm, v: pulse.v_mm, at_mm: pulse.plane_mm, times_s: pulse.times_s, frames: Array.from({ length: fr }, (_, i) => buf.subarray(i * rows * cols, (i + 1) * rows * cols)) };
+    const [, rows, cols] = pulse.shape as number[];
+    const r = await fetch(`${base}/${pulse.file}`);
+    if (!r.ok) throw new Error(`${base}/${pulse.file}: ${r.status}`);
+    const frames = await decodePulseFrames(await r.arrayBuffer(), pulse);
+    if (frames) out.pulse = { nx: cols, ny: rows, u: pulse.u_mm, v: pulse.v_mm, at_mm: pulse.plane_mm, times_s: pulse.times_s, frames };
   }
   return out;
 }
 
-export const PATCH_SIM_BASE = "/fixtures/patch-sim";
+const PATCH_SIM_BASE = "/fixtures/patch-sim";
 let patchCache: Promise<RfBundle | null> | null = null;
 /** The real patch-antenna run shipped with the repo. Null when the files are absent. */
 export function loadPatchSim(): Promise<RfBundle | null> {
@@ -127,7 +130,7 @@ export function scenarioBoard(b: RfBundle): Board {
   return {
     version_id: "patch-sim", title: "2.5 GHz patch antenna", outline: [outline], bbox: [x0, -y1, x1, -y0], layers: [], stackup: { source: "board", assumed: false, layers: [] },
     nets: [], footprints: [], pads: [], tracks: [], vias: [], keepouts: [],
-    zones: b.scenario.metals.map((m, i) => ({
+    zones: b.scenario.metals.map((m) => ({
       id: `zone:${m.name}`, net: null, name: m.name, layers: [m.z_mm > 0.5 ? "F.Cu" : "B.Cu"], is_keepout: false as const,
       filled: { [m.z_mm > 0.5 ? "F.Cu" : "B.Cu"]: m.rects.map((r) => rect(r[0], r[1], r[2], r[3])) },
     })),

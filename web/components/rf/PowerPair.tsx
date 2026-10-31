@@ -5,7 +5,7 @@ import { fmtPct } from "../../lib/sims";
 
 /** The one sentence that goes with every accepted-power figure. */
 export const ACCEPTED_LABEL = "Accepted power (mismatch only, not radiated power or efficiency)";
-export const ACCEPTED_HOW = "100 x (1 - |S11|^2) at each frequency, from the solver's S11. It says how much of the source power gets past the mismatch. Loss in the board and the parts is not in it.";
+const ACCEPTED_HOW = "100 x (1 - |S11|^2) at each frequency, from the solver's S11. It says how much of the source power gets past the mismatch. Loss in the board and the parts is not in it.";
 
 /** True once the first frame is painted, so a bar can grow from 0 to its real value. With reduced motion it is true at once and the CSS has no transition. */
 function useArmed() {
@@ -17,7 +17,7 @@ function useArmed() {
   return armed;
 }
 
-export interface PowerValue { value: number | null | undefined; label: string; sub?: string }
+interface PowerValue { value: number | null | undefined; label: string; sub?: string }
 
 /** One horizontal bar: a real percentage (0 to 100) drawn as the filled share of the track. The number is the real value; only the fill moves. */
 export function PowerBar({ value, label, sub, tone = "now", size = "md", delay = 0 }: PowerValue & { tone?: "before" | "now"; size?: "sm" | "md" | "lg"; delay?: number }) {
@@ -31,7 +31,7 @@ export function PowerBar({ value, label, sub, tone = "now", size = "md", delay =
         <div className="pw-track" role="img" aria-label={ok ? `${label}: ${fmtPct(value)} percent accepted` : `${label}: not available`}>
           <b style={{ width: armed ? `${pct}%` : "0%", transitionDelay: `${delay}ms` }} />
         </div>
-        <span className="pw-num mono">{ok ? <>{fmtPct(value)}<small>%</small></> : <small>n/a</small>}</span>
+        <span className="pw-num num">{ok ? <>{fmtPct(value)}<small>%</small></> : <small>n/a</small>}</span>
       </div>
     </div>
   );
@@ -44,7 +44,7 @@ export function PowerPair({ before, after, caption, size = "lg", note = true }: 
   return (
     <figure className={`pw ${size}`}>
       <PowerBar {...before} tone="before" size={size} />
-      <div className="pw-delta mono" aria-hidden={delta == null}>
+      <div className="pw-delta num" aria-hidden={delta == null}>
         {delta != null && <><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden><path d="M6 1v11M2 8l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{delta >= 0 ? "+" : "−"}{fmtPct(Math.abs(delta))} points</span></>}
       </div>
       <PowerBar {...after} tone="now" size={size} delay={350} />

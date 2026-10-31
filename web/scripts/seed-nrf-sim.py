@@ -10,6 +10,7 @@ The project is named so nobody mistakes it for a real review.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import shutil
 import sys
@@ -61,7 +62,8 @@ def seed_version(store, project, label, board_json: bytes):
     version = store.create_version(project['id'], label=label, status='ready')
     folder = store.version_dir(version['id'])
     (folder / 'board.json').write_bytes(board_json)
-    shutil.copy(BOARD / 'board.glb', folder / 'board.glb')
+    # the bundled model is stored gzip compressed; the data folder gets the plain GLB the worker would have written
+    (folder / 'board.glb').write_bytes(gzip.decompress((BOARD / 'board.glb.gz').read_bytes()))
     store.add_artifact('version', version['id'], 'board.json', folder / 'board.json', 'application/json')
     store.add_artifact('version', version['id'], 'board.glb', folder / 'board.glb', 'model/gltf-binary')
     return version
