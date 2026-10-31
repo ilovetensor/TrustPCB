@@ -30,6 +30,7 @@ ANALYZER_NAMES = (
     "track_detour",
     "track_angle",
     "edge_track",
+    "connector_access",
     "decoupling",
     "antenna_keepout",
     "rf_path",
@@ -57,6 +58,11 @@ DEFAULTS: dict[str, Any] = {
     "edge_parallel_mm": 5.0,
     "edge_parallel_band_mm": 1.5,
     "edge_parallel_angle_deg": 15.0,
+    # connector_access: a plug's overmold is wider and taller than the mouth, so board material in front of
+    # the mouth stops it seating. Flush or overhanging passes; 1 mm covers edge tolerance and a plug's lead-in.
+    "connector_setback_mm": 1.0,
+    # beyond this the mouth is not merely recessed from an edge it faces but points into the board
+    "connector_interior_mm": 5.0,
     # decoupling: over 3 mm or through a via
     "decoupling_max_mm": 3.0,
     "decoupling_via_max": 0,
