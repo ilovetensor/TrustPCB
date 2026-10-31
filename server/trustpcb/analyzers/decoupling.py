@@ -13,6 +13,12 @@ candidate carries ``class_summary`` (min, max, count and the full sorted list fo
 and ``overlays`` returns the same for every class. A pin class is the family of supply pins the
 capacitor serves: all ``DEC*`` pins of a radio are the ``DEC`` class, other supplies are named after
 their net.
+
+The check also runs from the pin side: for each supply pin of an active part (a pin the schematic names or types as
+supply, or any pin on a power net when the schematic does not know it; regulator outputs are not loads), the nearest
+fitted capacitor on that net is found, pad centre to pad centre. A pin with no capacitor within the limit is a
+candidate ("pin 11 has no capacitor within 3 mm") even when every capacitor on the net is placed well for another pin.
+Those candidates are the ``decoupling_pin`` rule (``decoupling_pin.py``); this module measures them (``measure()["pins"]``).
 """
 
 from __future__ import annotations
@@ -205,7 +211,35 @@ def measure(board: Board, ctx: AnalyzerContext) -> dict[str, Any]:
         c["min_mm"], c["max_mm"] = min(ds), max(ds)
         c["over_limit"] = sum(1 for x in c["capacitors"] if x["distance_mm"] > max_mm)
         c["limit_mm"] = max_mm
-    result = {"rows": rows, "classes": classes, "excluded": excluded}
+    max_mm = float(ctx.t("decoupling_max_mm"))
+    # the pin side: nearest fitted decoupling capacitor to each supply pin
+    caps_by_net: dict[str, list[tuple[Any, Pad]]] = {}
+    for fp in board.footprints:  # any fitted capacitor from a net to ground, whether or not the net is named like a supply
+        if part_kind(fp) != "cap" or is_dnp(fp):
+            continue
+        cpads = board.pads_of(fp.ref)
+        if len(cpads) == 2 and sum(1 for p in cpads if is_ground(p.net)) == 1:
+            hot = next(p for p in cpads if not is_ground(p.net))
+            if hot.net:
+                caps_by_net.setdefault(hot.net, []).append((fp, hot))
+    pin_rows: list[dict[str, Any]] = []
+    seen_pins: set[tuple[str, str]] = set()
+    for net, pins in sorted(pins_by_net.items()):
+        for pin in sorted(pins, key=lambda p: (p.ref, p.number, p.id)):
+            key = (pin.ref, str(pin.number))
+            if not pin.number or key in seen_pins:
+                continue
+            known = sch.is_supply_pin(pin.ref, pin.number)
+            if known is False or (known is None and not is_power(net, ctx)):
+                continue
+            if (sch.pins.get(key) or {}).get("type") == "power_out":
+                continue
+            seen_pins.add(key)
+            cands = [(fp, cp, math.dist((pin.x, pin.y), (cp.x, cp.y))) for fp, cp in caps_by_net.get(net, []) if fp.ref != pin.ref]
+            near = min(cands, key=lambda c: (c[2], c[0].ref)) if cands else None
+            pin_rows.append({"pin": pin, "net": net, "pin_name": sch.pin_name(pin.ref, pin.number), "nearest": near, "on_net": len(cands),
+                             "within": sum(1 for c in cands if c[2] <= max_mm)})
+    result = {"rows": rows, "classes": classes, "excluded": excluded, "pins": pin_rows}
     ctx.cache["decoupling"] = (board, result)
     return result
 
@@ -272,4 +306,9 @@ def overlays(board: Board, ctx: AnalyzerContext) -> dict[str, Any]:
         "all_min_mm": round(min(ds), 2) if ds else None,
         "all_max_mm": round(max(ds), 2) if ds else None,
         "excluded": data["excluded"],
+        "supply_pins": [
+            {"pin": f"{pr['pin'].ref}.{pr['pin'].number}", "name": pr["pin_name"], "net": pr["net"], "nearest_capacitor": pr["nearest"][0].ref if pr["nearest"] else None,
+             "nearest_mm": round(pr["nearest"][2], 2) if pr["nearest"] else None, "within_limit": pr["within"]}
+            for pr in data["pins"]
+        ][:200],
     }

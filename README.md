@@ -28,11 +28,13 @@ Plain code does the measuring first, with no AI involved. Then the agent investi
 | Noise proximity | Switching or RF parts close to sensitive parts |
 | Track jitter, detours, sharp corners | Shaky routing, long detours against the straight line, corners sharper than 90 degrees |
 | Border tracks | Copper close to the board edge, or running along it |
-| Decoupling | Capacitor distance from the IC power pin it serves, and vias on the way |
-| Antenna keep-out | Copper, parts and tracks inside an antenna clearance zone |
+| Decoupling | Capacitor distance from the IC power pin it serves, vias on the way |
+| Decoupling per pin | Supply pins with no capacitor within 3 mm, and the nearest capacitor to each |
+| Antenna keep-out | Copper, parts and tracks inside an antenna clearance zone, pour area per layer, ground under the antenna and its distance, vias with no net |
 | RF path | Length, width changes, layer jumps and stubs along RF nets |
 | Via count | Layer jumps along important connections |
-| Return path | Fast signals that cross a gap in the ground copper beneath them |
+| Return path | Fast signals (including clock-part nets) that cross a gap in the ground copper beneath them, planes on other nets named, and tracks over a rule-area slot |
+| Pair skew | Routed-length mismatch in mm and estimated ps inside pairs named _DP/_DM, D+/D-, _P/_N |
 | Track impedance | Closed-form estimate of track impedance from width, layer and stackup |
 
 **RF lab (printed antennas):** TrustPCB cuts the antenna region out of your board and simulates it with [openEMS](https://www.openems.de/) in a Docker container. You get an S11 tuning graph, a Smith chart, a 3D radiation pattern, an animated field and a surface-current view, all drawn from real solver output. It can also test what-if changes to the antenna model and calculate matching parts. Nothing is drawn that the solver did not produce.

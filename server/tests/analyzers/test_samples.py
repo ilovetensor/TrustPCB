@@ -62,6 +62,7 @@ def test_run_for_version_writes_file(tmp_path, nrf_board):
     (art / "board.json").write_text(json.dumps(nrf_board.to_dict()))
     (tmp_path / "project").mkdir()  # the project file carries the net classes the netclass_width rule reads
     shutil.copy(NRF_PCB.with_suffix(".kicad_pro"), tmp_path / "project" / NRF_PCB.with_suffix(".kicad_pro").name)
+    shutil.copy(NRF_PCB.with_suffix(".kicad_sch"), tmp_path / "project" / NRF_PCB.with_suffix(".kicad_sch").name)  # the per-pin decoupling check reads supply pins from the schematic
     res = run_for_version(tmp_path, AnalyzerContext(target_ohms=50.0))
     data = json.loads((art / "analyzers.json").read_text())
     assert set(data) >= {"candidates", "overlays", "status", "seconds", "registrations"}

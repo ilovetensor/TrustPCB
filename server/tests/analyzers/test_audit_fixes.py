@@ -99,16 +99,16 @@ def test_drc_annotate_version_writes_files(tmp_path, drc_candidates):
 
 def test_return_path_events_per_net(nrf_run):
     rp = cands(nrf_run, "return_path")
-    assert len(rp) == 41
+    assert len(rp) == 38  # was 41 before the antipad voids at via ends stopped counting as gaps
     nets = {c["net"] for c in rp}
     assert nets == {"ANT_CHIP", "SWDCLK", "SWDIO", "USB_D+_ESD", "USB_D-_ESD", "USB_D+_MCU", "USB_D-_MCU", "XTAL_A", "XTAL_B"}
     rule = rp[0]["rule_summary"]
-    assert rule["gap_events"] == 41 and rule["nets_with_gaps"] == 9
+    assert rule["gap_events"] == 38 and rule["nets_with_gaps"] == 9
     assert "not signals" in rule["meaning"]
     per_net = {p["net"]: p for p in nrf_run["overlays"]["return_path"]["per_net"]}
-    assert per_net["SWDCLK"]["gap_events"] == 7 and per_net["SWDIO"]["gap_events"] == 5
-    assert per_net["USB_D-_ESD"]["gap_events"] == 14 and per_net["USB_D+_ESD"]["gap_events"] == 8
-    assert sum(p["gap_events"] for p in per_net.values()) == 41
+    assert per_net["SWDCLK"]["gap_events"] == 6 and per_net["SWDIO"]["gap_events"] == 5
+    assert per_net["USB_D-_ESD"]["gap_events"] == 12 and per_net["USB_D+_ESD"]["gap_events"] == 8
+    assert sum(p["gap_events"] for p in per_net.values()) == 38
     for c in rp:
         assert c["net_summary"] == per_net[c["net"]]
 

@@ -32,9 +32,11 @@ ANALYZER_NAMES = (
     "edge_track",
     "connector_access",
     "decoupling",
+    "decoupling_pin",
     "antenna_keepout",
     "rf_path",
     "return_path",
+    "pair_skew",
     "impedance",
     "via_count",
     "via_annular_ring",
@@ -74,6 +76,12 @@ DEFAULTS: dict[str, Any] = {
     "return_path_step_mm": 0.25,
     "return_path_min_gap_mm": 0.3,
     "return_path_merge_mm": 1.0,
+    # a via or through-hole pad ending a run voids the plane around it; that void counts as supported out to the via radius plus this
+    "return_path_antipad_max_mm": 1.5,
+    # pair_skew: length mismatch over 0.25 mm; about 6 ps/mm for outer-layer FR4 microstrip; medium from 25 ps
+    "skew_min_mm": 0.25,
+    "skew_ps_per_mm": 6.0,
+    "skew_medium_ps": 25.0,
     # impedance: more than 10 percent from target
     "impedance_tolerance_pct": 10.0,
     "impedance_min_section_mm": 1.0,

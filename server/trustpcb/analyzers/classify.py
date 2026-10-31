@@ -82,6 +82,28 @@ def fast_nets(board: Board, ctx: AnalyzerContext) -> list[str]:
     return [n for n in board.net_names() if n in routed and is_fast_net(n, ctx)]
 
 
+_OSC_PART_RE = re.compile(r"oscillat|tcxo|vcxo|ocxo|crystal|xtal|resonator", re.I)
+
+
+def clock_part_nets(board: Board, ctx: AnalyzerContext) -> dict[str, list[str]]:
+    """Signal nets that carry tracks and sit on a pad of an oscillator or clock part: ``{net: [refs]}``.
+
+    A clock part is a crystal or resonator, a part whose value or library id says oscillator, or a part the brief gave the role ``clock``.
+    Ground and supply nets are never returned: an oscillator's supply pin is not a clock.
+    """
+    routed = {t.net for t in board.tracks if t.net}
+    out: dict[str, list[str]] = {}
+    for f in board.footprints:
+        role = str(ctx.part_roles.get(f.ref, "")).lower()
+        if not (role == "clock" or part_kind(f) == "xtal" or _OSC_PART_RE.search(f"{f.value} {f.lib_id}")):
+            continue
+        for p in board.pads_of(f.ref):
+            if p.net and p.net in routed and not is_ground(p.net) and not is_power(p.net, ctx):
+                if f.ref not in out.setdefault(p.net, []):
+                    out[p.net].append(f.ref)
+    return out
+
+
 def rf_nets(board: Board, ctx: AnalyzerContext) -> list[str]:
     return [n for n in board.net_names() if is_rf_net(n, ctx)]
 
