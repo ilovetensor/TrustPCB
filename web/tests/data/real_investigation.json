@@ -1,0 +1,180 @@
+{
+ "investigations": [
+  {
+   "code": "I1",
+   "outcome": {
+    "finding": "F-009"
+   },
+   "confirmation": {
+    "outcome": "held_smaller",
+    "statement": "The improvement held at confirm quality but the screen overstated it; the confirm numbers replace the screen numbers. The tuning target is still not met at confirm quality.",
+    "held": true,
+    "agree_with_screen": false,
+    "winner": {
+     "ref": "R3",
+     "ops": [],
+     "parts": [
+      {
+       "ref": "C20",
+       "position": "shunt",
+       "was": "not fitted",
+       "now": "1.3 pF"
+      },
+      {
+       "ref": "L1",
+       "position": "series",
+       "was": "2.2 nH",
+       "now": "6.8 nH"
+      },
+      {
+       "ref": "C19",
+       "position": "shunt",
+       "was": "not fitted",
+       "now": "0.82 pF"
+      }
+     ],
+     "experiment": "matching"
+    },
+    "rows": {
+     "base": {
+      "screen": {
+       "ref": "R1",
+       "band_worst_s11_db": -1.305,
+       "band_mean_s11_db": -2.109,
+       "deepest_dip_mhz": 1867.0,
+       "deepest_dip_db": -17.006,
+       "centre_resistance_ohm": 38.4374,
+       "centre_reactance_ohm": 71.231,
+       "first_series_resonance_mhz": 1674.4
+      },
+      "confirm": {
+       "ref": "R4",
+       "band_worst_s11_db": -0.502,
+       "band_mean_s11_db": -0.533,
+       "deepest_dip_mhz": 1869.2,
+       "deepest_dip_db": -23.176,
+       "centre_resistance_ohm": 10.3897,
+       "centre_reactance_ohm": 88.0934,
+       "first_series_resonance_mhz": 1700.0
+      }
+     },
+     "winner": {
+      "screen": {
+       "ref": "R3",
+       "band_worst_s11_db": -14.612,
+       "band_mean_s11_db": -16.94,
+       "deepest_dip_mhz": 2392.6,
+       "deepest_dip_db": -29.587,
+       "centre_resistance_ohm": 59.66,
+       "centre_reactance_ohm": -16.721,
+       "first_series_resonance_mhz": 2472.6
+      },
+      "confirm": {
+       "ref": "R7",
+       "band_worst_s11_db": -3.861,
+       "band_mean_s11_db": -4.516,
+       "deepest_dip_mhz": 1858.5,
+       "deepest_dip_db": -8.397,
+       "centre_resistance_ohm": 13.594,
+       "centre_reactance_ohm": -9.434,
+       "first_series_resonance_mhz": 1842.6
+      }
+     }
+    },
+    "confirm_gain_db": 3.359,
+    "free_gain_db": 5.279,
+    "meets_target": false
+   },
+   "refine_rounds": [
+    {
+     "round": 1,
+     "confirmation": {
+      "outcome": "held_smaller",
+      "statement": "The improvement held at confirm quality but the screen overstated it; the confirm numbers replace the screen numbers. The tuning target is still not met at confirm quality.",
+      "held": true,
+      "agree_with_screen": false,
+      "winner": {
+       "ref": "R9",
+       "ops": [
+        {
+         "op": "adjust_antenna_length",
+         "delta_mm": -4.0
+        }
+       ],
+       "parts": [
+        {
+         "ref": "C20",
+         "position": "shunt",
+         "was": "not fitted",
+         "now": "36 nH"
+        },
+        {
+         "ref": "L1",
+         "position": "series",
+         "was": "2.2 nH",
+         "now": "1.3 pF"
+        },
+        {
+         "ref": "C19",
+         "position": "shunt",
+         "was": "not fitted",
+         "now": "1.8 pF"
+        }
+       ],
+       "experiment": "matching"
+      },
+      "rows": {
+       "base": {
+        "screen": {
+         "ref": "R1",
+         "band_worst_s11_db": -1.305,
+         "band_mean_s11_db": -2.109,
+         "deepest_dip_mhz": 1867.0,
+         "deepest_dip_db": -17.006,
+         "centre_resistance_ohm": 38.4374,
+         "centre_reactance_ohm": 71.231,
+         "first_series_resonance_mhz": 1674.4
+        },
+        "confirm": {
+         "ref": "R4",
+         "band_worst_s11_db": -0.502,
+         "band_mean_s11_db": -0.533,
+         "deepest_dip_mhz": 1869.2,
+         "deepest_dip_db": -23.176,
+         "centre_resistance_ohm": 10.3897,
+         "centre_reactance_ohm": 88.0934,
+         "first_series_resonance_mhz": 1700.0
+        }
+       },
+       "winner": {
+        "screen": {
+         "ref": "R9",
+         "band_worst_s11_db": -7.363,
+         "band_mean_s11_db": -10.545,
+         "deepest_dip_mhz": 2437.5,
+         "deepest_dip_db": -14.171,
+         "centre_resistance_ohm": 67.508,
+         "centre_reactance_ohm": 16.081,
+         "first_series_resonance_mhz": 2354.2
+        },
+        "confirm": {
+         "ref": "R11",
+         "band_worst_s11_db": -2.059,
+         "band_mean_s11_db": -3.579,
+         "deepest_dip_mhz": 2508.0,
+         "deepest_dip_db": -7.397,
+         "centre_resistance_ohm": 10.203,
+         "centre_reactance_ohm": 12.268,
+         "first_series_resonance_mhz": 2399.0
+        }
+       }
+      },
+      "confirm_gain_db": 1.557,
+      "free_gain_db": 4.772,
+      "meets_target": false
+     }
+    }
+   ]
+  }
+ ]
+}

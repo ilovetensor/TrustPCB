@@ -102,7 +102,7 @@ The web app runs on port 3118 and the backend on port 8118, both bound to `127.0
 - [uv](https://docs.astral.sh/uv/) and Python 3.12 (uv installs the Python it needs)
 - [KiCad](https://www.kicad.org/) 9 or newer, for `kicad-cli`. It is found automatically in the standard install locations, or set `KICAD_CLI_PATH`.
 - Docker, only for RF simulation. Without it every other feature works and RF shows as **Not tested**.
-- A Muse API key, only for real agent reviews (see below).
+- A Muse API key, optional and only for real agent reviews (see below). Without one the scripted runner works, so you can run the app and every test with no key.
 - PDF export of reports prints through Playwright. It uses Chrome, Chromium, Edge or Brave if you have one (set `TRUSTPCB_BROWSER` to choose), otherwise the small Chromium that `npm run setup` installs. The HTML report needs nothing extra.
 
 ## Quick start
@@ -185,6 +185,8 @@ bash scripts/test-all.sh                                    # everything except 
 bash scripts/test-all.sh --slow                             # include solver benchmarks and full pipelines
 npm run typecheck                                           # web type check
 npm --prefix web test                                       # web unit tests
+npm run test:release                                        # release script tests
+npm run check:versions                                      # every version field agrees
 ```
 
 No test calls a live model. The slow tests use Docker and the solver image.
@@ -235,11 +237,22 @@ worker/            run_scenario.py, runs inside the solver container with no app
 docker/ems/        pinned openEMS image build
 web/               Next.js app (2D board, 3D scene, RF lab, report)
 samples/           demo boards
-scripts/           launcher, setup, KiCad check, Muse smoke test, demo seeding, test runners
-docs/              specs, README images (docs/images/) and the hackathon disclosure
+scripts/           launcher, setup, KiCad check, Muse smoke test, demo seeding, test runners, release script
+docs/              specs, contributing and release guides, README images (docs/images/) and the hackathon disclosure
+.github/           CI and release workflows, issue and pull request templates, Dependabot
 ```
 
 The product spec is in `docs/specs/`. The hackathon disclosure is in `docs/HACKATHON.md`.
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, how to run the tests, commit and pull request style, what makes a good analyzer or finding, and the project rules: TrustPCB never edits a design, findings trace to evidence, and simulated results are labelled Simulated. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately, as described in [SECURITY.md](SECURITY.md).
+
+## CI and releases
+
+Every pull request runs one fast workflow (`.github/workflows/ci.yml`): backend tests without the slow and Docker tests, the web type check and tests, and a check that every version field agrees. It calls no model, runs no solver and needs no secrets. Tests that need `kicad-cli` skip themselves where KiCad is not installed, which is the case in CI. A docs-only change skips the heavy jobs.
+
+Merging a pull request to `main` creates a release automatically: label `major` bumps the first number, label `minor` the middle one, and anything else the last one (X.Y.Z). The version fields and [CHANGELOG.md](CHANGELOG.md) are updated, the commit is tagged and a GitHub Release is published. See [docs/RELEASING.md](docs/RELEASING.md), which also lists what a maintainer sets up once the repository exists.
 
 ## Licensing
 

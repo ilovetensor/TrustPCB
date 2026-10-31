@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an improvement or a new check
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can a board get wrong that TrustPCB does not catch today, or what is hard to do in the app?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+      description: For a new analyzer, say what it measures, in which units, and how you would tell a real problem from a false alarm.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or references
+      description: A datasheet section, an application note or a design guideline that supports the check. Optional.
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Project rules
+      options:
+        - label: This does not require TrustPCB to edit a design or write modified KiCad or manufacturing files
+          required: true

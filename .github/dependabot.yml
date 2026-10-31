@@ -1,0 +1,28 @@
+# Monthly, grouped dependency updates: one pull request per ecosystem per month at most.
+# Merged update pull requests get a patch release like any other change, unless labelled.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      web:
+        patterns: ["*"]
+  - package-ecosystem: uv
+    directory: /server
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      server:
+        patterns: ["*"]
