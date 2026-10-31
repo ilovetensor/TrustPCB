@@ -231,7 +231,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   if (summary?.s11?.antenna_only) numbers.push(["Band worst S11", `${summary.s11.antenna_only.band_worst_db.toFixed(1)} dB${summary.s11.as_built ? ` / ${summary.s11.as_built.band_worst_db.toFixed(1)} as built` : ""}`]);
   if (summary?.zin_at_band_centre) { const z = summary.zin_at_band_centre; numbers.push(["Zin at band", `${z.re.toFixed(0)} ${z.im < 0 ? "-" : "+"} j${Math.abs(z.im).toFixed(0)} ohm`]); }
   if (sim?.solve_s != null) numbers.push(["Solve time", `${Math.round(sim.solve_s)} s${sim.cells ? `, ${(sim.cells / 1e6).toFixed(2)} M cells` : ""}`]);
-  if (sim?.dmax_dbi != null) numbers.push(["Peak gain", `${sim.dmax_dbi.toFixed(1)} dBi${sim.efficiency_est != null ? `, eff. ~${(sim.efficiency_est * 100).toFixed(0)} %` : ""}`]);
+  if (sim?.dmax_dbi != null) numbers.push(["Peak directivity", `${sim.dmax_dbi.toFixed(1)} dBi${sim.efficiency_est != null ? `, eff. ~${(sim.efficiency_est * 100).toFixed(0)} %` : ""}${sim.pattern_f_hz != null ? ` at ${(sim.pattern_f_hz / 1e9).toFixed(2)} GHz` : ""}`]);
   const inBand = band && sim?.f_res ? sim.f_res / 1e9 >= band.lo_ghz && sim.f_res / 1e9 <= band.hi_ghz && (sim.s11_min_db ?? 0) <= band.target_db : null;
 
   const charts = (

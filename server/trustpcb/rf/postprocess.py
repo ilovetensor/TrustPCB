@@ -144,7 +144,7 @@ def finalize(job_dir: str | Path, *, write: bool = True) -> dict[str, Any]:
         (job / "s11_as_built.json").write_text(json.dumps({"freq_hz": s11["freq_hz"], "s11_db": [round(float(v), 4) for v in 20 * np.log10(np.maximum(np.abs(gamma_ab), 1e-9))],
                                                            "s11_re": [round(float(v), 6) for v in gamma_ab.real], "s11_im": [round(float(v), 6) for v in gamma_ab.imag]}))
     summary["s11"] = ab
-    summary["sim"] = {k: res.get(k) for k in ("f_res", "s11_min_db", "bandwidth", "zin_at_res", "dmax_dbi", "efficiency_est", "cells", "timesteps", "solve_s", "nf2ff_s", "total_s")}
+    summary["sim"] = {k: res.get(k) for k in ("f_res", "s11_min_db", "bandwidth", "zin_at_res", "dmax_dbi", "efficiency_est", "pattern_f_hz", "cells", "timesteps", "solve_s", "nf2ff_s", "total_s")}
     summary["sim"].update(modes(job))
     summary["zin_at_band_centre"] = _zin_at(job, sum(band_hz) / 2)
     summary["plausibility"] = plausibility(res, band_hz, ab["antenna_only"])

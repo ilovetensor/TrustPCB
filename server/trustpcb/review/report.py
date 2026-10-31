@@ -301,7 +301,7 @@ METRIC_NAMES = {
     'antenna_only_band_worst_s11': 'Worst S11 in the band, antenna alone', 'antenna_only_band_mean_s11': 'Mean S11 in the band, antenna alone',
     'as_built_band_worst_s11': 'Worst S11 in the band, as built', 'as_built_band_mean_s11': 'Mean S11 in the band, as built',
     'band_centre_resistance': 'Resistance at the band centre', 'band_centre_reactance': 'Reactance at the band centre', 'band_centre_frequency': 'Band centre frequency',
-    'bandwidth': 'Bandwidth below -10 dB', 'peak_directivity': 'Peak directivity', 'radiation_efficiency': 'Radiation efficiency',
+    'bandwidth': 'Bandwidth below -10 dB', 'peak_directivity': 'Peak directivity', 'pattern_frequency': 'Frequency of the pattern and efficiency', 'radiation_efficiency': 'Radiation efficiency',
     'input_resistance': 'Input resistance', 'input_reactance': 'Input reactance', 'first_series_resonance': 'First series resonance',
     'delta_s11': 'Change in lowest S11', 'delta_band_mean': 'Change in mean S11 in the band',
     'delta_band_worst_accepted_power': 'Change in accepted power, worst point of the band', 'delta_band_mean_accepted_power': 'Change in accepted power, mean across the band',
@@ -839,7 +839,7 @@ def _pattern_freq_hz(lab, run: dict) -> float | None:
 
 
 def pattern_caption(freq_hz: float | None, band_hz: list | None) -> str:
-    """What the radiation-pattern still says about its frequency: inside the band, or plainly at the dip and outside it."""
+    """What the radiation-pattern still says about its frequency: inside the band, or plainly outside it (older runs computed it at the deepest S11 dip)."""
     base = 'Directivity from the confirm run. A simulation, not a chamber measurement.'
     if not freq_hz:
         return base
@@ -847,8 +847,8 @@ def pattern_caption(freq_hz: float | None, band_hz: list | None) -> str:
     if band_hz and len(band_hz) == 2 and band_hz[0] <= freq_hz <= band_hz[1]:
         return f'{base} Computed at {ghz}, inside the band.'
     band = f' ({band_hz[0] / 1e9:.5g} to {band_hz[1] / 1e9:.5g} GHz)' if band_hz and len(band_hz) == 2 else ''
-    return (f'{base} The solver computes the far field only at the deepest S11 dip, {ghz}, which is outside the board\'s band{band}. '
-            'This pattern is therefore not the pattern in the band.') if band_hz and len(band_hz) == 2 else f'{base} Computed at the deepest S11 dip, {ghz}, not necessarily at the design frequency.'
+    return (f'{base} This far field was computed at {ghz} (runs made before the band-centre change used the deepest S11 dip), which is outside the board\'s band{band}. '
+            'This pattern is therefore not the pattern in the band.') if band_hz and len(band_hz) == 2 else f'{base} Computed at {ghz}, which cannot be placed against the band.'
 
 
 async def rf_stills(store, review: dict, snap: dict) -> dict:

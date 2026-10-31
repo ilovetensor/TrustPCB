@@ -520,7 +520,9 @@ class RealLab(BaselineLab):
                 s11 = self._read(job, 's11.json')
                 return plots.smith_png(s11, band_hz=band, as_built=self._read(job, 's11_as_built.json')), 'Smith chart of the antenna feed impedance; the thick part is the band.'
             if kind == 'pattern':
-                return plots.pattern_png(self._read(job, 'pattern.json') or _missing('pattern.json')), 'Radiation pattern cuts at the resonance frequency.'
+                pattern = self._read(job, 'pattern.json') or _missing('pattern.json')
+                freq = pattern.get('f_hz')
+                return plots.pattern_png(pattern), (f'Radiation pattern cuts at {freq / 1e9:.3f} GHz.' if freq else 'Radiation pattern cuts.')
             if kind == 'current':
                 return plots.current_png(job, outline=outline), 'Surface current on the antenna layer.'
             return plots.field_png(job, outline=outline), 'Electric field magnitude, plan and side views.'

@@ -26,7 +26,7 @@ from . import mesh as meshmod
 from . import whatif
 from .types import NotSimulatable, RfSetup
 
-MODEL_VERSION = "rf-model-3"  # 3: 801 sweep points at both qualities (dips no longer sit on a 5.7 MHz grid); changes every cache key
+MODEL_VERSION = "rf-model-4"  # 4: far field and efficiency at the band centre f0, not the deepest dip; 3: 801 sweep points at both qualities; each bump changes every cache key
 
 RUN = {
     # end_criteria is energy decay in dB; n_freq points across the sweep

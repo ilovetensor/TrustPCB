@@ -431,28 +431,34 @@ def process(sc, sim, out, fd, port, nf, meta, slog, prog, t_solve):
             b += 1
         bw.update(f_low_hz=float(freqs[a]), f_high_hz=float(freqs[b]), width_hz=float(freqs[b] - freqs[a]))
 
-    # far field at the resonance
+    # far field at the band centre f0, the frequency the engineer designs for (not at the deepest S11 dip, which can sit
+    # far outside the band). Accepted power for the efficiency is taken at the same frequency. When f0 is outside the
+    # sweep there is no accepted power to divide by there, so the deepest dip is used and f_hz says so.
+    in_sweep = bool(freqs[0] <= f0 <= freqs[-1])
+    f_pat = f0 if in_sweep else f_res
+    p_acc_pat = float(np.interp(f_pat, freqs, p_acc))
     prog.emit(phase="post", step="nf2ff")
     t0 = time.time()
     th = np.arange(0, 181, 5.0)
     ph = np.arange(0, 361, 5.0)
     ctr = [v * 1e-3 * float(sc.get("unit_mm", 1)) for v in sc.get("pattern_center_mm", [0, 0, 0])]
-    res = nf.CalcNF2FF(str(sim), f_res, th, ph, center=ctr, verbose=0)
+    res = nf.CalcNF2FF(str(sim), f_pat, th, ph, center=ctr, verbose=0)
     nf_s = time.time() - t0
     prad = float(np.ravel(res.Prad)[0])
     dmax = float(np.ravel(res.Dmax)[0])
     D = 4 * math.pi * np.asarray(res.P_rad[0]) / prad
     D_dbi = 10 * np.log10(np.maximum(D, 1e-4))
     it, ip = np.unravel_index(int(np.argmax(D)), D.shape)
-    eff = float(prad / p_acc[i_res]) if p_acc[i_res] > 0 else None
+    eff = float(prad / p_acc_pat) if p_acc_pat > 0 else None
     jdump(out / "pattern.json", {
-        "f_hz": f_res, "theta_deg": th.tolist(), "phi_deg": ph.tolist(),
+        "f_hz": f_pat, "theta_deg": th.tolist(), "phi_deg": ph.tolist(),
         "directivity_dbi": [clean(r, 3) for r in D_dbi],
         "layout": "directivity_dbi[theta_index][phi_index]",
         "dmax_dbi": round(10 * math.log10(dmax), 3), "dmax_theta_deg": float(th[it]),
         "dmax_phi_deg": float(ph[ip]), "floor_dbi": -40.0,
         "radiated_power_w_per_w_incident": None if eff is None else round(eff, 4),
-        "note": "Theta from +z (up), phi from +x toward +y, in scenario axes."})
+        "efficiency_f_hz": f_pat, "f0_hz": f0, "f_res_hz": f_res,
+        "note": "Computed at f_hz (the band centre f0 unless it lies outside the sweep). Theta from +z (up), phi from +x toward +y, in scenario axes."})
 
     # fields
     max_px = int(sc.get("dumps", {}).get("max_px", 256))
@@ -495,6 +501,7 @@ def process(sc, sim, out, fd, port, nf, meta, slog, prog, t_solve):
         "zin_at_res": {"re": round(float(zin[i_res].real), 3), "im": round(float(zin[i_res].imag), 3)},
         "dmax_dbi": round(10 * math.log10(dmax), 3),
         "efficiency_est": None if eff is None else round(eff, 4),
+        "pattern_f_hz": f_pat,  # dmax_dbi and efficiency_est (radiated / accepted power) are both at this frequency, not at f_res
         "trust": {"energy_decay_db": decay, "passive": passive,
                   "cells_per_wavelength": round(cpw, 2),
                   "status": "ok" if not reasons else "fail", "reasons": reasons},

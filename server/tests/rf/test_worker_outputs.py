@@ -72,6 +72,10 @@ def check_job(job: pathlib.Path):
     assert d.shape == (len(p["theta_deg"]), len(p["phi_deg"])) == (37, 73)
     assert d.max() == pytest.approx(p["dmax_dbi"], abs=0.1)
     assert p["dmax_dbi"] == pytest.approx(res["dmax_dbi"], abs=0.01)
+    if "pattern_f_hz" in res:        # runs from the band-centre worker: the far field, peak and efficiency share one frequency
+        assert p["f_hz"] == res["pattern_f_hz"] == p["efficiency_f_hz"]
+        lo, hi = s["freq_hz"][0], s["freq_hz"][-1]
+        assert p["f_hz"] == (res["f0_hz"] if lo <= res["f0_hz"] <= hi else res["f_res"])
 
     fj = load(job, "field.json")
     for key in ("xy", "xz"):
