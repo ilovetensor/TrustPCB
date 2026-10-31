@@ -116,3 +116,39 @@ def patch_board():
     from trustpcb.pcb.model import parse_board
 
     return parse_board(PATCH_PCB, "v-patch")
+
+
+def _add_connector(b, ref, x, y, rot=0.0, side="top", lib="Connector_USB:USB_C_Receptacle_Test", value="USB", courtyard=True, pads="rear"):
+    """A receptacle 10 mm wide and 8 mm deep with its mouth on local +y.
+
+    Signal pads sit at local y = -3 (``pads="rear"``) or are spread over the body (``"centred"``),
+    shield pads at local x = +-4.5, and the courtyard is x -5..5, y -4..4. A back-side part has its
+    local geometry mirrored in y, as KiCad stores it, so the mouth ends up on local -y.
+    """
+    flip = -1.0 if side == "bottom" else 1.0
+    layer = "B.Cu" if side == "bottom" else "F.Cu"
+
+    def world(lx, ly):
+        rx, ry = geom.rotate(lx, ly * flip, rot)
+        return x + rx, y + ry
+
+    local = [(str(i + 1), "SIG", -2.5 + i, -3.0 if pads == "rear" else -3.0 + 1.2 * i) for i in range(6)]
+    local += [("SH", "GND", -4.5, 0.0), ("SH", "GND", 4.5, 0.0)]
+    ids = []
+    for number, net, lx, ly in local:
+        px, py = world(lx, ly)
+        b.nets.add(net)
+        thru = number == "SH"
+        pad = Pad(f"pad:{ref}:{number}{len(ids)}", ref, number, net, px, py, 0.6, 0.6, 0.0, "rect", [layer], None, geom.rect_ring(px, py, 0.6, 0.6), "thru_hole" if thru else "smd")
+        b.pads.append(pad)
+        ids.append(pad.id)
+    ring = [list(world(lx, ly)) for lx, ly in ((-5, -4), (5, -4), (5, 4), (-5, 4))] if courtyard else None
+    box = geom.bbox_of(ring) if ring else [x - 1, y - 1, x + 1, y + 1]
+    box = geom.union_bbox([box] + [geom.bbox_of(p.ring) for p in b.pads if p.ref == ref])
+    b.fps.append(Footprint(f"ref:{ref}", ref, value, lib, x, y, rot, side, box, ring, ids))
+    return ring
+
+
+@pytest.fixture()
+def add_connector():
+    return _add_connector
