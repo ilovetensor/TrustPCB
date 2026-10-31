@@ -7,7 +7,9 @@ import {
 import type { BBox, Board, Geometry, Mark, Severity } from "../../lib/types";
 import { CalloutLayer, type CalloutAnchor, type DimLine, type Rect } from "../callouts/CalloutLayer";
 import { Icon } from "../ui/icons";
-import { BoardLayers } from "./BoardLayers";
+import type { Zone as FunctionZone } from "../../lib/api";
+import { BoardLayers, ZoneLabels } from "./BoardLayers";
+import type { SceneMarkup } from "./useScene";
 import type { LayerState } from "./layers";
 import { RULER, Rulers, type View } from "./Rulers";
 
@@ -21,13 +23,14 @@ const SEVS: Severity[] = ["critical", "high", "medium", "low", "info"];
 const clampView = (v: View): View => v;
 
 export function Board2D({
-  board, marks, meta, selectedId, onSelect, layers, insets, focus, spotlight, pickedId, onPick, overlay, ghost, className, interactive = true, fitTo, externalView, onViewChange, chrome = true, gridOnly = false,
+  board, marks, meta, selectedId, onSelect, layers, insets, focus, spotlight, pickedId, onPick, overlay, ghost, className, interactive = true, fitTo, externalView, onViewChange, chrome = true, gridOnly = false, scene = null, zones = [], chromeTop = 12,
 }: {
   board: Board; marks: ActiveMarkItem[]; meta: Record<string, FindingMeta>; selectedId: string | null;
   onSelect: (id: string | null) => void; layers: LayerState; insets: Insets; focus?: FocusRequest | null;
   spotlight?: { targets: string[]; nonce: number } | null; pickedId?: string | null; onPick?: (id: string | null) => void;
   overlay?: (view: View) => ReactNode; ghost?: Ghost | null; className?: string;
   interactive?: boolean; fitTo?: BBox | null; externalView?: View | null; onViewChange?: (v: View) => void; chrome?: boolean; gridOnly?: boolean;
+  scene?: SceneMarkup | null; zones?: FunctionZone[]; /** top of the readout and zoom pill, in stage pixels */ chromeTop?: number;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -62,7 +65,10 @@ export function Board2D({
     return () => ro.disconnect();
   }, []);
 
-  const pad = useMemo(() => ({ l: insets.l + RULER + 36, r: insets.r + 36, t: insets.t + RULER + 36, b: insets.b + 36 }), [insets]);
+  // The free stage is what the panels leave. Panels hide the rulers, so only a plain margin is kept inside it.
+  const pad = useMemo(() => ({
+    l: insets.l + (insets.l ? 28 : RULER + 24), r: insets.r + 28, t: insets.t + (insets.t ? 14 : RULER + 24), b: insets.b + (insets.b ? 56 : 28),
+  }), [insets]);
   const fitBox = fitTo ?? board.bbox;
   const fitAll = useCallback(() => fitView(fitBox, size.w, size.h, pad), [fitBox, size.w, size.h, pad]);
 
@@ -248,7 +254,7 @@ export function Board2D({
     const f = marks.find((m) => m.findingId && m.mark.targets.some((t) => ids.has(t)));
     if (f?.findingId) onSelect(f.findingId);
     else onSelect(null);
-    onPick?.(pad ? `ref:${pad.ref}` : hit);
+    onPick?.(hit);
   };
 
   /* ----------------------- screen-space overlay items ----------------------- */
@@ -309,7 +315,14 @@ export function Board2D({
   const ready = !!v && size.w > 0;
   const px = (n: number) => (v ? n / v.scale : n);
   const cursorBoard = cursor && v ? (toBoard(v, cursor[0], cursor[1]) as [number, number]) : null;
-  const selectedActive = !!selectedId;
+  // spotlight: everything outside the selected finding's geometry is dimmed
+  const veil = useMemo(() => {
+    if (!selectedId || !showIssues) return null;
+    const holes: BBox[] = [];
+    const add = (g: Geometry) => { if (g.parts) g.parts.forEach(add); else holes.push([g.bbox[0] - 1.6, g.bbox[1] - 1.6, g.bbox[2] + 1.6, g.bbox[3] + 1.6]); };
+    for (const r of resolved) if (r.findingId === selectedId) r.geoms.forEach(add);
+    return holes.length ? { holes: holes.slice(0, 120), opacity: 0.56 } : null;
+  }, [selectedId, showIssues, resolved]);
 
   return (
     <div
@@ -341,8 +354,9 @@ export function Board2D({
       {ready && v && (
         <>
           <Rulers view={v} width={size.w} height={size.h} cursor={cursor} gridOnly />
-          <svg className={`b2-svg ${selectedActive ? "has-sel" : ""}`} width={size.w} height={size.h}>
+          <svg className="b2-svg" width={size.w} height={size.h}>
             <defs>
+              <filter id="b2-soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation={px(5)} /></filter>
               {SEVS.map((s) => (
                 <pattern key={s} id={`mk-hatch-${s}`} patternUnits="userSpaceOnUse" width={px(7)} height={px(7)} patternTransform="rotate(45)">
                   <path d={`M0 0H${px(7)}`} stroke={`var(--sev-${s})`} strokeWidth={px(1)} opacity="0.55" />
@@ -350,14 +364,24 @@ export function Board2D({
               ))}
             </defs>
             <g transform={`translate(${v.tx} ${v.ty}) scale(${v.scale})`}>
-              <g className="b2-base"><BoardLayers board={board} layers={layers} /></g>
+              <g className="b2-base"><BoardLayers board={board} layers={layers} scene={scene} functionZones={zones} /></g>
+              {veil && (
+                <g className="b2-veil" style={{ opacity: veil.opacity }}>
+                  <mask id="b2-veil-mask" maskUnits="userSpaceOnUse" x={board.bbox[0] - 6} y={board.bbox[1] - 6} width={board.bbox[2] - board.bbox[0] + 12} height={board.bbox[3] - board.bbox[1] + 12}>
+                    <rect x={board.bbox[0] - 6} y={board.bbox[1] - 6} width={board.bbox[2] - board.bbox[0] + 12} height={board.bbox[3] - board.bbox[1] + 12} fill="white" />
+                    <g filter="url(#b2-soft)" fill="black">{veil.holes.map((h, i) => (<rect key={i} x={h[0]} y={h[1]} width={h[2] - h[0]} height={h[3] - h[1]} rx={px(6)} />))}</g>
+                  </mask>
+                  <rect x={board.bbox[0] - 6} y={board.bbox[1] - 6} width={board.bbox[2] - board.bbox[0] + 12} height={board.bbox[3] - board.bbox[1] + 12} fill="#04040b" mask="url(#b2-veil-mask)" />
+                </g>
+              )}
               <g className="b2-marks">
                 {resolved.map((r) => {
                   const isSel = !r.findingId || !selectedId || r.findingId === selectedId;
                   const hidden = r.mark.type === "region" ? !layers.regions : !showIssues;
                   if (hidden) return null;
-                  return <MarkShape key={r.key} item={r} px={px} dim={!isSel} sel={!!selectedId && r.findingId === selectedId} />;
+                  return <MarkShape key={r.key} item={r} px={px} dim={!isSel} sel={!!selectedId && r.findingId === selectedId} quiet={!selectedId && resolved.length > 6} />;
                 })}
+                <ZoneLabels zones={zones} px={px} show={layers.regions && v.scale > 6} />
                 {pickedId && <PickBox index={index} id={pickedId} px={px} />}
                 {ghost && <GhostPart ghost={ghost} px={px} />}
               </g>
@@ -373,18 +397,20 @@ export function Board2D({
             selectedId={selectedId} onSelect={onSelect} onCluster={onClusterClick}
           />
           {ghost && <GhostLabel view={v} ghost={ghost} />}
-          {chrome && <div className="b2-readout mono" style={{ left: insets.l + RULER + 14, bottom: insets.b + 12 }}>
-            <span className="idx">SHEET 1/1</span>
-            <span>X <b>{cursorBoard ? cursorBoard[0].toFixed(2) : "--.--"}</b></span>
-            <span>Y <b>{cursorBoard ? cursorBoard[1].toFixed(2) : "--.--"}</b></span>
-            <span className="dim">mm</span>
-            <span className="dim">{v.scale.toFixed(1)} px/mm</span>
-          </div>}
-          {chrome && <div className="b2-controls" style={{ left: insets.l + RULER + 14, bottom: insets.b + 44 }}>
-            <button className="icon-btn" aria-label="Zoom in" onClick={() => { userMoved.current = true; setView(zoomAt(v, size.w / 2, size.h / 2, 1.4)); }}><Icon name="plus" /></button>
-            <button className="icon-btn" aria-label="Zoom out" onClick={() => { userMoved.current = true; setView(zoomAt(v, size.w / 2, size.h / 2, 1 / 1.4)); }}><Icon name="minus" /></button>
-            <button className="icon-btn" aria-label="Fit board" onClick={() => { userMoved.current = false; glide(fitAll()); }}><Icon name="fit" /></button>
-          </div>}
+          {chrome && (
+            <div className="b2-pill" style={{ right: insets.r + 12, top: chromeTop }}>
+              <div className="b2-readout mono" aria-label="Cursor position in millimetres">
+                <span>X <b>{cursorBoard ? cursorBoard[0].toFixed(1) : "--.-"}</b></span>
+                <span>Y <b>{cursorBoard ? cursorBoard[1].toFixed(1) : "--.-"}</b></span>
+                <span className="dim">mm</span>
+              </div>
+              <div className="b2-controls">
+                <button className="icon-btn" aria-label="Zoom in" onClick={() => { userMoved.current = true; setView(zoomAt(v, size.w / 2, size.h / 2, 1.4)); }}><Icon name="plus" /></button>
+                <button className="icon-btn" aria-label="Zoom out" onClick={() => { userMoved.current = true; setView(zoomAt(v, size.w / 2, size.h / 2, 1 / 1.4)); }}><Icon name="minus" /></button>
+                <button className="icon-btn" aria-label="Fit board" onClick={() => { userMoved.current = false; glide(fitAll()); }}><Icon name="fit" /></button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -397,10 +423,11 @@ function PolyD({ g }: { g: Geometry }): string {
 }
 function flat(g: Geometry): Geometry[] { return g.parts ? g.parts.flatMap(flat) : [g]; }
 
-function MarkShape({ item, px, dim, sel }: { item: ActiveMarkItem & { geoms: Geometry[] }; px: (n: number) => number; dim: boolean; sel: boolean }) {
+function MarkShape({ item, px, dim, sel, quiet }: { item: ActiveMarkItem & { geoms: Geometry[] }; px: (n: number) => number; dim: boolean; sel: boolean; quiet: boolean }) {
   const { mark, severity } = item;
   const col = `var(--sev-${severity})`;
-  const opacity = dim ? 0.22 : 1;
+  // with many findings, unselected marks stay as thin outlines until one is chosen
+  const opacity = dim ? 0.1 : quiet ? 0.6 : 1;
   const parts = item.geoms.flatMap(flat);
   switch (mark.type) {
     case "path":

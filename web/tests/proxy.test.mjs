@@ -26,3 +26,10 @@ test("proxy requires exact loopback host and mutation origin", () => {
   assert.equal(trustedRequest("127.0.0.1:3118", null, "POST"), false);
   assert.equal(trustedRequest("127.0.0.1:3118", "http://evil.test", "GET"), false);
 });
+import { isArtifactRoute } from "../lib/proxy-policy.mjs";
+test("only artifact reads may be cached", () => {
+  assert.ok(isArtifactRoute("GET", "artifacts/ab12cd"));
+  assert.equal(isArtifactRoute("POST", "artifacts/ab12cd"), false);
+  assert.equal(isArtifactRoute("GET", "reviews/a/report/1.html"), false);
+  assert.equal(isArtifactRoute("GET", "artifacts/ab/../x"), false);
+});

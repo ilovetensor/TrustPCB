@@ -10,10 +10,20 @@ export interface BoardModel {
 }
 
 const palette = {
-  substrate: new THREE.MeshPhysicalMaterial({ color: "#0b0b1d", roughness: 0.5, metalness: 0.15, clearcoat: 0.7, clearcoatRoughness: 0.35 }),
+  substrate: new THREE.MeshPhysicalMaterial({ color: "#14173a", roughness: 0.5, metalness: 0.15, clearcoat: 0.7, clearcoatRoughness: 0.35 }),
   copper: new THREE.MeshPhysicalMaterial({ color: "#191940", roughness: 0.3, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.18 }),
   pad: new THREE.MeshStandardMaterial({ color: "#f0d9a0", roughness: 0.2, metalness: 1 }),
+  silk: new THREE.MeshStandardMaterial({ color: "#f3efd2", roughness: 0.8, metalness: 0 }),
 };
+
+/** kicad-cli names its board meshes <board>_PCB, _copper, _pad, _via and _silkscreen. Material order is not stable, mesh names are. */
+function boardPart(obj: THREE.Object3D): "pcb" | "copper" | "pad" | "via" | "silk" | null {
+  for (let p: THREE.Object3D | null = obj; p; p = p.parent) {
+    const m = /_(PCB|copper|pad|via|silkscreen)$/.exec(p.name || "");
+    if (m) return ({ PCB: "pcb", copper: "copper", pad: "pad", via: "via", silkscreen: "silk" } as const)[m[1] as "PCB"];
+  }
+  return null;
+}
 
 function gradePart(src: THREE.Material): THREE.Material {
   const m = src as THREE.MeshStandardMaterial;
@@ -60,14 +70,12 @@ export function buildBoardModel(scene: THREE.Object3D, refs: Set<string>): Board
     } else {
       const cy = (box.min.y + box.max.y) / 2;
       const h = box.max.y - box.min.y;
-      if (matName === "mat_18") { group = "substrate"; material = palette.substrate; }
-      else if (matName === "mat_17") {
-        material = palette.pad;
-        group = h > 0.5 ? "substrate" : cy > 0.8 ? "topCu" : "botCu";
-      } else {
-        material = palette.copper;
-        group = h > 0.5 ? "substrate" : cy > 0.8 ? "topCu" : "botCu";
-      }
+      const part = boardPart(mesh);
+      const level: LayerGroupKey = h > 0.5 ? "substrate" : cy > 0.8 ? "topCu" : "botCu";
+      if (part === "pcb" || (!part && matName === "mat_18")) { group = "substrate"; material = palette.substrate; }
+      else if (part === "silk") { group = "topCu"; material = palette.silk; }
+      else if (part === "pad" || (!part && matName === "mat_17")) { material = palette.pad; group = level; }
+      else { material = palette.copper; group = level; }
     }
     const key = `${group}|${ref ?? ""}|${material.uuid}`;
     let b = buckets.get(key);

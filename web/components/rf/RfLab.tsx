@@ -8,13 +8,13 @@ import type { Board } from "../../lib/types";
 import { PatchBoard3D } from "./PatchBoard3D";
 import { Board2D } from "../board2d/Board2D";
 import { DEFAULT_LAYERS } from "../board2d/layers";
-import { Icon, Logo, Panel, FixtureBadge } from "../ui";
+import { Icon, Logo, Panel } from "../ui";
 import { CurrentCanvas2D } from "./FieldCanvas2D";
 import { PulsePlane3D, WaveField3D } from "./WaveField3D";
 import { RadiationBalloon } from "./RadiationBalloon";
 import { SmithChart, TuningGraph, minOf, type CurveSpec } from "./charts";
 import { cssGradient, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
-import { useNarrow } from "../../lib/hooks";
+import { reducedMotion, useNarrow, useReducedMotion } from "../../lib/hooks";
 
 const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false });
 type View = "wave" | "pulse" | "pattern" | "current";
@@ -30,13 +30,14 @@ function bandwidth(c: { f_ghz: number[]; s11_db: number[] }, thr = -10) {
   return { lo: c.f_ghz[lo], hi: c.f_ghz[hi] };
 }
 
-export function RfLab({ reviewId }: { reviewId: string }) {
+function RfSample({ reviewId }: { reviewId: string }) {
   const [rf, setRf] = useState<RfBundle | null | undefined>(undefined);
   const [view, setView] = useState<View>("wave");
   const [marker, setMarker] = useState<number | null>(null);
+  const calm = useReducedMotion();
   const [paused, setPaused] = useState(false);
   const [frame, setFrame] = useState(0);
-  const [pulsePlay, setPulsePlay] = useState(true);
+  const [pulsePlay, setPulsePlay] = useState(!reducedMotion());
   const narrow = useNarrow();
 
   useEffect(() => { loadPatchSim().then((b) => { setRf(b); if (b) setMarker(minOf(b.s11).f); }); }, []);
@@ -54,7 +55,6 @@ export function RfLab({ reviewId }: { reviewId: string }) {
     return [...(rf.overlays ?? []).map((o) => ({ id: o.id, label: o.label, ...o.s11 })), { id: "base", label: "Base", ...rf.s11 }];
   }, [rf]);
   const insets = narrow ? { l: 0, r: 0, t: 0, b: 0 } : { l: 340, r: 430, t: 70, b: 20 };
-  const isFx = false;
   const mn = rf ? minOf(rf.s11) : null;
   const bw = rf ? bandwidth(rf.s11) : null;
   const inBand = rf && mn ? mn.f >= rf.band.lo_ghz && mn.f <= rf.band.hi_ghz && mn.db <= rf.band.target_db : false;
@@ -69,10 +69,10 @@ export function RfLab({ reviewId }: { reviewId: string }) {
       </div>
     ) : (
       <div className="rf-stage"><div className="stage-bg" />
-        <Scene3D bare center={[0, 0.8, 0]} board={board} glbUrl="" marks={[]} meta={{}} selectedId={null} onSelect={noop} explode={0} insets={insets} showMarks={false} boardDims={false} autoRotate={view === "pattern"} view3d={VIEW3D}>
+        <Scene3D bare center={[0, 0.8, 0]} board={board} glbUrl="" marks={[]} meta={{}} selectedId={null} onSelect={noop} explode={0} insets={insets} showMarks={false} boardDims={false} autoRotate={view === "pattern" && !calm} view3d={VIEW3D}>
           <PatchBoard3D rf={rf} />
-          {view === "wave" && rf.fieldXY && <WaveField3D slice={rf.fieldXY} paused={paused} />}
-          {view === "wave" && rf.fieldXZ && <WaveField3D slice={rf.fieldXZ} paused={paused} />}
+          {view === "wave" && rf.fieldXY && <WaveField3D slice={rf.fieldXY} paused={paused || calm} />}
+          {view === "wave" && rf.fieldXZ && <WaveField3D slice={rf.fieldXZ} paused={paused || calm} />}
           {view === "pulse" && rf.pulse && <PulsePlane3D pulse={rf.pulse} y={rf.pulse.at_mm} frame={frame} />}
           {view === "pattern" && rf.pattern && <RadiationBalloon pattern={rf.pattern} center={[0, 1.6, 0]} scale={30} />}
         </Scene3D>
@@ -90,7 +90,7 @@ export function RfLab({ reviewId }: { reviewId: string }) {
       <div className="rf-legend">
         {view === "wave" && (<><span className="idx">FIELD, INSTANTANEOUS</span><div className="rf-ramp" style={{ background: cssGradient(SIGNED_STOPS) }} /><div className="rf-ramp-l mono"><span>negative</span><span>0</span><span>positive</span></div>
           <p className="dim">Complex solver field at {rf ? (rf.f0_hz / 1e9).toFixed(2) : ""} GHz (the scenario frequency, not the resonance), rotated in phase. Time is slowed so the wave is visible.</p>
-          <button className="btn sm" onClick={() => setPaused(!paused)}><Icon name={paused ? "play" : "pause"} size={11} /> {paused ? "Play" : "Pause"}</button></>)}
+          <button className="btn sm" disabled={calm} title={calm ? "Motion is off: your system asks for reduced motion." : undefined} onClick={() => setPaused(!paused)}><Icon name={paused ? "play" : "pause"} size={11} /> {paused ? "Play" : "Pause"}</button></>)}
         {view === "pulse" && (<><span className="idx">PULSE LEAVING THE ANTENNA, |E|</span><div className="rf-ramp" style={{ background: cssGradient(FIELD_STOPS) }} /><div className="rf-ramp-l mono"><span>0</span><span>peak</span></div>
           {rf?.pulse ? (<><input type="range" min={0} max={rf.pulse.frames.length - 1} value={frame} onChange={(e) => { setPulsePlay(false); setFrame(+e.target.value); }} aria-label="Pulse frame" style={{ width: "100%", accentColor: "var(--signal)" }} />
             <button className="btn sm" onClick={() => { setFrame(0); setPulsePlay(true); }}><Icon name="rotate" size={11} /> Play once</button></>) : <p className="dim">No pulse data in this result.</p>}</>)}
@@ -133,13 +133,14 @@ export function RfLab({ reviewId }: { reviewId: string }) {
         <span className="idx">/</span><b className="rf-title">RF lab</b>
         <span style={{ flex: 1 }} />
         {rf && <span className="stamp sim" title={rf.source}><i />{rf.label}</span>}
-        <FixtureBadge />
         <Link className="btn sm" href={`/reviews/${reviewId}`}><Icon name="board" size={12} /> Workspace</Link>
       </header>
-      {reviewId !== "r-0040" && rf && (<div className="rf-banner mono"><span className="stamp fixture">Sample data</span> The solver output shown is the bundled 2.5 GHz patch-antenna run, not this review's board.</div>)}
+      {rf && (<div className="rf-banner mono"><span className="stamp fixture">Sample data</span> The solver output shown is the bundled 2.5 GHz patch-antenna run, not this review's board. <Link href={`/reviews/${reviewId}/rf`} className="signal">Leave the sample</Link></div>)}
       {rf === null && (<div className="rf-none hair panel"><span className="idx">NOT TESTED</span><p>No simulation result exists for this review, so the RF lab has nothing to show. Nothing here is estimated.</p></div>)}
       {controls}
       {charts}
     </main>
   );
 }
+
+export { RfSample };

@@ -3,9 +3,9 @@ import { fmtClock } from "../../lib/review-view";
 import type { Budget } from "../../lib/review-reducer.mjs";
 import { Icon } from "../ui/icons";
 
-function Cell({ label, value, of, frac, sig }: { label: string; value: string; of: string; frac: number; sig?: boolean }) {
+function Cell({ label, value, of, frac, sig, title }: { label: string; value: string; of?: string; frac: number; sig?: boolean; title?: string }) {
   return (
-    <div className="bg-cell">
+    <div className="bg-cell" title={title}>
       <span className="idx">{label}</span>
       <span className="bg-v num">{value}{of && <small>/{of}</small>}</span>
       <div className={`meter ${sig ? "sig" : ""}`}><b style={{ width: `${Math.max(0, Math.min(1, frac)) * 100}%` }} /></div>
@@ -13,15 +13,17 @@ function Cell({ label, value, of, frac, sig }: { label: string; value: string; o
   );
 }
 
-export function BudgetInstrument({ budget, status, onStop }: { budget: Budget | null; status: string; onStop: () => void }) {
+/** Time, solver time and agent turns, from the live budget event. Nothing is shown that the backend did not report. */
+export function BudgetInstrument({ budget, status, canStop, onStop }: { budget: Budget | null; status: string; canStop: boolean; onStop: () => void }) {
   const b = budget;
-  const running = status === "running";
+  const wall = b?.wall_s, solver = b?.solver_s, turns = b?.turns;
+  const solverOff = !!solver && solver.limit === 0;
   return (
     <div className="bg">
-      <Cell label="TIME LEFT" value={b ? fmtClock(b.wall_left_s) : "--:--"} of="" frac={b ? b.wall_left_s / b.wall_total_s : 1} />
-      <Cell label="SOLVER" value={b ? fmtClock(b.solver_left_s) : "--:--"} of="" frac={b ? b.solver_left_s / b.solver_total_s : 1} />
-      <Cell label="RUNS LEFT" value={b ? String(b.sims_left) : "-"} of={b ? String(b.sims_total) : "-"} frac={b ? b.sims_left / b.sims_total : 1} />
-      <button className="btn danger sm bg-stop" onClick={onStop} disabled={!running} aria-label="Stop the review"><Icon name="stop" size={11} /> Stop</button>
+      <Cell label="TIME LEFT" value={wall ? fmtClock(wall.left ?? wall.limit - wall.used) : "--:--"} frac={wall && wall.limit ? (wall.left ?? wall.limit - wall.used) / wall.limit : 1} />
+      <Cell label="SOLVER" value={solver ? (solverOff ? "none" : fmtClock(solver.left ?? solver.limit - solver.used)) : "--:--"} frac={solver && solver.limit ? (solver.left ?? solver.limit - solver.used) / solver.limit : 0} title={solverOff ? "This review depth runs no simulation." : undefined} />
+      <Cell label="TURNS" value={turns ? String(turns.used) : "-"} of={turns ? String(turns.limit) : undefined} frac={turns && turns.limit ? 1 - turns.used / turns.limit : 1} />
+      <button className="btn danger sm bg-stop" onClick={onStop} disabled={!canStop} aria-label="Stop the review"><Icon name="stop" size={11} /> Stop</button>
     </div>
   );
 }

@@ -54,6 +54,11 @@ export function arcPoints(a, m, b, steps = 12) {
   return out;
 }
 
+/** Target ids name nets as `net:<name>`; board.json from the server writes the bare name on tracks and pads. */
+export function netId(name) {
+  return name == null ? null : name.startsWith("net:") ? name : `net:${name}`;
+}
+
 /** Index a board once for O(1) target lookups. */
 export function indexBoard(board) {
   const byId = new Map();

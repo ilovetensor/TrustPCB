@@ -32,3 +32,8 @@ export function trustedRequest(host, origin, method) {
   if (!["GET", "HEAD"].includes(method)) return origin === `http://${host}`;
   return !origin || origin === `http://${host}`;
 }
+
+/** Version artifacts (board.json, scene SVGs, the GLB) are the only responses a browser may keep for a short time. */
+export function isArtifactRoute(method, path) {
+  return method === "GET" && new RegExp(`^artifacts/${ids}$`).test(path);
+}

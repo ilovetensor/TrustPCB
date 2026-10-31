@@ -29,17 +29,30 @@ export function layerY(group: LayerGroupKey, explode: number) {
 
 export function Scene3D({
   board, glbUrl, marks, meta, selectedId, onSelect, explode, focus, insets, hero, autoRotate, pickedId, onPick,
-  showMarks = true, children, view3d, shift, className, onReady, boardDims = true, bare = false, center = [33, 0.8, 26.5],
+  showMarks = true, children, view3d, shift, className, onReady, boardDims = true, bare = false, center: centerProp,
 }: {
   board: Board; glbUrl: string; marks: ActiveMarkItem[]; meta: Record<string, FindingMeta>; selectedId: string | null;
   onSelect: (id: string | null) => void; explode: number; focus?: FocusRequest | null; insets: Insets; hero?: boolean;
   autoRotate?: boolean; pickedId?: string | null; onPick?: (id: string | null) => void; showMarks?: boolean;
   children?: ReactNode | ((api: { explode: number; layerY: (g: LayerGroupKey) => number }) => ReactNode);
-  view3d?: { az: number; el: number; dist: number } | null; shift?: [number, number]; className?: string; onReady?: () => void; boardDims?: boolean;
+  view3d?: { az: number; el: number; dist?: number; /** multiple of the fit distance */ scale?: number } | null; shift?: [number, number]; className?: string; onReady?: () => void; boardDims?: boolean;
   /** skip the GLB (a caller draws the board itself) */ bare?: boolean; center?: [number, number, number];
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [bx0, by0, bx1, by1] = board.bbox;
+  const center = useMemo<[number, number, number]>(() => centerProp ?? [(bx0 + bx1) / 2, 0.8, (by0 + by1) / 2], [centerProp, bx0, by0, bx1, by1]);
+  /** camera distance at which the whole board sits inside the free area between the panels */
+  const fitDist = useMemo(() => {
+    if (!size.w || !size.h) return 165;
+    const fov = (32 * Math.PI) / 180;
+    const freeW = Math.max(120, size.w - insets.l - insets.r - 40), freeH = Math.max(120, size.h - insets.t - insets.b - 40);
+    const wx = bx1 - bx0, wz = by1 - by0;
+    const R = 0.5 * Math.hypot(wx, wz) * 0.81;
+    const aspect = size.w / size.h;
+    const visW = Math.tan(fov / 2) * 2 * aspect, visH = Math.tan(fov / 2) * 2;
+    return Math.min(2400, Math.max(60, R * 2 / Math.min((freeH / size.h) * visH, (freeW / size.w) * visW)));
+  }, [size.w, size.h, insets.l, insets.r, insets.t, insets.b, bx0, by0, bx1, by1]);
   const [proj, setProj] = useState<{ anchors: CalloutAnchor[]; dims: DimLine[]; tags: { k: LayerGroupKey; x: number; y: number; side: 1 | -1 }[] }>({ anchors: [], dims: [], tags: [] });
   const index = useMemo(() => indexBoard(board), [board]);
 
@@ -123,8 +136,8 @@ export function Scene3D({
               onReady={onReady}
             />}
             {typeof children === "function" ? children({ explode, layerY: (g) => layerY(g, explode) }) : children}
-            <CameraRig centre3={center} focus={focus ?? null} insets={insets} hero={!!hero} autoRotate={!!autoRotate} view3d={view3d ?? null} shift={shift ?? null} size={size} />
-            <Projector anchors={anchors3} dims={dims3} explode={explode} size={size} onUpdate={setProj} boardDims={boardDims && !hero} selectedId={selectedId} insets={insets} />
+            <CameraRig centre3={center} fitDist={fitDist} focus={focus ?? null} insets={insets} hero={!!hero} autoRotate={!!autoRotate} view3d={view3d ?? null} shift={shift ?? null} size={size} />
+            <Projector anchors={anchors3} dims={dims3} explode={explode} size={size} onUpdate={setProj} boardDims={boardDims && !hero} selectedId={selectedId} insets={insets} bbox={board.bbox} />
           </Suspense>
         </Canvas>
       )}
@@ -296,9 +309,10 @@ function BoxOutline({ bbox, color, opacity, dashed }: { bbox: BBox; color: strin
 }
 
 /* Camera: orbit, plus gliding to evidence and the hero's slow turn */
-function CameraRig({ centre3, focus, insets, hero, autoRotate, view3d, shift, size }: {
+function CameraRig({ centre3, fitDist, focus, insets, hero, autoRotate, view3d, shift, size }: {
+  fitDist: number;
   focus: FocusRequest | null; insets: Insets; hero: boolean; autoRotate: boolean;
-  view3d: { az: number; el: number; dist: number } | null; shift: [number, number] | null; size: { w: number; h: number }; centre3: [number, number, number];
+  view3d: { az: number; el: number; dist?: number; scale?: number } | null; shift: [number, number] | null; size: { w: number; h: number }; centre3: [number, number, number];
 }) {
   const { camera, invalidate } = useThree();
   const controls = useRef<any>(null);
@@ -320,11 +334,11 @@ function CameraRig({ centre3, focus, insets, hero, autoRotate, view3d, shift, si
   useEffect(() => {
     const el = view3d?.el ?? (hero ? 0.62 : 0.9);
     const az = view3d?.az ?? (hero ? 0.62 : 0.5);
-    const dist = view3d?.dist ?? (hero ? 205 : 165);
+    const dist = view3d?.dist ?? fitDist * (view3d?.scale ?? (hero ? 1.2 : 1));
     camera.position.set(centre.x + Math.sin(az) * Math.cos(el) * dist, centre.y + Math.sin(el) * dist, centre.z + Math.cos(az) * Math.cos(el) * dist);
     controls.current?.target.copy(centre);
     controls.current?.update();
-  }, [camera, centre, hero, view3d]);
+  }, [camera, centre, hero, view3d, fitDist]);
 
   useEffect(() => {
     if (!focus || focus.nonce === lastFocus.current) return;
@@ -364,7 +378,8 @@ function CameraRig({ centre3, focus, insets, hero, autoRotate, view3d, shift, si
 }
 
 /* Projects mark anchors into screen space every frame (throttled by change). */
-function Projector({ anchors, dims, explode, size, onUpdate, boardDims, selectedId, insets }: {
+function Projector({ anchors, dims, explode, size, onUpdate, boardDims, selectedId, insets, bbox }: {
+  bbox: BBox;
   anchors: Anchor3[]; dims: Dim3[]; explode: number; size: { w: number; h: number };
   onUpdate: (v: { anchors: CalloutAnchor[]; dims: DimLine[]; tags: { k: LayerGroupKey; x: number; y: number; side: 1 | -1 }[] }) => void; boardDims: boolean; selectedId: string | null; insets: Insets;
 }) {
@@ -403,16 +418,17 @@ function Projector({ anchors, dims, explode, size, onUpdate, boardDims, selected
     }
     if (boardDims) {
       const c = (x: number, z: number) => proj(new THREE.Vector3(x, 0, z), 0);
-      const p1 = c(0, -5), p2 = c(66, -5), p3 = c(71, 0), p4 = c(71, 53);
-      dimOut.push({ id: "dim-w", a: [p1[0], p1[1]], b: [p2[0], p2[1]], text: "66.0 mm", sev: "info", opacity: 0.55 });
-      dimOut.push({ id: "dim-h", a: [p3[0], p3[1]], b: [p4[0], p4[1]], text: "53.0 mm", sev: "info", opacity: 0.55 });
+      const [x0, z0, x1, z1] = bbox;
+      const p1 = c(x0, z0 - 5), p2 = c(x1, z0 - 5), p3 = c(x1 + 5, z0), p4 = c(x1 + 5, z1);
+      dimOut.push({ id: "dim-w", a: [p1[0], p1[1]], b: [p2[0], p2[1]], text: `${(x1 - x0).toFixed(1)} mm`, sev: "info", opacity: 0.55 });
+      dimOut.push({ id: "dim-h", a: [p3[0], p3[1]], b: [p4[0], p4[1]], text: `${(z1 - z0).toFixed(1)} mm`, sev: "info", opacity: 0.55 });
     }
     const tags: { k: LayerGroupKey; x: number; y: number; side: 1 | -1 }[] = [];
     if (ex.current > 0.25) {
       (Object.keys(LAYER_Y) as LayerGroupKey[]).forEach((k) => {
         const lift2 = GROUP_LIFT[k] * EXPLODE_SPREAD * ex.current;
-        const r = proj(new THREE.Vector3(72, LAYER_Y[k] + lift2, 26.5), 0);
-        const l = proj(new THREE.Vector3(-6, LAYER_Y[k] + lift2, 26.5), 0);
+        const r = proj(new THREE.Vector3(bbox[2] + 6, LAYER_Y[k] + lift2, (bbox[1] + bbox[3]) / 2), 0);
+        const l = proj(new THREE.Vector3(bbox[0] - 6, LAYER_Y[k] + lift2, (bbox[1] + bbox[3]) / 2), 0);
         const roomR = size.w - insets.r - r[0], roomL = l[0] - insets.l;
         tags.push(roomR >= roomL ? { k, x: r[0], y: r[1], side: 1 } : { k, x: l[0], y: l[1], side: -1 });
       });
@@ -426,4 +442,3 @@ function Projector({ anchors, dims, explode, size, onUpdate, boardDims, selected
   return null;
 }
 
-useGLTF.preload("/fixtures/nrf/board.glb");

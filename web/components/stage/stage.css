@@ -44,3 +44,27 @@
   width: 96px;
   accent-color: var(--signal);
 }
+.pick-chip {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  max-width: calc(100% - 24px);
+  background-color: var(--panel-solid);
+}
+.pick-t {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.pick-t b {
+  font: 600 13px/1.2 var(--font-mono);
+}
+.pick-t .dim {
+  color: var(--paper-3);
+  font-size: 12px;
+}

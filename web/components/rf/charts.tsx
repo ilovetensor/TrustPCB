@@ -15,7 +15,7 @@ export const minOf = (c: { f_ghz: number[]; s11_db: number[] }) => { const i = c
 
 /** Tuning graph: S11 over frequency, band shading, target line, draggable marker. */
 export function TuningGraph({ curves, band, marker, onMarker, height = 240, compact = false, yMin = -30 }: {
-  curves: CurveSpec[]; band: Band; marker?: number | null; onMarker?: (f: number) => void; height?: number; compact?: boolean; yMin?: number;
+  curves: CurveSpec[]; band?: Band | null; marker?: number | null; onMarker?: (f: number) => void; height?: number; compact?: boolean; yMin?: number;
 }) {
   const W = compact ? 140 : 400;
   const m = compact ? { l: 4, r: 4, t: 4, b: 4 } : { l: 44, r: 14, t: 14, b: 30 };
@@ -37,13 +37,13 @@ export function TuningGraph({ curves, band, marker, onMarker, height = 240, comp
     <svg ref={svg} viewBox={`0 0 ${W} ${height}`} width="100%" style={{ display: "block", touchAction: "none" }} role="img" aria-label="Tuning graph, S11 against frequency"
       onPointerDown={(e) => { if (!onMarker) return; (e.currentTarget as SVGElement).setPointerCapture(e.pointerId); setDrag(true); onMarker(fromEvent(e)); }}
       onPointerMove={(e) => { if (drag && onMarker) onMarker(fromEvent(e)); }} onPointerUp={() => setDrag(false)}>
-      <rect x={x(band.lo_ghz)} y={m.t} width={x(band.hi_ghz) - x(band.lo_ghz)} height={height - m.t - m.b} fill="var(--signal)" opacity="0.1" />
-      <path d={`M${x(band.lo_ghz)} ${m.t}V${height - m.b}M${x(band.hi_ghz)} ${m.t}V${height - m.b}`} stroke="var(--signal)" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
+      {band && <rect x={x(band.lo_ghz)} y={m.t} width={x(band.hi_ghz) - x(band.lo_ghz)} height={height - m.t - m.b} fill="var(--signal)" opacity="0.1" />}
+      {band && <path d={`M${x(band.lo_ghz)} ${m.t}V${height - m.b}M${x(band.hi_ghz)} ${m.t}V${height - m.b}`} stroke="var(--signal)" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />}
       {!compact && [0, -5, -10, -15, -20, -25, -30].filter((v) => v >= yMin).map((v) => (
         <g key={v}><line x1={m.l} x2={W - m.r} y1={y(v)} y2={y(v)} stroke="var(--hair)" /><text x={m.l - 6} y={y(v)} textAnchor="end" dy="0.34em" className="rl-t">{v}</text></g>
       ))}
-      <line x1={m.l} x2={W - m.r} y1={y(band.target_db)} y2={y(band.target_db)} stroke="var(--signal)" strokeWidth="1" opacity="0.9" />
-      {!compact && <text x={W - m.r - 4} y={y(band.target_db) - 5} textAnchor="end" className="rl-t" fill="var(--signal)">TARGET {band.target_db} dB</text>}
+      {band && <line x1={m.l} x2={W - m.r} y1={y(band.target_db)} y2={y(band.target_db)} stroke="var(--signal)" strokeWidth="1" opacity="0.9" />}
+      {band && !compact && <text x={W - m.r - 4} y={y(band.target_db) - 5} textAnchor="end" className="rl-t" fill="var(--signal)">TARGET {band.target_db} dB</text>}
       {!compact && ticks.map((f, i) => (
         <g key={f}>
           <line x1={x(f)} x2={x(f)} y1={height - m.b} y2={height - m.b + (i % 2 === 0 ? 6 : 3)} stroke="var(--paper-3)" />

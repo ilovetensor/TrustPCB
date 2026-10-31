@@ -296,3 +296,7 @@ a.tbl-row:hover .tbl-name {
     grid-template-columns: 1fr;
   }
 }
+
+.rp-tbl th {
+  text-align: left;
+}

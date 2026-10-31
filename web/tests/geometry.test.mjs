@@ -104,3 +104,10 @@ test("dimensionGeometry keeps arrows inside for long spans", () => {
   assert.equal(d.arrows.length, 2);
   assert.ok(d.mid[1] < 0, "label sits above the line");
 });
+
+import { netId } from "../lib/geometry.mjs";
+test("net names from the server become target ids once", () => {
+  assert.equal(netId("3V3"), "net:3V3");
+  assert.equal(netId("net:GND"), "net:GND");
+  assert.equal(netId(null), null);
+});

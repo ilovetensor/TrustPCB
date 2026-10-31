@@ -1,24 +1,30 @@
 import type { EventEnvelope, Finding, Mark, Severity } from "./types";
 
 export interface TrailEntry { id: string; kind: string; text: string; seq: number; at?: string; phase?: number; tool?: string; state?: string; detail?: string; findingId?: string; severity?: Severity; status?: string; pct?: number; simId?: string; summary?: any; investigationId?: string; result?: string }
-export interface Suspect { id: string; title: string; status: string; conclusion?: string }
-export interface Investigation { id: string; question: string; status: string; suspects: Suspect[] }
-export interface Experiment { id: string; label: string; kind: string; change: string | null; summary: any; curve: any; trust: string }
-export interface Sim { id: string; label: string; kind: string; change: string | null; status: string; pct: number; step: string; summary?: any; curve?: any }
-export interface Budget { wall_total_s: number; wall_left_s: number; solver_total_s: number; solver_left_s: number; sims_total: number; sims_left: number; turns_total: number; turns_used: number; images_total: number; images_left: number }
-export interface Brief { purpose: string; zones: { id: string; label: string; kind: string; target: string }[]; priorities: string[] }
-export interface FollowupState { level: string | null; selected: string[]; messages: { id: string; role: "user" | "agent"; text: string; selected?: string[]; turn?: string }[]; proposal: { request_id: string; what: string; why: string; eta_s: number; status: "pending" | "approved" | "declined" } | null; whatif: any; running: boolean }
+export interface Suspect { id: string; code?: string; title: string; status: string; conclusion?: string }
+export interface Investigation { id: string; code?: string; question: string; status: string; outcome?: any; goodEnough?: boolean; suspects: Suspect[] }
+export interface Measurement { value: number; unit: string }
+export interface Experiment { id: string; label: string; kind: string; quality?: string; measurements: Record<string, Measurement>; delta: Record<string, number> | null; curve: any; trust: string; ok: boolean; meetsTarget?: boolean; evidence?: string }
+export interface Sim { id: string; label: string; kind: string; quality?: string; suspect?: string; change: string | null; status: string; pct: number; step: string; measurements?: Record<string, Measurement>; curve?: any }
+export interface Quota { used: number; limit: number; left?: number }
+export interface Budget { phase?: number; depth?: string; wall_s?: Quota; solver_s?: Quota; turns?: Quota; images?: Quota; investigations?: Quota; confirm_runs?: Quota; input_tokens?: Quota; output_tokens?: Quota; [k: string]: any }
+export interface Brief { purpose: string; part_roles?: Record<string, string>; risks?: { text: string; targets?: string[] }[]; priorities?: string[]; unknowns?: string[]; wireless?: any; roles?: Record<string, string[]>; zones: Record<string, string[]> }
+export interface Proposal { request_id: string | null; what: string; why: string; eta_s: number; plan?: any; limits?: any; status: "pending" | "approved" | "declined" }
+export interface PendingRequest { request_id: string; kind: "test" | "permission" | "question"; payload: Record<string, any>; status: "pending" | "approved" | "declined" }
+export interface FollowupMessage { id: string; role: "user" | "agent"; text: string; selected?: string[]; turn?: string; error?: boolean }
+export interface FollowupState { level: string | null; selected: string[]; messages: FollowupMessage[]; proposal: Proposal | null; whatif: any; running: boolean }
 export interface ReviewState {
-  status: "idle" | "running" | "complete" | "failed" | "canceled"; endState: string | null; phase: number; seen: number;
+  mode: "review" | "thread"; status: "idle" | "running" | "complete" | "failed" | "canceled"; endState: string | null; failure: string | null; phase: number; seen: number;
   budget: Budget | null; trail: TrailEntry[]; findings: Record<string, Finding>; findingOrder: string[]; marks: Mark[]; brief: Brief | null;
   candidates: { total: number; reviewed: number; byRule: Record<string, number> };
   investigations: Record<string, Investigation>; investigationOrder: string[]; sims: Record<string, Sim>; experiments: Experiment[];
   spotlight: { targets: string[]; findingId: string | null; reason: string; seq: number } | null; reportReady: { revision: number } | null;
-  assumptions: any[]; followup: FollowupState; notices: { id: string; text: string }[];
+  assumptions: { id: string; text: string; source?: string }[]; requests: Record<string, PendingRequest>; followup: FollowupState; notices: { id: string; text: string }[];
 }
 export const PHASES: { id: number; key: string; label: string; short: string; actor: string }[];
-export function initialReviewState(): ReviewState;
-export function toolLabel(tool: string): string;
+export function initialReviewState(mode?: "review" | "thread"): ReviewState;
+export function toolLabel(tool: string | undefined): string;
+export function resultText(content: unknown): string;
 export function reviewReducer(state: ReviewState, event: Pick<EventEnvelope, "sequence" | "type" | "payload"> & { created_at?: string; turn_id?: string }): ReviewState;
 export function replayAll(events: any[], state?: ReviewState): ReviewState;
 export const SEVERITY_ORDER: Severity[];

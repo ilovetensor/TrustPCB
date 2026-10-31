@@ -1,5 +1,6 @@
 "use client";
 import { useFrame } from "@react-three/fiber";
+import { reducedMotion, STILL_PHASE } from "../../lib/hooks";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { buildLut, SIGNED_STOPS, FIELD_STOPS } from "../../lib/ramp.mjs";
@@ -69,10 +70,11 @@ export function WaveField3D({ slice, y, lift = 0, period = 3.4, opacity = 0.95, 
     mat.uniforms.uField.value = tex;
     return () => tex.dispose();
   }, [slice, mat]);
-  const t = useRef(0);
+  const t = useRef((STILL_PHASE / (Math.PI * 2)) * period);
   useFrame((_, dt) => {
     if (phase !== undefined) { mat.uniforms.uPhase.value = phase; return; }
-    if (!paused) t.current += dt;
+    // reduced motion: hold one phase of the wave instead of looping it
+    if (!paused && !reducedMotion()) t.current += dt;
     mat.uniforms.uPhase.value = (t.current / period) * Math.PI * 2;
   });
   const w = slice.u[1] - slice.u[0];

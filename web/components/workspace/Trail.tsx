@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReviewState, TrailEntry } from "../../lib/review-reducer.mjs";
 import { findingLabel, findingNumber } from "../../lib/review-view";
+import { measurementLine } from "../../lib/review-view";
 import { SevGlyph } from "../ui";
 import { Meter } from "../ui";
 
@@ -43,6 +44,17 @@ export function Trail({ state, onSelectFinding }: { state: ReviewState; onSelect
   );
 }
 
+/** A refused tool call comes back as JSON with a message. Show the message. */
+function errorText(raw: string) {
+  try { const j = JSON.parse(raw); if (j && typeof j.message === "string") return j.message.slice(0, 200); } catch { /* plain text */ }
+  return raw.slice(0, 200);
+}
+
+/** The agent's own words may carry **bold**. Nothing else is interpreted. */
+function inlineMd(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => (/^\*\*[^*]+\*\*$/.test(part) ? <b key={i}>{part.slice(2, -2)}</b> : part));
+}
+
 function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewState; onSelectFinding: (id: string) => void }) {
   if (e.kind === "phase")
     return (
@@ -53,25 +65,33 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
       </li>
     );
   if (e.kind === "thought")
-    return (<li className="tr tr-thought"><p>{e.text}</p></li>);
+    return (<li className="tr tr-thought"><p style={{ whiteSpace: "pre-wrap" }}>{inlineMd(e.text)}</p></li>);
+  if (e.kind === "tool" && e.state === "error")
+    return (
+      <li className="tr tr-tool">
+        <span className="tr-st error" aria-label="error" />
+        <span className="mono tr-tn">{e.tool}</span>
+        <span className="tr-tt">{e.text}</span>
+        {e.result && <span className="tr-res mono">{errorText(e.result)}</span>}
+      </li>
+    );
   if (e.kind === "tool")
     return (
       <li className="tr tr-tool">
         <span className={`tr-st ${e.state}`} aria-label={e.state} />
         <span className="mono tr-tn">{e.tool}</span>
         <span className="tr-tt">{e.text}</span>
-        {e.result && <span className="tr-res mono">{e.result}</span>}
       </li>
     );
   if (e.kind === "sim") {
     const sim = e.simId ? state.sims[e.simId] : null;
     return (
       <li className="tr tr-sim">
-        <div className="tr-simtop"><span className="idx">SIM {e.simId?.replace("sim-", "").toUpperCase()}</span><b>{e.text}</b><span className="idx">{e.state === "done" ? "DONE" : e.state === "queued" ? "QUEUED" : `${Math.round((e.pct ?? 0) * 100)}%`}</span></div>
+        <div className="tr-simtop"><span className="idx">SIM {sim?.kind ? sim.kind.toUpperCase() : "RUN"}</span><b>{e.text}</b><span className="idx">{e.state === "done" ? "DONE" : e.state === "queued" ? "QUEUED" : `${Math.round((e.pct ?? 0) * 100)}%`}</span></div>
         <Meter value={e.pct ?? 0} signal={e.state === "running"} />
         {sim?.change && <div className="mono tr-change">{sim.change}</div>}
-        {sim?.summary && (
-          <div className="tr-sum mono"><span>f0 <b>{sim.summary.f0_ghz.toFixed(3)}</b> GHz</span><span>S11 <b>{sim.summary.s11_db.toFixed(1)}</b> dB</span><span>BW <b>{sim.summary.bw_mhz}</b> MHz</span></div>
+        {sim?.measurements && Object.keys(sim.measurements).length > 0 && (
+          <div className="tr-sum mono">{measurementLine(sim.measurements).map((m) => (<span key={m.k}>{m.k} <b>{m.v}</b> {m.u}</span>))}</div>
         )}
       </li>
     );
@@ -81,9 +101,10 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
       <li className="tr tr-find">
         <button onClick={() => onSelectFinding(e.findingId!)}>
           <SevGlyph sev={e.severity!} />
-          <span className="idx">{findingLabel(e.findingId)}</span>
+          <span className="idx">{findingLabel(state.findings[e.findingId] ?? e.findingId)}</span>
           <span>{state.findings[e.findingId]?.title ?? e.text}</span>
-          <span className="idx">№{findingNumber(e.findingId)}</span>
+          {e.detail && <span className="stamp">{e.detail.replace(/_/g, " ")}</span>}
+          <span className="idx">№{findingNumber(state.findings[e.findingId] ?? e.findingId)}</span>
         </button>
       </li>
     );
@@ -91,7 +112,7 @@ function TrailRow({ e, state, onSelectFinding }: { e: TrailEntry; state: ReviewS
     const inv = e.investigationId ? state.investigations[e.investigationId] : null;
     return (
       <li className="tr tr-inv">
-        <span className="idx">INVESTIGATION {e.investigationId?.replace("inv-", "").padStart(2, "0")}</span>
+        <span className="idx">INVESTIGATION {inv?.code ?? ""}</span>
         <p className="serif">{inv?.question ?? e.text}</p>
         <ul>
           {inv?.suspects.map((s, i) => (

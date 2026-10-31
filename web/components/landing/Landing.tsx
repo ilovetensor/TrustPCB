@@ -2,7 +2,9 @@
 import "./landing.css";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { listProjects, TARGET_BAND, resolveCurve } from "../../lib/api";
+import type { Curve } from "../../lib/curve";
+import { useReducedMotion, reducedMotion } from "../../lib/hooks";
+import { FIXTURE_MODE, listProjects } from "../../lib/api";
 import { loadPatchSim, scenarioBoard, type RfBundle } from "../../lib/rf-data";
 import type { Board, ProjectSummary } from "../../lib/types";
 import { PatchBoard3D } from "../rf/PatchBoard3D";
@@ -18,6 +20,7 @@ function PulseLoop({ rf }: { rf: RfBundle }) {
   const [f, setF] = useState(0);
   useEffect(() => {
     if (!rf.pulse) return;
+    if (reducedMotion()) { setF(Math.floor(rf.pulse.frames.length * 0.45)); return; } // a still frame, no loop
     const n = rf.pulse.frames.length + 14;
     const id = setInterval(() => setF((x) => (x + 1) % n), 80);
     return () => clearInterval(id);
@@ -36,13 +39,17 @@ const STEPS = [
 ];
 
 export function Landing() {
+  const calm = useReducedMotion();
   const [rf, setRf] = useState<RfBundle | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  useEffect(() => { listProjects().then(setProjects); loadPatchSim().then(setRf); }, []);
+  const [fx, setFx] = useState<{ curve: Curve; curve2: Curve; band: { lo_ghz: number; hi_ghz: number; target_db: number } } | null>(null);
+  useEffect(() => { listProjects().then(setProjects).catch(() => setProjects([])); loadPatchSim().then(setRf); }, []);
+  // illustrative curves exist only in fixture mode
+  useEffect(() => { if (FIXTURE_MODE) void import("../../lib/fixture-api").then((m) => setFx({ curve: m.resolveCurve("base")!, curve2: m.resolveCurve("confirm")!, band: m.TARGET_BAND })); }, []);
+  const latest = projects.find((p) => p.latest_review_id);
+  const sampleHref = FIXTURE_MODE ? "/reviews/r-0042" : latest ? `/reviews/${latest.latest_review_id}` : null;
   const board: Board | null = useMemo(() => (rf ? scenarioBoard(rf) : null), [rf]);
   const empty = useMemo(() => ({ marks: [] as never[], meta: {} }), []);
-  const curve = resolveCurve("base")!;
-  const curve2 = resolveCurve("confirm")!;
 
   return (
     <main className="ld">
@@ -52,7 +59,7 @@ export function Landing() {
           {board && rf && (
             <Scene3D
               bare center={[0, 0.8, 0]} board={board} glbUrl="" marks={empty.marks} meta={empty.meta} selectedId={null} onSelect={noop}
-              explode={0} insets={none} hero autoRotate showMarks={false} shift={[0.2, 0.02]}
+              explode={0} insets={none} hero autoRotate={!calm} showMarks={false} shift={[0.2, 0.02]}
             >
               <PatchBoard3D rf={rf} />
               {rf.fieldXY && <WaveField3D slice={rf.fieldXY} />}
@@ -70,7 +77,7 @@ export function Landing() {
           <nav>
             <Link href="/projects">Projects</Link>
             <Link href="/compare">Compare</Link>
-            <Link href="/reviews/r-0042">Sample review</Link>
+            {sampleHref && <Link href={sampleHref}>{FIXTURE_MODE ? "Sample review" : "Latest review"}</Link>}
           </nav>
           <span style={{ flex: 1 }} />
           <FixtureBadge />
@@ -87,7 +94,7 @@ export function Landing() {
           </p>
           <div className="ld-cta rise" style={{ animationDelay: "720ms" }}>
             <Link className="btn primary big" href="/upload"><Icon name="upload" size={15} /> Upload a board</Link>
-            <Link className="btn big" href="/reviews/r-0042">Watch a sample review <Icon name="arrow" size={14} /></Link>
+            {sampleHref && <Link className="btn big" href={sampleHref}>{FIXTURE_MODE ? "Watch a sample review" : "Open your latest review"} <Icon name="arrow" size={14} /></Link>}
           </div>
           <div className="ld-labels rise" style={{ animationDelay: "880ms" }}>
             <span className="idx">EVERY CLAIM IS LABELLED</span>
@@ -119,23 +126,23 @@ export function Landing() {
         </ol>
       </section>
 
-      <section className="ld-sec">
-        <div className="ld-sec-head"><span className="idx">03 / SAMPLE REVIEWS</span><h2 className="serif">See finished reviews.</h2></div>
+      {projects.length > 0 && <section className="ld-sec">
+        <div className="ld-sec-head"><span className="idx">03 / {FIXTURE_MODE ? "SAMPLE REVIEWS" : "YOUR BOARDS"}</span><h2 className="serif">{FIXTURE_MODE ? "See finished reviews." : "Pick up where you left off."}</h2></div>
         <div className="ld-cards">
           {projects.slice(0, 3).map((p, i) => (
-            <Link key={p.id} href={`/reviews/${p.latest_review_id}`} className="ld-card hair panel">
-              <div className="ld-card-top"><span className="idx">R-{p.latest_review_id.replace("r-", "")}</span><span className="idx">{p.latest_version}</span></div>
+            <Link key={p.id} href={p.latest_review_id ? `/reviews/${p.latest_review_id}` : `/projects/${p.id}`} className="ld-card hair panel">
+              <div className="ld-card-top"><span className="idx">R-{p.latest_review_id.slice(0, 6).toUpperCase()}</span><span className="idx">{p.latest_version}</span></div>
               <h3>{p.name}</h3>
               <p className="dim">{p.kind}</p>
               <div className="ld-card-graph">
-                {p.rf !== "n/a" && <TuningGraph curves={i === 1 ? [{ id: "a", label: "a", ...curve2 }] : [{ id: "a", label: "a", ...curve }, { id: "b", label: "b", ...curve2 }]} band={TARGET_BAND} height={64} compact />}
-                {p.rf === "n/a" && <div className="dim mono" style={{ fontSize: 11, padding: "20px 0" }}>No wireless part. RF section hidden.</div>}
+                {fx && p.rf !== "n/a" && <TuningGraph curves={i === 1 ? [{ id: "a", label: "a", ...fx.curve2 }] : [{ id: "a", label: "a", ...fx.curve }, { id: "b", label: "b", ...fx.curve2 }]} band={fx.band} height={64} compact />}
+                {!fx && <div className="dim mono" style={{ fontSize: 11, padding: "20px 0" }}>{p.rf === "n/a" ? "No radio part detected." : "RF not tested."}</div>}
               </div>
               <div className="ld-card-foot"><SevBar counts={p.counts} size="sm" /><span className="link-arrow mono idx">OPEN</span></div>
             </Link>
           ))}
         </div>
-      </section>
+      </section>}
 
       <footer className="ld-foot">
         <Logo />

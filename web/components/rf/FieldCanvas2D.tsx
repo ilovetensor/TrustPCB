@@ -1,4 +1,5 @@
 "use client";
+import { reducedMotion, STILL_PHASE } from "../../lib/hooks";
 import { useEffect, useRef } from "react";
 import { buildLut, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
 import type { CurrentData, FieldSlice, PulseData } from "../../lib/rf-data";
@@ -15,10 +16,11 @@ export function FieldCanvas2D({ slice, period = 3.4, opacity = 0.9, paused }: { 
     const cv = ref.current!;
     const ctx = cv.getContext("2d")!;
     const img = ctx.createImageData(slice.nx, slice.ny);
-    let raf = 0, t = 0, last = performance.now();
+    const still = reducedMotion();
+    let raf = 0, t = still ? (STILL_PHASE / (Math.PI * 2)) * period : 0, last = performance.now();
     const draw = () => {
       const now = performance.now();
-      if (!pausedRef.current) t += (now - last) / 1000;
+      if (!pausedRef.current && !still) t += (now - last) / 1000;
       last = now;
       const ph = (t / period) * Math.PI * 2, c = Math.cos(ph), s = Math.sin(ph);
       const d = img.data;
@@ -31,7 +33,7 @@ export function FieldCanvas2D({ slice, period = 3.4, opacity = 0.9, paused }: { 
         d[i * 4 + 3] = a * a * (3 - 2 * a) * 255 * opacity;
       }
       ctx.putImageData(img, 0, 0);
-      raf = requestAnimationFrame(draw);
+      if (!still) raf = requestAnimationFrame(draw);
     };
     draw();
     return () => cancelAnimationFrame(raf);

@@ -1,53 +1,103 @@
 "use client";
 import "./workspace.css";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { getBoard, getBoardGlbUrl, getReview, type ReviewMeta } from "../../lib/api";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FIXTURE_MODE, getBoardBundle, getEvidenceByCode, type BoardBundle } from "../../lib/api";
 import { indexBoard, resolveMark, bboxUnion } from "../../lib/geometry.mjs";
 import { useNarrow } from "../../lib/hooks";
 import { activeMarks } from "../../lib/review-reducer.mjs";
 import { buildMeta, fmtClock, findingLabel } from "../../lib/review-view";
-import { useReview } from "../../lib/use-review";
-import type { BBox, Board, Geometry } from "../../lib/types";
-import type { FocusRequest, Ghost } from "../board2d/Board2D";
-import { BoardStage } from "../stage/BoardStage";
+import { useReview, type Selected } from "../../lib/use-review";
+import type { BBox, Evidence, Geometry } from "../../lib/types";
+import type { FocusRequest, Ghost, Insets } from "../board2d/Board2D";
+import { BoardStage, describePick } from "../stage/BoardStage";
 import { FixtureBadge, Icon, Logo, Panel } from "../ui";
 import { BudgetInstrument } from "./Budget";
-import { ChatDock } from "./Chat";
-import { ExperimentStrip } from "./Experiments";
+import { ChatDock, type SelectedChip } from "./Chat";
+import { ExperimentStrip, type Band } from "./Experiments";
 import { FindingsPanel } from "./Findings";
 import { PhaseTracker } from "./PhaseTracker";
 import { Trail } from "./Trail";
 
 type Tab = "trail" | "findings" | "tests" | "ask";
 
+interface StageLayout { insets: Insets; toolbarTop: number }
+
+/** The free stage is whatever the floating panels leave. Measure them, so the fit follows the real layout. */
+function useStageLayout(root: React.RefObject<HTMLElement | null>, narrow: boolean): StageLayout {
+  const [layout, setLayout] = useState<StageLayout>({ insets: { l: 312, r: 360, t: 126, b: 156 }, toolbarTop: 80 });
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const measure = () => {
+      const q = (sel: string) => el.querySelector<HTMLElement>(sel);
+      if (narrow) {
+        // phone: the toolbar sits on the stage's top edge, the board fits below it
+        const h = q(".stage-tools")?.offsetHeight ?? 0;
+        const next: StageLayout = { insets: { l: 0, r: 0, t: h ? h + 16 : 0, b: 0 }, toolbarTop: 8 };
+        setLayout((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
+        return;
+      }
+      const trail = q(".ws-trail"), find = q(".ws-find"), ex = q(".ws-ex"), tools = q(".stage-tools");
+      const head = Math.max(...[".ws-brand", ".ws-phase", ".ws-budget"].map((s) => { const n = q(s); return n ? n.offsetTop + n.offsetHeight : 0; }));
+      const toolbarTop = head + 12;
+      const next: StageLayout = {
+        insets: {
+          l: trail ? trail.offsetLeft + trail.offsetWidth + 12 : 0,
+          r: find ? el.clientWidth - find.offsetLeft + 12 : 0,
+          t: toolbarTop + (tools?.offsetHeight ?? 36) + 10,
+          b: ex ? el.clientHeight - ex.offsetTop + 10 : 0,
+        },
+        toolbarTop,
+      };
+      setLayout((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
+    };
+    measure();
+    const timers = [setTimeout(measure, 300), setTimeout(measure, 1200)];
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    const tools = el.querySelector(".stage-tools");
+    if (tools) ro.observe(tools);
+    window.addEventListener("resize", measure);
+    return () => { timers.forEach(clearTimeout); ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, [root, narrow]);
+  return layout;
+}
+
 export function Workspace({ reviewId }: { reviewId: string }) {
   const sp = useSearchParams();
-  const router = useRouter();
   const at = Number(sp.get("at") ?? 0) || 0;
   const rv = useReview(reviewId, { startAt: at, autoplay: sp.get("play") !== "0" });
-  const { state } = rv;
+  const { state, meta } = rv;
   const narrow = useNarrow();
-  const [board, setBoard] = useState<Board | null>(null);
-  const [meta, setMeta] = useState<ReviewMeta | null>(null);
+  const root = useRef<HTMLElement>(null);
+  const layout = useStageLayout(root, narrow);
+  const [bundle, setBundle] = useState<BoardBundle | null>(null);
+  const [boardError, setBoardError] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<Record<string, Evidence>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [spot, setSpot] = useState<{ targets: string[]; nonce: number } | null>(null);
   const [tab, setTab] = useState<Tab>("findings");
   const [chatOpen, setChatOpen] = useState(false);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [seed, setSeed] = useState<string | undefined>();
+  const board = bundle?.board ?? null;
 
   useEffect(() => {
-    getBoard().then(setBoard);
-    getReview(reviewId).then(setMeta);
-  }, [reviewId]);
+    if (!meta) return;
+    let live = true;
+    getBoardBundle(meta.version_id).then((b) => { if (live) setBundle(b); }).catch((e) => { if (live) setBoardError(e instanceof Error ? e.message : "The board could not be loaded."); });
+    return () => { live = false; };
+  }, [meta?.version_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const revision = state.reportReady?.revision ?? meta?.report_revision ?? 0;
+  useEffect(() => { if (meta) void getEvidenceByCode(reviewId).then(setEvidence); }, [reviewId, revision, meta?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const index = useMemo(() => (board ? indexBoard(board) : null), [board]);
   const findingsMeta = useMemo(() => buildMeta(state.findingOrder.map((id) => state.findings[id])), [state.findingOrder, state.findings]);
-  const marks = useMemo(() => activeMarks(state).filter((m) => !m.findingId || !dismissed.has(m.findingId)), [state, dismissed]);
+  const marks = useMemo(() => activeMarks(state), [state]);
 
   const focusOn = useCallback((targets: string[], maxScale?: number) => {
     if (!index) return;
@@ -69,7 +119,11 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     setSelectedId(id);
     if (id) {
       const f = state.findings[id];
-      if (f) focusOn(f.marks.flatMap((m) => m.targets), 12);
+      const geoms = f ? f.marks.flatMap((m) => m.resolved ?? []) : [];
+      if (geoms.length) {
+        const u = bboxUnion(geoms.map((g) => g.bbox));
+        if (u) setFocus({ bbox: u as BBox, nonce: Date.now() + Math.random(), maxScale: 12 });
+      } else if (f) focusOn(f.marks.flatMap((m) => m.targets), 12);
       if (narrow) setTab("findings");
     }
   }, [state.findings, focusOn, narrow]);
@@ -78,23 +132,53 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     const w = state.followup.whatif;
     if (!w || !board) return null;
     const fp = board.footprints.find((f) => f.ref === w.ref);
-    if (!fp) return null;
-    return { ref: w.ref, from: [fp.x, fp.y], to: w.to, size: [fp.bbox[2] - fp.bbox[0], fp.bbox[3] - fp.bbox[1]], label: w.label };
+    const to = (Array.isArray(w.new_position) ? w.new_position : w.to) as [number, number] | undefined;
+    if (!fp || !to) return null;
+    return { ref: w.ref, from: [fp.x, fp.y], to, size: [fp.bbox[2] - fp.bbox[0], fp.bbox[3] - fp.bbox[1]], label: w.label ?? "What-if, not your board" };
   }, [state.followup.whatif, board]);
 
-  const insets = narrow ? { l: 0, r: 0, t: 0, b: 0 } : { l: 312, r: 360, t: 118, b: 148 };
-  const sel = [...(selectedId ? [selectedId] : []), ...(picked ? [picked] : [])];
-  const askAbout = (id: string) => { setSelectedId(id); setSeed(`Why is ${findingLabel(id)} a problem?`); setChatOpen(true); if (narrow) setTab("ask"); };
-  const stop = () => { rv.setPlaying(false); };
+  const sel: SelectedChip[] = useMemo(() => {
+    const out: SelectedChip[] = [];
+    const f = selectedId ? state.findings[selectedId] : null;
+    if (f) out.push({ id: f.code ?? f.id, label: findingLabel(f), type: "finding" });
+    if (picked && board) out.push({ id: picked, label: describePick(board, picked).title, type: "object" });
+    return out;
+  }, [selectedId, picked, state.findings, board]);
+
+  const askFinding = (id: string) => {
+    const f = state.findings[id];
+    setSelectedId(id);
+    setSeed(`Why is ${f ? findingLabel(f) : "this"} a problem?`);
+    setChatOpen(true);
+    if (narrow) setTab("ask");
+  };
+  const askObject = (id: string) => {
+    setPicked(id);
+    setSeed(`What should I know about ${board ? describePick(board, id).title : id}?`);
+    setChatOpen(true);
+    if (narrow) setTab("ask");
+  };
   const q = (k: string) => sp.get(k);
 
+  const goalBand = meta?.goal?.band_hz ?? (state.brief?.wireless?.band_hz as [number, number] | undefined);
+  const band: Band | null = goalBand ? { lo_ghz: goalBand[0] / 1e9, hi_ghz: goalBand[1] / 1e9, target_db: meta?.goal?.target_s11_db ?? -10 } : null;
+  const rfNote = meta?.rf && meta.rf.status === "not_tested" ? `Not tested. ${meta.rf.reason ?? ""}`.trim() : null;
+  const pendingApproval = Object.values(state.requests).some((r) => r.status === "pending");
+  const topFinding = state.findingOrder.map((id) => state.findings[id]).find((f) => f && f.status !== "dismissed");
+  const suggest = topFinding
+    ? [`Why is ${findingLabel(topFinding)} a problem?`, "What did you not test?", "What should I fix first?"]
+    : ["What did you not test?", "What should I check first?"];
+  const running = state.status === "running" || state.status === "idle";
+  const canStop = state.status === "running" || state.followup.running;
+  const connection = FIXTURE_MODE ? "REPLAY" : rv.stream === "retrying" ? "RECONNECTING" : rv.stream === "error" ? "OFFLINE" : state.status === "running" ? "LIVE" : state.status === "idle" ? "LOADING" : state.status.toUpperCase();
+
   const brand = (
-    <Panel className="ws-brand" idx={meta ? meta.id.toUpperCase() : "R-----"} delay={0}>
+    <Panel className="ws-brand" idx={meta ? `R-${meta.id.replace(/^r-/i, "").slice(0, 6).toUpperCase()}` : "R-----"} delay={0}>
       <div className="ws-brand-in">
         <Link href="/projects" aria-label="Projects"><Logo size={20} word={false} /></Link>
         <div className="ws-brand-t">
           <b>{meta?.project_name ?? "Loading"}</b>
-          <span className="idx">{meta?.version_label ?? ""} / {meta?.depth ?? ""} / {state.status === "running" ? "LIVE" : state.status === "complete" ? "COMPLETE" : state.status.toUpperCase()}</span>
+          <span className="idx">{meta?.version_label ?? ""} / {meta?.depth?.toUpperCase() ?? ""} / {connection}</span>
         </div>
         <FixtureBadge label="Fixture replay" />
       </div>
@@ -107,61 +191,78 @@ export function Workspace({ reviewId }: { reviewId: string }) {
   );
   const budget = (
     <Panel className="ws-budget" idx="BUDGET" delay={160}>
-      <BudgetInstrument budget={state.budget} status={state.status} onStop={stop} />
+      <BudgetInstrument budget={state.budget} status={state.status} canStop={canStop} onStop={() => { void rv.stop(); }} />
     </Panel>
   );
-
   const trail = (
     <Panel className="ws-trail" idx="TRAIL" title="Investigation" delay={240} bodyClass="fill" actions={<span className="idx">{state.trail.length} ENTRIES</span>}>
       <Trail state={state} onSelectFinding={selectFinding} />
     </Panel>
   );
   const findings = (
-    <Panel className="ws-find" idx="FINDINGS" title="Findings" delay={320} bodyClass="fill" actions={state.reportReady ? (<Link href={`/reviews/${reviewId}/report`} className="btn sm primary">Report r{state.reportReady.revision}</Link>) : undefined}>
-      <FindingsPanel state={state} selectedId={selectedId} onSelect={selectFinding} onAsk={askAbout} dismissed={dismissed} onDismiss={(id) => { setDismissed((d) => new Set(d).add(id)); setSelectedId(null); }} />
+    <Panel className="ws-find" idx="FINDINGS" title="Findings" delay={320} bodyClass="fill" actions={(
+      <span className="ws-find-act">
+        <button className="btn sm" onClick={() => setChatOpen((o) => !o)} disabled={running && !pendingApproval} title={running ? "Chat opens when the review ends" : undefined} aria-pressed={chatOpen}>
+          <Icon name="chat" size={12} /> {pendingApproval ? "Approve" : "Ask"}{pendingApproval && <i className="ws-dot" />}
+        </button>
+        {revision ? <Link href={`/reviews/${reviewId}/report`} className="btn sm primary">Report r{revision}</Link> : null}
+      </span>
+    )}>
+      <FindingsPanel state={state} evidence={evidence} selectedId={selectedId} onSelect={selectFinding} onAsk={askFinding} onSetStatus={(id, st, reason) => { void rv.setFindingStatus(id, st, reason); if (st === "dismissed") setSelectedId(null); }} />
     </Panel>
   );
   const strip = (
     <Panel className="ws-ex" idx="EXPERIMENTS" delay={400} bodyClass="fill">
-      <ExperimentStrip state={state} reviewId={reviewId} />
+      <ExperimentStrip state={state} reviewId={reviewId} band={band} rfNote={rfNote} />
     </Panel>
   );
   const chat = (
     <Panel className="ws-chat" idx="ASK" title="Follow-up" delay={0} bodyClass="fill" actions={!narrow ? <button className="icon-btn" onClick={() => setChatOpen(false)} aria-label="Close chat"><Icon name="close" size={12} /></button> : undefined}>
       <ChatDock
-        state={state} selected={sel} onClearSel={(s) => { if (s === selectedId) setSelectedId(null); if (s === picked) setPicked(null); }}
-        onSend={(t) => { rv.send(t, sel); setSeed(undefined); }} onDecide={rv.decide} busy={false} seed={seed}
+        state={state} selected={sel} suggest={suggest} error={rv.error}
+        onClearSel={(id) => { if (picked === id) setPicked(null); else setSelectedId(null); }}
+        onSend={(t) => { void rv.send(t, sel.map((s): Selected => ({ id: s.id, type: s.type }))); setSeed(undefined); }}
+        onDecide={(id, ok) => { void rv.decide(id, ok); }} busy={rv.sending} seed={seed}
       />
     </Panel>
   );
-  const replay = (
+  const rp = rv.replay;
+  const replay = rp && (
     <div className="ws-replay hair panel">
       <span className="stamp fixture">Fixture replay</span>
-      <button className="icon-btn" onClick={() => rv.setPlaying(!rv.playing)} aria-label={rv.playing ? "Pause replay" : "Play replay"}><Icon name={rv.playing ? "pause" : "play"} size={12} /></button>
-      <input type="range" min={0} max={Math.max(1, Math.round(rv.duration))} step={0.5} value={Math.min(rv.clock, rv.duration)} onChange={(e) => rv.seek(+e.target.value)} aria-label="Replay position" />
-      <span className="mono ws-clock">{fmtClock(rv.clock)}</span>
-      <div className="seg">{[1, 3, 8].map((s) => (<button key={s} aria-pressed={rv.speed === s} onClick={() => rv.setSpeed(s)}>{s}x</button>))}</div>
-      <button className="icon-btn" onClick={() => { setSelectedId(null); rv.restart(); }} aria-label="Restart replay"><Icon name="rotate" size={12} /></button>
+      <button className="icon-btn" onClick={() => rp.setPlaying(!rp.playing)} aria-label={rp.playing ? "Pause replay" : "Play replay"}><Icon name={rp.playing ? "pause" : "play"} size={12} /></button>
+      <input type="range" min={0} max={Math.max(1, Math.round(rp.duration))} step={0.5} value={Math.min(rp.clock, rp.duration)} onChange={(e) => rp.seek(+e.target.value)} aria-label="Replay position" />
+      <span className="mono ws-clock">{fmtClock(rp.clock)}</span>
+      <div className="seg">{[1, 3, 8].map((s) => (<button key={s} aria-pressed={rp.speed === s} onClick={() => rp.setSpeed(s)}>{s}x</button>))}</div>
+      <button className="icon-btn" onClick={() => { setSelectedId(null); rp.restart(); }} aria-label="Restart replay"><Icon name="rotate" size={12} /></button>
     </div>
   );
 
-  const stage = board && (
+  const stage = board ? (
     <BoardStage
-      board={board} glbUrl={getBoardGlbUrl()} marks={marks} meta={findingsMeta} selectedId={selectedId} onSelect={selectFinding}
-      insets={insets} focus={focus} spotlight={spot} rf={null} ghost={ghost} pickedId={picked} onPick={setPicked}
+      board={board} glbUrl={bundle?.glbUrl ?? null} scene={bundle?.scene ?? null} zones={bundle?.zones ?? []}
+      marks={marks} meta={findingsMeta} selectedId={selectedId} onSelect={selectFinding}
+      insets={layout.insets} toolbarTop={layout.toolbarTop} focus={focus} spotlight={spot} rf={null} ghost={ghost} pickedId={picked} onPick={setPicked} onAsk={askObject}
       initialMode={q("mode") === "3d" ? "3d" : "2d"} initialExplode={Number(q("explode") ?? 0) || 0} rfAvailable={false}
     />
+  ) : (
+    <div className="stage"><div className="stage-bg" aria-hidden /><div className="stage-loading mono idx">{(boardError ?? (!meta ? rv.error : null))?.toUpperCase() ?? "LOADING BOARD"}</div></div>
   );
+
+  const banner = state.status === "failed"
+    ? `The review failed${state.failure ? `: ${state.failure}` : "."}`
+    : state.status === "canceled" ? "The review was stopped. The report lists what was not done." : rv.stream === "retrying" ? "Connection to the local service dropped. Reconnecting." : null;
 
   if (narrow) {
     return (
-      <main className="ws narrow">
+      <main className="ws narrow" ref={root}>
         <div className="ws-narrow-head">{brand}{budget}</div>
         {phase}
         <div className="ws-stage">{stage}{replay}</div>
         <div className="ws-tabs seg" role="tablist">
-          {(["trail", "findings", "tests", "ask"] as Tab[]).map((t) => (<button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t === "tests" ? "Tests" : t}{t === "findings" && state.findingOrder.length ? ` ${state.findingOrder.length}` : ""}</button>))}
+          {(["trail", "findings", "tests", "ask"] as Tab[]).map((t) => (<button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t === "tests" ? "Tests" : t}{t === "findings" && state.findingOrder.length ? ` ${state.findingOrder.length}` : ""}{t === "ask" && pendingApproval ? " !" : ""}</button>))}
         </div>
+        {banner && <div className="ws-banner">{banner}</div>}
         <div className="ws-tabpane">
           {tab === "trail" && trail}
           {tab === "findings" && findings}
@@ -172,15 +273,13 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     );
   }
   return (
-    <main className="ws wide">
+    <main className="ws wide" ref={root}>
       <div className="ws-stage">{stage}</div>
       {brand}{phase}{budget}{trail}{findings}{strip}
       {replay}
-      {chatOpen ? chat : (
-        <button className="ws-ask btn" onClick={() => setChatOpen(true)}><Icon name="chat" size={13} /> Ask about this board</button>
-      )}
-      {state.notices.slice(-1).map((n) => (<div key={n.id} className="ws-notice stamp sig">{n.text}</div>))}
-      <button className="sr" onClick={() => router.push("/projects")}>Projects</button>
+      {chatOpen && chat}
+      {banner && <div className="ws-notice stamp sig">{banner}</div>}
+      {!banner && state.notices.slice(-1).map((n) => (<div key={n.id} className="ws-notice stamp sig">{n.text}</div>))}
     </main>
   );
 }
