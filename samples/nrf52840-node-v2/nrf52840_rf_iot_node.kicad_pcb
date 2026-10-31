@@ -840,7 +840,7 @@
 				)
 			)
 		)
-		(property "Value" "0.47pF"
+		(property "Value" "0.51pF"
 			(at 0 1.17 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -3318,7 +3318,7 @@
 				)
 			)
 		)
-		(property "Value" "DNP 0.5pF"
+		(property "Value" "0.36pF"
 			(at 0 1.16 90)
 			(layer "F.Fab")
 			(hide yes)
