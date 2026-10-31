@@ -108,6 +108,8 @@ export interface ProjectSummary {
   versions: number; latest_version: string; latest_review_id: string;
   counts: Record<Severity, number>;
   rf: "pass" | "fail" | "not_tested" | "n/a";
+  /** The stored as-built result in words, when the latest review has a confirmed one. */
+  rf_note?: string;
   state: "complete" | "complete_with_limits" | "running" | "agent_stopped" | "queued" | "failed" | "canceled" | "no_review";
   trend: number[];
   fixture?: boolean;

@@ -5,7 +5,8 @@ import { findingLabel, findingNumber } from "../../lib/review-view";
 import type { Evidence, Finding, Severity } from "../../lib/types";
 import { ClassStamp, Icon, SevGlyph } from "../ui";
 import { PartialWin } from "../rf/PartialWin";
-import type { Headline } from "../../lib/story.mjs";
+import type { ChangeState, Headline, VersionChange as VC } from "../../lib/story.mjs";
+import { VersionChange } from "../rf/VersionChange";
 import type { Mark } from "../../lib/types";
 
 const evidenceLine = (e: Evidence): { tool: string; text: string; vals: string } => {
@@ -15,8 +16,11 @@ const evidenceLine = (e: Evidence): { tool: string; text: string; vals: string }
   return { tool: e.source_tool, text: e.title ?? v.title ?? e.summary ?? "", vals };
 };
 
-export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, onSetStatus, headline = null, onFindingCode }: {
-  headline?: Headline | null; onFindingCode?: (code: string) => void;
+const CHANGE_LABEL: Record<ChangeState, string> = { fixed: "Fixed", improved: "Improved", still_present: "Still present", worse: "Worse", new: "New" };
+type Changes = Record<string, { change: ChangeState; note: string | null; changes: string[] }>;
+
+export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, onSetStatus, headline = null, versionChange = null, changes = {}, onFindingCode }: {
+  headline?: Headline | null; versionChange?: VC | null; changes?: Changes; onFindingCode?: (code: string) => void;
   state: ReviewState; evidence: Record<string, Evidence>; selectedId: string | null; onSelect: (id: string | null) => void; onAsk: (id: string) => void;
   onSetStatus: (id: string, status: "dismissed" | "open", reason?: string) => void;
 }) {
@@ -44,12 +48,13 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
         <div className="fp-cand mono"><span className="idx">CANDIDATES</span><span>{c.reviewed}/{c.total} reviewed</span><div className="meter"><b style={{ width: `${(c.reviewed / c.total) * 100}%` }} /></div></div>
       )}
       <div className="fp-list">
+        {versionChange && <VersionChange vc={versionChange} compact onFinding={onFindingCode} />}
         {headline && <PartialWin h={headline} compact onFinding={onFindingCode} />}
         {list.length === 0 && (
           <p className="empty">{all.length === 0 ? (state.status === "running" || state.status === "idle" ? "No findings yet. Each one appears here, with its numbered balloon on the board, the moment the agent records it." : "This review recorded no findings.") : "No findings at this level."}</p>
         )}
         {list.map((f) => (
-          <FindingCard key={f.id} f={f} ev={(f.evidence ?? f.evidence_ids ?? []).map((i) => evidence[i]).filter(Boolean)} evCodes={f.evidence ?? []} sel={selectedId === f.id} onSelect={() => onSelect(selectedId === f.id ? null : f.id)} onAsk={() => onAsk(f.id)} onDismiss={(reason) => onSetStatus(f.id, "dismissed", reason)} setRef={(el) => { refs.current[f.id] = el; }} />
+          <FindingCard key={f.id} f={f} change={changes[f.code ?? ""]} ev={(f.evidence ?? f.evidence_ids ?? []).map((i) => evidence[i]).filter(Boolean)} evCodes={f.evidence ?? []} sel={selectedId === f.id} onSelect={() => onSelect(selectedId === f.id ? null : f.id)} onAsk={() => onAsk(f.id)} onDismiss={(reason) => onSetStatus(f.id, "dismissed", reason)} setRef={(el) => { refs.current[f.id] = el; }} />
         ))}
         {gone.length > 0 && (
           <div className="fp-gone">
@@ -68,7 +73,7 @@ export function FindingsPanel({ state, evidence, selectedId, onSelect, onAsk, on
   );
 }
 
-function FindingCard({ f, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }: { f: Finding; ev: Evidence[]; evCodes: string[]; sel: boolean; onSelect: () => void; onAsk: () => void; onDismiss: (reason: string) => void; setRef: (el: HTMLElement | null) => void }) {
+function FindingCard({ f, change, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }: { f: Finding; change?: Changes[string]; ev: Evidence[]; evCodes: string[]; sel: boolean; onSelect: () => void; onAsk: () => void; onDismiss: (reason: string) => void; setRef: (el: HTMLElement | null) => void }) {
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
   return (
@@ -76,7 +81,7 @@ function FindingCard({ f, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }
       <button className="fc-head" onClick={onSelect} aria-expanded={sel}>
         <span className={`fc-bal ${f.severity}`}>{findingNumber(f)}</span>
         <span className="fc-main">
-          <span className="fc-meta"><span className="idx">{findingLabel(f)}</span><SevGlyph sev={f.severity} size={10} /><span className="idx">{f.severity}</span>{f.status === "needs_recheck" && <span className="stamp sig">Needs recheck</span>}</span>
+          <span className="fc-meta"><span className="idx">{findingLabel(f)}</span><SevGlyph sev={f.severity} size={10} /><span className="idx">{f.severity}</span>{f.status === "needs_recheck" && <span className="stamp sig">Needs recheck</span>}{change && <span className={`stamp ${change.change === "improved" ? "solid" : change.change === "worse" ? "sig" : ""}`} title={change.note ?? change.changes.join("; ") ?? ""}>{CHANGE_LABEL[change.change]}</span>}</span>
           <span className="fc-title">{f.title}</span>
         </span>
         <Icon name="chevron" size={12} style={{ transform: sel ? "rotate(90deg)" : undefined, transition: "transform .2s" }} />
@@ -85,6 +90,7 @@ function FindingCard({ f, ev, evCodes, sel, onSelect, onAsk, onDismiss, setRef }
         <div className="fc-body rise">
           <div className="fc-stamps"><ClassStamp cls={f.class} />{f.source === "followup" && <span className="stamp">Found in follow-up</span>}</div>
           <MarksSummary marks={f.marks ?? []} />
+          {change && <Sec k="SINCE THE PREVIOUS VERSION" t={[CHANGE_LABEL[change.change], change.changes.join("; "), change.note].filter(Boolean).join(". ")} />}
           <Sec k="WHAT" t={f.what} />
           <Sec k="WHY IT MATTERS" t={f.why_it_matters} />
           <Sec k="RECOMMENDATION" t={f.recommendation} />

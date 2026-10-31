@@ -33,7 +33,7 @@
   left: 14px;
   top: 66px;
   width: 330px;
-  max-height: calc(100% - 66px - 330px);
+  max-height: calc(100% - 66px - 385px);
   display: flex;
   flex-direction: column;
 }

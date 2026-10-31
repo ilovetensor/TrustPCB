@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { headlineOf, screenVsConfirm, changeText } from "../lib/story.mjs";
+import { headlineOf, screenVsConfirm, changeText, versionChangeOf, changeByCode } from "../lib/story.mjs";
 import { acceptedPct, acceptedFromCurve, acceptedOf, fixedDipsMhz, isFixedDip, sameGeometry, fmtPct } from "../lib/sim-math.mjs";
 
 // The investigation of a real finished Standard review (screen runs, then confirm runs, then a refine round). Numbers are the solver's.
@@ -78,4 +78,24 @@ test("same geometry is the part of the job hash before the first dash", () => {
   assert.equal(sameGeometry(null, "abc"), null);
   assert.equal(fmtPct(10.9), "11");
   assert.equal(fmtPct(4.44), "4.4");
+});
+
+test("a recheck's headline is the version change, and its own partial win rides inside it", () => {
+  const vc = { kind: "version_change", from_version: 1, to_version: 2, from: { band_worst_s11_db: -0.5 }, to: { band_worst_s11_db: -5.78 }, gain_db: 5.28, direction: "improved", held: true, partial_win: null };
+  assert.equal(versionChangeOf({ headline: vc }).gain_db, 5.28);
+  assert.equal(versionChangeOf({ headline: vc, version_change: vc }).to_version, 2);
+  assert.equal(headlineOf({ headline: vc }), null, "no partial win inside");
+  const best = { band_worst_s11_db: -6.1, accepted_power_worst_pct: 75.5, ops: [], parts: [] };
+  const h = headlineOf({ headline: { ...vc, partial_win: { best, base: { band_worst_s11_db: -5.78 }, gain_db: 3.1 } } });
+  assert.equal(h.gainDb, 3.1);
+  assert.equal(versionChangeOf({ headline: null }), null, "a snapshot from before the field existed has none, and none is invented");
+  assert.equal(versionChangeOf(null), null);
+});
+
+test("each finding code has its change state from the version changes", () => {
+  const out = changeByCode({ version_changes: { still_present: [{ code: "F-001", change: "still_present" }], changed: [{ code: "F-015", change: "improved", changes: ["worst in-band S11 as built -0.5 dB -> -5.78 dB"] }], new: [{ code: "F-020" }], fixed: [{ code: "F-002" }] } });
+  assert.deepEqual(Object.keys(out).sort(), ["F-001", "F-015", "F-020"]);
+  assert.equal(out["F-015"].change, "improved");
+  assert.equal(out["F-020"].change, "new");
+  assert.deepEqual(changeByCode(null), {});
 });

@@ -11,6 +11,7 @@ import { Board2D, type ActiveMarkItem } from "../board2d/Board2D";
 import { useScene } from "../board2d/useScene";
 import { DEFAULT_LAYERS } from "../board2d/layers";
 import { CompareFixture } from "./CompareFixture";
+import { VersionChange } from "../rf/VersionChange";
 import { CompareHeadline, CompareTuning, PatternLayer, useCompareSims, A_COLOR, B_COLOR, PATTERN_VIEWS, type PatternViewKey } from "./CompareRf";
 import { FieldCanvas2D } from "../rf/FieldCanvas2D";
 import { bestRun, useRunData } from "../../lib/use-run-data";
@@ -18,10 +19,15 @@ import { describeFreq, isScreen } from "../../lib/sims";
 import { Icon, Panel, SevBar, SevGlyph, TopBar } from "../ui";
 
 const none = { l: 0, r: 0, t: 0, b: 0 };
-const GROUPS: { key: keyof NonNullable<CompareResult["findings"]>; label: string }[] = [
-  { key: "new", label: "NEW" }, { key: "fixed", label: "FIXED" }, { key: "changed", label: "CHANGED" },
+/** Every finding of the newer version has a `change` against the older one. The server's buckets (changed, still_present, ...) are regrouped by it. */
+const GROUPS: { key: string; label: string }[] = [
+  { key: "improved", label: "IMPROVED" }, { key: "worse", label: "WORSE" }, { key: "new", label: "NEW" }, { key: "fixed", label: "FIXED" },
   { key: "still_present", label: "STILL PRESENT" }, { key: "dismissed_carried", label: "DISMISSED, CARRIED" }, { key: "not_rechecked", label: "NOT RECHECKED" },
 ];
+const groupOf = (f: NonNullable<CompareResult["findings"]>, key: string): FindingBrief[] => {
+  if (key === "dismissed_carried" || key === "not_rechecked") return f[key] as FindingBrief[];
+  return [...f.fixed, ...f.still_present, ...f.changed, ...f.new].filter((r) => (r.change ?? "still_present") === key);
+};
 
 const asMarks = (marks: Mark[] | undefined, severity: Severity, prefix: string): ActiveMarkItem[] =>
   (marks ?? []).map((m, i) => ({ key: `${prefix}:${i}`, findingId: null, severity, mark: m }));
@@ -162,18 +168,22 @@ function CompareLive() {
                 <div style={{ padding: 14, display: "grid", gap: 10 }}>
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}><span className="idx">A v{nA}</span>{cmp.from.counts ? <SevBar counts={cmp.from.counts} size="sm" /> : <span className="dim">no review</span>}</div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}><span className="idx">B v{nB}</span>{cmp.to.counts ? <SevBar counts={cmp.to.counts} size="sm" /> : <span className="dim">no review</span>}</div>
-                  {!bothSims && <p className="idx">{sims.done ? "RESONANCE: NOT COMPARED. BOTH VERSIONS NEED A SIMULATION IN THEIR REVIEWS FOR THAT." : "LOOKING FOR SIMULATIONS."}</p>}
+                  {!bothSims && <p className="idx" style={{ whiteSpace: "normal", lineHeight: 1.5, margin: 0 }}>{sims.done ? "RESONANCE: NOT COMPARED. BOTH VERSIONS NEED A SIMULATION IN THEIR REVIEWS FOR THAT." : "LOOKING FOR SIMULATIONS."}</p>}
                 </div>
               </Panel>
-              {bothSims && (<CompareHeadline jobA={jobA} jobB={jobB} dataA={dataA} dataB={dataB} nA={nA} nB={nB} band={rfBand} />)}
+              {cmp.version_change && <VersionChange vc={cmp.version_change} compact />}
+              {bothSims && !cmp.version_change && (<CompareHeadline jobA={jobA} jobB={jobB} dataA={dataA} dataB={dataB} nA={nA} nB={nB} band={rfBand} />)}
               {bothSims && sims.a && sims.b && (
                 <CompareTuning sourceA={sims.a} sourceB={sims.b} jobA={jobA} jobB={jobB} onPickA={setPickA} onPickB={setPickB} dataA={dataA} dataB={dataB} nA={nA} nB={nB} band={rfBand} />
               )}
               <Panel className="card" idx="CHANGES" title="Findings" delay={200}>
                 {cmp.findings ? (
                   <>
+                    {cmp.findings.counts && (
+                      <p className="idx cmp-counts" aria-label="Findings by change">{(["fixed", "improved", "still_present", "worse", "new"] as const).map((k) => `${cmp.findings!.counts![k]} ${k.replace("_", " ")}`).join(" / ")}</p>
+                    )}
                     {GROUPS.map((g) => {
-                      const rows = cmp.findings![g.key] as FindingBrief[];
+                      const rows = groupOf(cmp.findings!, g.key);
                       if (!rows.length) return null;
                       return (
                         <div key={g.key}>
@@ -185,6 +195,7 @@ function CompareLive() {
                                 <span className="cmp-t">{r.title}</span>
                                 <span className="cmp-s"><SevGlyph sev={(r.was?.severity ?? r.severity) as Severity} size={10} />{r.was && r.was.severity !== r.severity && <><i>&rarr;</i><SevGlyph sev={r.severity} size={10} /></>}</span>
                                 {r.changes && r.changes.length > 0 && <span className="dim cmp-v">{r.changes.join("; ")}</span>}
+                                {r.note && <span className="dim cmp-v">{r.note}</span>}
                                 {r.dismissed_reason && <span className="dim cmp-v">Dismissed: {r.dismissed_reason}</span>}
                               </li>
                             ))}
@@ -192,7 +203,7 @@ function CompareLive() {
                         </div>
                       );
                     })}
-                    {GROUPS.every((g) => !(cmp.findings![g.key] as FindingBrief[]).length) && <p className="empty">Neither version has findings.</p>}
+                    {GROUPS.every((g) => !groupOf(cmp.findings!, g.key).length) && <p className="empty">Neither version has findings.</p>}
                   </>
                 ) : <p className="empty">Both versions need a finished review to compare findings.</p>}
               </Panel>

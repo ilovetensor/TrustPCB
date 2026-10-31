@@ -180,3 +180,5 @@
 .cmp-trace { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cmp-parts { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
 .cmp-rf-tbl td { vertical-align: top; }
+
+.cmp-counts { padding: 10px 14px 0; margin: 0; white-space: normal; line-height: 1.5; }

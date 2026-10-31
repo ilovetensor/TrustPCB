@@ -33,6 +33,7 @@ V1_STEPS = [BRIEF, {'tool': 'advance_phase'}, *VIEWS, {'tool': 'advance_phase'},
             {'tool': 'conclude_suspect', 'args': {'suspect_id': 'S2', 'verdict': 'confirmed', 'reasoning': 'The screen comparison shows a clear gain from a different series part at L1.'}},
             FINDING, {'tool': 'close_investigation', 'args': {'investigation_id': 'I1', 'outcome': 'improved', 'summary': 'A matching change improves the band result in the screen comparison.', 'finding_code': 'F-001'}},
             {'tool': 'advance_phase'}, {'tool': 'confirm_result', 'args': {'investigation_id': 'I1', 'which': 'winner'}}]
+DECLINE_REFINE = {'tool': 'advance_phase', 'args': {'decline_refine': 'The confirm base E-003 and the confirm winner E-004 do not meet the target, but the second geometry attempt is not warranted here.'}}
 V2_STEPS = [{'tool': 'get_board_summary'}, BRIEF, {'tool': 'advance_phase'}, *VIEWS, {'tool': 'advance_phase'}, OPEN, BASE, {'tool': 'get_status'}]
 
 
@@ -140,7 +141,7 @@ async def test_a_v2_review_starts_from_the_v1_findings_and_sees_the_new_parts_fo
     assert {p['ref']: (p['from'], p['to']) for p in changes['parts']['value_changed']} == {'L1': ('2.2nH', '0.47pF'), 'C20': ('DNP 0.5pF', '0.3pF')}
     assert changes['tracks'] == {'added': 0, 'removed': 0} and changes['vias'] == {'added': 0, 'removed': 0} and summary['previous_version']['previous_review_id'] == first['id']
     briefing = run_review.runners[-1].requests[0].user_text
-    assert 'recheck of version 2' in briefing and first['id'] in briefing and 'F-001' in briefing and 'L1 2.2nH to 0.47pF' in briefing and 'C20 DNP 0.5pF to 0.3pF' in briefing and 'the antenna model is unchanged' in briefing
+    assert 'You are reviewing version 2' in briefing and 'previous version is version 1' in briefing and first['id'] in briefing and 'F-001' in briefing and 'L1 2.2nH to 0.47pF' in briefing and 'C20 DNP 0.5pF to 0.3pF' in briefing and 'the antenna model is unchanged' in briefing
     classified = report.version_changes(store, second['id'])
     assert classified['against']['review_id'] == first['id'] and [f['code'] for f in classified['fixed']] == ['F-001']
 
@@ -164,3 +165,20 @@ async def test_the_drc_findings_carry_forward_as_still_present_and_only_the_fitt
     v1, v2 = fingerprints['nrf52840-node'], fingerprints['nrf52840-node-v2']
     assert len(v1 & v2) >= len(v1) - 1 and v2 <= v1
     assert v1 - v2 <= {'parity_footprint_symbol_mismatch||ref:C20'}
+
+
+async def test_a_v2_summary_that_does_not_open_with_the_change_since_v1_is_refused_and_code_writes_the_lead(store, version, two_versions):
+    lab, queue, hashes = two_versions
+    first = await run_review(store, lab, V1_STEPS, 'v-nrf')
+    bad = {'tool': 'submit_summary', 'args': {'summary': 'Recheck of version 2. The antenna is not tuned. So this is not a partial win.', 'top_actions': ['Measure the match on a real board.']}}
+    second = await run_review(store, lab, [*V1_STEPS, DECLINE_REFINE, DECLINE_REFINE, DECLINE_REFINE, bad], 'v-nrf-2', depth='deep')
+    refused = [payload(r) for r in tool_results(store, second, 'submit_summary')]
+    assert refused and refused[0]['error'] == 'summary_must_lead_with_version_change' and 'Compared with version 1' in refused[0]['message']
+    vc = report.recheck_change(store, second['id'])
+    assert vc and vc['from_version'] == 1 and vc['to_version'] == 2 and vc['direction'] in ('improved', 'worse', 'unchanged')
+    summary = store.get_review(second['id'])['summary']['summary']
+    assert summary['source'] == 'code' and summary['text'].startswith('Compared with version 1, the as-built worst S11 across the band')
+    snapshot = store.latest_report_revision(second['id'])['snapshot']
+    assert snapshot['headline']['kind'] == 'version_change' and snapshot['version_change']['text'] == vc['text']
+    html = (await report.render_revision(store=store, review=second, revision=store.latest_report_revision(second['id']), fmt='html')).decode()
+    assert html.index('Compared with version 1') < html.index('<h2>Summary</h2>')

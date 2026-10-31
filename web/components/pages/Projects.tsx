@@ -35,7 +35,7 @@ export function Projects() {
               <Link key={p.id} href={`/projects/${p.id}`} className="tbl-row rise" style={{ animationDelay: `${i * 70}ms` }} role="row">
                 <span className="idx">P-{String(i + 1).padStart(3, "0")}</span>
                 <span><div className="tbl-name">{p.name}</div><div className="tbl-kind">{p.kind}</div></span>
-                <span className="mono" style={{ fontSize: 12, color: p.rf === "fail" ? "var(--signal)" : "var(--paper-2)" }}>{RF[p.rf]}</span>
+                <span className="mono" style={{ fontSize: 12, color: p.rf === "fail" ? "var(--signal)" : "var(--paper-2)" }}>{p.rf_note ?? RF[p.rf]}</span>
                 <span><SevBar counts={p.counts} size="sm" /></span>
                 <span><Sparkline values={p.trend} /></span>
                 <span className="mono" style={{ fontSize: 12 }}>{p.latest_version} / {p.versions} ver</span>

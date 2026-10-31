@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import re
 
+from . import change
 from . import evidence as ev
 from . import partial
 from .budgets import IMPROVEMENT_DB, PARTIAL_WIN_DB, REFINE_MATCHING, REFINE_SCREENS, Experiment
@@ -885,7 +886,8 @@ class InvestigationMixin:
 
     async def submit_summary(self, args: dict) -> ToolResult:
         s = self.s
-        allowed = [q for row in s.engine.evidence_rows() for q in ev.quantities_of(row)] + s.context()
+        vc = self.version_change()
+        allowed = [q for row in s.engine.evidence_rows() for q in ev.quantities_of(row)] + s.context() + change.quantities(vc)
         texts = {'summary': args['summary'], **{f'top_actions[{i}]': a for i, a in enumerate(args['top_actions'])}}
         unknown = [c for text in texts.values() for c in re.findall(r'\bF-\d{3}\b', text) if self.store.get_finding_by_code(s.review_id, c) is None]
         try:
@@ -894,6 +896,9 @@ class InvestigationMixin:
             if unknown:
                 raise FindingRejected('unknown_finding', f'{unknown[0]} is not a finding in this review.')
             check_fixed_dip_claims(texts, s.engine.evidence_rows(), s.engine.evidence_rows())
+            lead = change.lead_problem(args['summary'], vc)
+            if lead:
+                raise FindingRejected('summary_must_lead_with_version_change', lead)
             lead = self.partial_win_summary_problem(args['summary'])
             if lead:
                 raise FindingRejected('summary_must_lead_with_partial_win', lead)

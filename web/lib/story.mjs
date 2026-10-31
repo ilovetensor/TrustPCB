@@ -33,7 +33,8 @@ export function changeText(c) {
  */
 export function headlineOf(snapshot) {
   if (!snapshot) return null;
-  const h = snapshot.headline;
+  const raw = snapshot.headline;
+  const h = raw && raw.kind === "version_change" ? raw.partial_win : raw;     // a recheck's headline is the version change; its own partial win, if any, rides inside it
   if (h && h.best && h.base) return normalise(h, h.investigation ?? null);
   for (const inv of snapshot.investigations ?? []) {
     const confs = [inv.confirmation, ...(inv.refine_rounds ?? []).map((r) => r?.confirmation)].filter(Boolean);
@@ -43,6 +44,27 @@ export function headlineOf(snapshot) {
     }
   }
   return null;
+}
+
+/**
+ * What changed since the previous version, from a report snapshot: the server's `version_change` (also the `headline` of a recheck).
+ * A snapshot stored before that field existed has none, and none is made up here.
+ */
+export function versionChangeOf(snapshot) {
+  if (!snapshot) return null;
+  const v = snapshot.version_change ?? (snapshot.headline?.kind === "version_change" ? snapshot.headline : null);
+  return v && v.from && v.to ? v : null;
+}
+
+/** The change state of each finding code in a snapshot's version changes: fixed, improved, still_present, worse or new. */
+export function changeByCode(snapshot) {
+  const out = {};
+  const vc = snapshot?.version_changes;
+  if (!vc) return out;
+  for (const bucket of ["still_present", "changed", "new"]) {
+    for (const f of vc[bucket] ?? []) if (f.code) out[f.code] = { change: f.change ?? (bucket === "new" ? "new" : "still_present"), note: f.note ?? null, changes: f.changes ?? [] };
+  }
+  return out;
 }
 
 function normalise(h, investigation) {
