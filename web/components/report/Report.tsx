@@ -2,10 +2,7 @@
 import "./report.css";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FIXTURE_MODE, getReview, getSnapshot, listRevisions, reportUrl, type ReviewMeta, type RevisionRow } from "../../lib/api";
-import { headlineOf, versionChangeOf, type Headline, type VersionChange as VC } from "../../lib/story.mjs";
-import { PartialWin } from "../rf/PartialWin";
-import { VersionChange } from "../rf/VersionChange";
+import { FIXTURE_MODE, getReview, listRevisions, reportUrl, type ReviewMeta, type RevisionRow } from "../../lib/api";
 import { Icon, Logo } from "../ui";
 import { ReportFixture } from "./ReportFixture";
 
@@ -31,16 +28,6 @@ function ReportLive({ reviewId }: { reviewId: string }) {
     listRevisions(reviewId).then((r) => { setRevs(r); if (r.length) setRev(r[r.length - 1].number); }).catch((e) => setError(e instanceof Error ? e.message : "Could not load the report."));
   }, [reviewId]);
   useEffect(() => { setFrameState("loading"); }, [rev]);
-  // the lead of the page: when this revision found a partial win, the accepted power before and after, from its own snapshot
-  const [headline, setHeadline] = useState<Headline | null>(null);
-  const [change, setChange] = useState<VC | null>(null);
-  useEffect(() => {
-    if (rev == null) return;
-    let live = true;
-    getSnapshot(reviewId, rev).then((s) => { if (live) { setHeadline(headlineOf(s)); setChange(versionChangeOf(s)); } }).catch(() => { if (live) { setHeadline(null); setChange(null); } });
-    return () => { live = false; };
-  }, [reviewId, rev]);
-
   const pdf = async () => {
     if (rev == null) return;
     setPdfError(null);
@@ -82,8 +69,6 @@ function ReportLive({ reviewId }: { reviewId: string }) {
         </div>
       )}
       {!revs && !error && <div className="rp-page" style={{ paddingTop: 60 }}><span className="idx">LOADING REPORT</span></div>}
-      {change && <div className="rp-lead no-print"><VersionChange vc={change} wide /></div>}
-      {headline && <div className="rp-lead no-print"><PartialWin h={headline} wide /></div>}
       {rev != null && (
         <div className="rp-frame-wrap">
           {frameState === "loading" && <span className="idx rp-frame-note">ASSEMBLING REPORT</span>}

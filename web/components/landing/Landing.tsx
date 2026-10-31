@@ -198,7 +198,7 @@ export function Landing() {
         <div className="ld-fig mono rise" style={{ animationDelay: "1000ms" }}>
           <span className="idx">FIG. 1</span>
           <span>{useRealBoard
-            ? `nRF52840 node, 66 x 53 mm. Field at 2.44 GHz and the launch pulse from a real solver run, time slowed to be visible. This antenna as drawn resonates at ${nrf.hero?.f_res ? (nrf.hero.f_res / 1e9).toFixed(2) : "1.87"} GHz, off the band: the kind of thing TrustPCB reports.`
+            ? `nRF52840 node, 66 x 53 mm. Field at 2.44 GHz and the launch pulse from a real solver run, time slowed to be visible. As drawn, this antenna's deepest dip sits at ${nrf.hero?.f_res ? (nrf.hero.f_res / 1e9).toFixed(2) : "1.87"} GHz, off the band: the kind of thing TrustPCB reports.`
             : "2.5 GHz patch antenna, 60 x 50 mm. Complex field from the solver, phase locked, time slowed to be visible."}</span>
           <span className="stamp sim"><i />Real openEMS output</span>
         </div>

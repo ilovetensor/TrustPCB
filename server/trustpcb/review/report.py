@@ -260,6 +260,8 @@ table{border-collapse:collapse;width:100%;margin:8px 0}th,td{text-align:left;pad
 .card{border:1px solid #d7dbe0;border-radius:8px;padding:14px 16px;margin:14px 0;break-inside:avoid}.card h3{margin-top:0}.notice{border-left:4px solid #ff9f1a;background:#fff8ec;padding:8px 12px;margin:12px 0}
 .changes{border-left:4px solid #22a3d6;background:#eef8fd;padding:8px 12px;margin:12px 0}svg.board{width:100%;height:auto;border:1px solid #d7dbe0;border-radius:6px;background:#fff}
 .counts span{margin-right:8px}td.n,table.vc th{white-space:nowrap}ul{padding-left:20px;margin:4px 0}code{font-family:ui-monospace,Menlo,monospace;font-size:13px}.small{font-size:13px}
+.power{margin:12px 0}.power>div{display:grid;grid-template-columns:minmax(0,190px) 1fr 58px;gap:10px;align-items:center;margin:6px 0;font-size:13px}.power i{height:14px;background:#e6e9ed;display:block}
+.power b{display:block;height:100%;background:#1c2024;print-color-adjust:exact;-webkit-print-color-adjust:exact}.power strong{text-align:right;font-family:ui-monospace,Menlo,monospace}
 @media print{main{padding:0}h2{break-after:avoid}}
 '''
 
@@ -324,9 +326,18 @@ def _cell(row: dict | None, key: str, unit: str) -> str:
     return f'<td class="n">{esc(row[key])} {esc(unit)}</td>'
 
 
+def power_bars(caption: str, rows: list[tuple[str, Any]]) -> str:
+    """Accepted power as bars, one per (label, percent). Empty when a value is missing."""
+    if any(pct is None for _, pct in rows):
+        return ''
+    bars = ''.join(f'<div><span>{esc(label)}</span><i><b style="width:{min(max(float(pct), 0), 100):g}%"></b></i><strong>{float(pct):g} %</strong></div>' for label, pct in rows)
+    return f'<div class="power"><p class="small muted">{esc(caption)}</p>{bars}</div>'
+
+
 def render_headline(h: dict) -> str:
     """The partial win, first on the page: improved at confirm quality, target not met, with the best parts and the accepted power before and after."""
     best, base = h['best'], h['base']
+    bars = power_bars('Accepted power, worst point of the band', [('Confirmed base', base.get('accepted_power_worst_pct')), ('Best confirm-quality parts', best.get('accepted_power_worst_pct'))])
     rows = [('Worst S11 in the band', f'{base.get("band_worst_s11_db")} dB', f'{best.get("band_worst_s11_db")} dB')]
     if base.get('accepted_power_worst_pct') is not None and best.get('accepted_power_worst_pct') is not None:
         rows.append(('Accepted power, worst point of the band', f'{base["accepted_power_worst_pct"]} %', f'{best["accepted_power_worst_pct"]} %'))
@@ -336,7 +347,7 @@ def render_headline(h: dict) -> str:
     return ('<div class="card"><h2 style="margin-top:0;border:0">Improved, target not met</h2>'
             f'<p>{pill("cls-simulated", "partial win")} Confirm improves the worst S11 in the band by {esc(h.get("gain_db"))} dB, and the tuning target'
             f'{" of " + esc(format(h["target_db"], "g")) + " dB" if h.get("target_db") is not None else ""} is not met.</p>'
-            f'<p><strong>Parts to try, in your own tool:</strong> {esc(h["parts_text"])}.</p>{table}'
+            f'<p><strong>Parts to try, in your own tool:</strong> {esc(h["parts_text"])}.</p>{bars}{table}'
             '<p class="small muted">Accepted power is 100 x (1 - |S11|^2) per frequency: a mismatch figure only. It is not radiated power or efficiency. '
             f'Simulated; not a substitute for a real antenna measurement.{(" See finding " + esc(h["finding"]) + ".") if h.get("finding") else ""}</p></div>')
 
@@ -366,7 +377,8 @@ def render_version_change(vc: dict) -> str:
         else:
             badges += ' ' + (pill('cls-simulated', 'Same solver run, new parts') if vc.get('consistent') else pill('sev-high', 'Same solver run, not consistent'))
     badges += ' ' + (pill('cls-measured', 'Target met') if vc['target_met'] else pill('sev-medium', 'Target not met'))
-    return (f'<div class="card"><h2 style="margin-top:0;border:0">Compared with version {esc(a)}</h2><p>{badges}</p><p>{esc(vc["text"])}</p>{table}'
+    bars = power_bars('Accepted power as built, worst point of the band', [(f'Version {a}', frm.get('accepted_power_worst_pct')), (f'Version {b}', to.get('accepted_power_worst_pct'))])
+    return (f'<div class="card"><h2 style="margin-top:0;border:0">Compared with version {esc(a)}</h2><p>{badges}</p><p>{esc(vc["text"])}</p>{bars}{table}'
             '<p class="small muted">Accepted power is 100 x (1 - |S11|^2) per frequency: a mismatch figure only, not radiated power or efficiency. '
             f'Both results are confirm-quality simulations of the board as built (evidence {esc(frm.get("evidence"))} and {esc(to.get("evidence"))}). '
             + ('Version ' + esc(b) + ' was finalised from the same solver run as version ' + esc(a) + ', with its own matching parts: it is consistent with the prediction, not an independent result. ' if prediction and not vc.get('independent_check') and vc.get('applied') is not False else '')

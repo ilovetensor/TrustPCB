@@ -52,7 +52,7 @@ function JobCard({ job, active, overlaid, onActive, onOverlay }: { job: SimJob; 
         <span className="rf-job-name">{job.label ?? "Simulation"}</span>
         {ops && <span className="rf-job-ops mono">{ops}</span>}
         <span className="rf-job-num mono">
-          {done && f != null && depth != null ? <><b>{(f / 1000).toFixed(3)}</b> GHz <b>{depth.toFixed(1)}</b> dB</> : done ? "no numbers recorded" : job.status}
+          {done && f != null && depth != null ? <>dip <b>{(f / 1000).toFixed(3)}</b> GHz <b>{depth.toFixed(1)}</b> dB</> : done ? "no numbers recorded" : job.status}
           {done && acc != null && <span className="rf-acc" title={ACCEPTED_LABEL}><b>{fmtPct(acc)}</b> % accepted</span>}
           {job.trust && <span className={`stamp ${job.trust.status === "ok" ? "" : "sig"}`} title={job.trust.reasons.join("; ") || undefined}>Trust {job.trust.status === "ok" ? "ok" : "failed"}</span>}
         </span>
@@ -157,7 +157,7 @@ export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, s
   const freqNote = (() => {
     if (view === "wave" && fields.data) {
       const off = sim?.f_res && Math.abs(fields.data.f_hz - sim.f_res) / fields.data.f_hz > 0.02;
-      return `Field at ${describeFreq(fields.data.f_hz, bandHz)}, relative units.${off ? ` The antenna resonates elsewhere (${ghz(sim!.f_res!)} GHz); this shows how it behaves at the target.` : ""}`;
+      return `Field at ${describeFreq(fields.data.f_hz, bandHz)}, relative units.${off ? ` The deepest S11 dip is elsewhere (${ghz(sim!.f_res!)} GHz); this shows how the antenna behaves at the target.` : ""}`;
     }
     if (view === "pattern" && pattern.data) {
       const atDip = sim?.f_res && Math.abs(pattern.data.f_hz - sim.f_res) / pattern.data.f_hz < 0.005;
