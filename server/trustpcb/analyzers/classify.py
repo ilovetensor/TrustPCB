@@ -1,7 +1,11 @@
 """Part and net classification by name, used when no board brief supplies part roles.
 
 Everything here is a heuristic over reference prefixes, values, library ids and net names. A
-brief's ``part_roles`` always wins. Roles are short lowercase words:
+brief's ``part_roles`` is taken as given unless the part's own symbol value or library id says
+otherwise (an ESD array called a regulator): then the symbol wins and the conflict is kept in
+``ctx.cache["role_conflicts"]`` and reported by ``part_roles_report``. ``symbol_role`` and
+``check_role`` let a caller test any proposed role against the symbol value. Roles are short
+lowercase words:
 
 ``rf`` ``switching`` ``power`` ``analog`` ``digital`` ``clock`` ``usb`` ``connector``
 ``protection`` ``mechanical`` (mounting holes, fiducials and test points are never zoned).
@@ -11,7 +15,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..pcb import geom
 from ..pcb.model import Board, Footprint
@@ -197,6 +201,205 @@ def _module_role(fp: Footprint) -> str | None:
     return None
 
 
+_DNP_RE = re.compile(r"(^|[^a-z])(dnp|dnf|dni|dnm|do[\s_-]?not[\s_-]?(populate|place|fit|install|mount|stuff)|not[\s_-]?(fitted|populated|placed|installed|mounted)|unpopulated|nostuff|no[\s_-]?stuff)([^a-z]|$)", re.I)
+
+
+def is_dnp(fp: Footprint) -> bool:
+    """True when the part is not fitted: the footprint says so, or its value does ("DNP 0.5pF").
+
+    The board file often lacks the attribute although the schematic marks the part do-not-populate,
+    so the value text is read too.
+    """
+    return bool(fp.dnp) or bool(_DNP_RE.search(fp.value or ""))
+
+
+# ------------------------------------------------------------------- roles from the symbol
+#
+# (pattern, family, analyzer role, exact proposed roles that fit, proposed-role words that fit)
+# Patterns are matched on the symbol value and the library id (the footprint name). They are strict
+# on purpose: a match here overrules a guess, so each pattern names a real part family.
+_P = frozenset
+_SYMBOL_FAMILIES: tuple[tuple[re.Pattern[str], str, str, frozenset[str], frozenset[str]], ...] = (
+    (
+        re.compile(r"usblc6|usbuf|tpd[0-9]+e|tpd[0-9]+s|ip42[0-9]+|srv05|pesd[0-9]|prtr5v|esda[0-9]|esd[0-9]{3,}|tvs|ecmf|ecl[0-9]{4}|nup[0-9]+|rclamp|sp0[0-9]{3}|smbj|smaj|p6ke|varistor", re.I),
+        "esd_protection",
+        "protection",
+        _P({"protection", "esd", "esd_protection", "usb_protection", "usb_esd", "tvs", "surge", "clamp", "usb", "input_protection", "signal_protection"}),
+        _P({"protection", "esd", "tvs", "surge", "clamp", "protect"}),
+    ),
+    (
+        re.compile(r"ap2112|ap2127|ap2210|ap7[0-9]{3}|lm1117|ams1117|ld1117|ld3985|mcp17[0-9]{2}|mcp1700|tlv7[0-9]{2}|tps7[0-9]{4}|tps78[0-9]|xc6[0-9]{3}|lp59[0-9]{2}|lp298[0-9]|lp38[0-9]{2}|lt1117|ncp11[0-9]{2}|ncp1[0-9]{3}|spx3819|mic5[0-9]{3}|ldo|rt9013|rt9193|ht73[0-9]{2}|xcl|662k|ams1117|78l[0-9]{2}|lm317|lm78[0-9]{2}", re.I),
+        "ldo_regulator",
+        "power",
+        _P({"regulator", "ldo", "power", "power_supply", "voltage_regulator", "linear_regulator", "supply", "power_regulator", "power_input", "power_conversion"}),
+        _P({"regulator", "ldo", "power", "supply", "regulation"}),
+    ),
+    (
+        re.compile(r"tps6[0-9]{4}|tps5[0-9]{4}|lm25[0-9]{2}|lm26[0-9]{2}|mp[0-9]{4}|rt[0-9]{4}[a-z]*buck|sy8[0-9]{3}|xl[0-9]{4}|lt3[0-9]{3}|ltc3[0-9]{3}|st1s[0-9]+|mcp1640|ap34[0-9]{2}|aoz1[0-9]{3}|buck|boost|dc-?dc|smps|charge[\s_-]?pump", re.I),
+        "switching_regulator",
+        "switching",
+        _P({"regulator", "switching", "buck", "boost", "dcdc", "dc_dc", "smps", "power", "power_supply", "converter", "switching_regulator", "power_conversion"}),
+        _P({"regulator", "switching", "buck", "boost", "dcdc", "smps", "power", "converter", "supply"}),
+    ),
+    (
+        re.compile(r"nrf5\d|nrf9\d|nrf24|esp32|esp8266|esp-?wroom|cc2[0-9]{3}|cc1[0-9]{3}|sx12[0-9]{2}|rfm9|efr32|bgm\d|mgm\d|stm32w[bl]|mdbt|nina-|ble[\s_-]?module|nrf-?soc", re.I),
+        "radio_soc",
+        "rf",
+        _P({"radio", "rf", "mcu", "soc", "wireless", "ble", "bluetooth", "radio_mcu", "mcu_radio", "processor", "controller", "microcontroller", "main", "main_mcu", "core", "digital", "transceiver", "wifi", "lora", "zigbee"}),
+        _P({"radio", "rf", "mcu", "soc", "wireless", "ble", "bluetooth", "processor", "controller", "microcontroller", "transceiver"}),
+    ),
+    (
+        re.compile(r"stm32|atmega|attiny|rp2040|samd|pic[0-9]{2}|msp430|lpc[0-9]|ice40|cpld", re.I),
+        "mcu",
+        "digital",
+        _P({"mcu", "microcontroller", "processor", "controller", "main", "main_mcu", "core", "digital", "soc", "fpga"}),
+        _P({"mcu", "microcontroller", "processor", "controller", "digital", "core"}),
+    ),
+    (
+        re.compile(r"lm75|tmp[0-9]{3}|ds18|bm[ep][0-9]{3}|sht[0-9]{2}|adxl|lis[0-9]|mpu-?[0-9]|icm-?[0-9]|bmi[0-9]|max31|ina[0-9]{3}|ads[0-9]{4}|hdc[0-9]{4}|si70[0-9]{2}|aht[0-9]|veml|opt[0-9]{4}|sensor", re.I),
+        "sensor",
+        "analog",
+        _P({"sensor", "analog", "temperature_sensor", "temp_sensor", "imu", "accelerometer", "adc", "measurement", "monitor", "thermal"}),
+        _P({"sensor", "analog", "temperature", "temp", "imu", "accelerometer", "adc", "measurement", "thermal"}),
+    ),
+)
+_LED_RE = re.compile(r"led", re.I)
+_LED_ROLES = _P({"led", "indicator", "status", "status_led", "digital", "display", "user_led"})
+_XTAL_FAMILY_ROLES = _P({"crystal", "clock", "oscillator", "xtal", "timing", "high_speed", "hf_crystal", "32mhz_crystal"})
+_KIND_ROLES: dict[str, tuple[str, frozenset[str]]] = {
+    "led": ("led", _LED_ROLES),
+    "xtal": ("crystal", _XTAL_FAMILY_ROLES),
+    "fuse": ("fuse", _P({"fuse", "protection", "ptc", "input_protection", "power_protection", "polyfuse", "power_input", "power"})),
+    "antenna": ("antenna", _P({"antenna", "ant", "rf", "radio", "radiator"})),
+    "mounting": ("mounting_hole", _P({"mounting", "mechanical", "hole", "mounting_hole"})),
+    "fiducial": ("fiducial", _P({"fiducial", "mechanical", "alignment"})),
+    "testpoint": ("test_point", _P({"test", "testpoint", "test_point", "mechanical", "debug", "probe"})),
+}
+#: roles that only an active part can have: a passive or connector given one of these is a mismatch
+_ACTIVE_ONLY_WORDS = _P({"regulator", "ldo", "mcu", "microcontroller", "radio", "sensor", "protection", "esd", "tvs"})
+
+
+def symbol_role(fp: Footprint) -> dict[str, Any] | None:
+    """What the part's own value and library id say it is, or None when they do not say.
+
+    Returns ``{ref, value, lib_id, family, role, evidence, source}`` where ``family`` is a fine class
+    (``esd_protection``, ``ldo_regulator``, ``switching_regulator``, ``radio_soc``, ``mcu``, ``sensor``,
+    ``led``, ``crystal``, ``fuse``, ``antenna`` ...), ``role`` is the analyzers' coarse role and
+    ``evidence`` is the text that matched. Reference prefixes decide only the kinds that need no
+    value (LED, crystal, fuse, antenna, holes, test points).
+    """
+    kind = part_kind(fp)
+    lib = fp.lib_id.split(":")[-1]
+    value = fp.value or ""
+    if kind in ("ic", "other"):
+        for rx, family, role, _exact, _words in _SYMBOL_FAMILIES:
+            m = rx.search(value) or rx.search(lib)
+            if m:
+                src = "value" if rx.search(value) else "lib_id"
+                return {"ref": fp.ref, "value": value, "lib_id": fp.lib_id, "family": family, "role": role, "evidence": m.group(0), "source": src}
+        return None
+    if kind in _KIND_ROLES:
+        family, _roles = _KIND_ROLES[kind]
+        role = {"led": "digital", "xtal": "clock", "fuse": "protection", "antenna": "rf"}.get(kind, "mechanical")
+        return {"ref": fp.ref, "value": value, "lib_id": fp.lib_id, "family": family, "role": role, "evidence": fp.lib_id or fp.ref, "source": "lib_id"}
+    if kind == "diode":
+        m = None
+        for rx, family, role, _e, _w in _SYMBOL_FAMILIES[:1]:
+            m = rx.search(value) or rx.search(lib)
+            if m:
+                return {"ref": fp.ref, "value": value, "lib_id": fp.lib_id, "family": family, "role": role, "evidence": m.group(0), "source": "value"}
+        return {"ref": fp.ref, "value": value, "lib_id": fp.lib_id, "family": "diode", "role": "digital", "evidence": fp.lib_id or fp.ref, "source": "lib_id"}
+    return None
+
+
+def _norm_role(role: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(role or "").strip().lower()).strip("_")
+
+
+def check_role(fp: Footprint | str, proposed: str, board: Board | None = None) -> dict[str, Any]:
+    """Check a proposed role for a part against its symbol value and library id.
+
+    ``fp`` is a footprint, or a reference when ``board`` is given. Returns::
+
+        {ref, proposed, ok: True | False | None, symbol_family, symbol_role, evidence, message}
+
+    ``ok`` is False when the symbol says the part is something else (``USBLC6-2SC6`` is ESD
+    protection, so "regulator" is False), True when the proposed role fits what the symbol says, and
+    None when the symbol does not decide (a passive, or a part number the rules do not know): the
+    role stays unchecked, not approved. Matching is on the whole role or its words, so
+    "usb_protection" fits an ESD part and "power_regulator" fits an LDO.
+    """
+    if isinstance(fp, str):
+        found = board.footprint(fp) if board is not None and hasattr(board, "footprint") else None
+        if found is None:
+            return {"ref": fp, "proposed": proposed, "ok": None, "symbol_family": None, "symbol_role": None, "evidence": None, "message": f"{fp} is not on the board, so its role cannot be checked."}
+        fp = found
+    norm = _norm_role(proposed)
+    sym = symbol_role(fp)
+    base = {"ref": fp.ref, "proposed": proposed, "symbol_family": sym["family"] if sym else None, "symbol_role": sym["role"] if sym else None, "evidence": sym["evidence"] if sym else None, "value": fp.value}
+    if sym is None:
+        # a passive or connector given a role only an active part can have
+        kind = part_kind(fp)
+        words = set(norm.split("_"))
+        if kind in ("cap", "res", "ind", "ferrite", "connector", "switch", "testpoint", "fiducial", "mounting") and words & _ACTIVE_ONLY_WORDS and not words & {"decoupling", "bypass", "filter", "matching"}:
+            return {**base, "ok": False, "message": f"{fp.ref} ({fp.value or fp.lib_id}) is a {kind}; '{proposed}' is a role for an active part."}
+        return {**base, "ok": None, "message": f"The symbol value '{fp.value}' does not decide the role of {fp.ref}; the proposed role '{proposed}' is unchecked."}
+    exact, words_ok = _family_roles(sym["family"])
+    words = set(norm.split("_"))
+    reading = _reading(sym)
+    if norm in exact or (words & words_ok):
+        return {**base, "ok": True, "message": f"'{proposed}' fits {fp.ref}: {reading}."}
+    return {**base, "ok": False, "message": f"'{proposed}' does not fit {fp.ref}: {reading}, so its role is {sym['role']}."}
+
+
+def _reading(sym: dict[str, Any]) -> str:
+    family = sym["family"].replace("_", " ")
+    if sym["source"] == "value":
+        return f"the symbol value '{sym['value']}' reads as {family} (matched '{sym['evidence']}')"
+    return f"the library id '{sym['lib_id']}' reads as {family} (symbol value '{sym['value']}')"
+
+
+def _family_roles(family: str) -> tuple[frozenset[str], frozenset[str]]:
+    for _rx, fam, _role, exact, words in _SYMBOL_FAMILIES:
+        if fam == family:
+            return exact, words
+    for kind, (fam, roles) in _KIND_ROLES.items():
+        if fam == family:
+            return roles, roles
+    if family == "diode":
+        return _P({"diode", "rectifier", "protection", "digital"}), _P({"diode", "rectifier", "protection"})
+    return _P(), _P()
+
+
+def is_protection_part(fp: Footprint, ctx: AnalyzerContext | None = None) -> bool:
+    """ESD, TVS or other protection part: by the symbol first, by the brief's role only when the symbol is silent."""
+    sym = symbol_role(fp)
+    if sym is not None:
+        return sym["family"] in ("esd_protection",)
+    given = str((ctx.part_roles or {}).get(fp.ref, "")).strip().lower() if ctx is not None else ""
+    return _norm_role(given) in ("protection", "esd", "esd_protection", "tvs", "usb_protection")
+
+
+def part_roles_report(board: Board, ctx: AnalyzerContext) -> dict[str, dict[str, Any]]:
+    """Per reference: the role used, where it came from, the symbol's reading and any conflict with the brief."""
+    roles = classify_parts(board, ctx)
+    given = {k: str(v).strip().lower() for k, v in (ctx.part_roles or {}).items()}
+    out: dict[str, dict[str, Any]] = {}
+    for f in sorted(board.footprints, key=lambda f: f.ref):
+        sym = symbol_role(f)
+        row: dict[str, Any] = {"role": roles.get(f.ref), "value": f.value, "symbol_family": sym["family"] if sym else None, "symbol_evidence": sym["evidence"] if sym else None}
+        if f.ref in given:
+            chk = check_role(f, given[f.ref])
+            conflict = chk["ok"] is False
+            row.update(brief_role=given[f.ref], source="symbol" if conflict else "brief", conflict=conflict)
+            if conflict:
+                row["message"] = chk["message"]
+        else:
+            row.update(source="symbol" if sym else "heuristic", conflict=False)
+        out[f.ref] = row
+    return out
+
+
 def classify_parts(board: Board, ctx: AnalyzerContext) -> dict[str, str]:
     """Role per footprint reference: the brief's roles first, then heuristics. Deterministic."""
     given = {k: str(v).strip().lower() for k, v in (ctx.part_roles or {}).items()}
@@ -206,8 +409,16 @@ def classify_parts(board: Board, ctx: AnalyzerContext) -> dict[str, str]:
     has_switcher = any(_module_role(f) == "switching" for f in board.footprints) or any(_SW_NET_RE.search(n.name.upper()) for n in board.nets)
     anchors: list[tuple[Footprint, str]] = []
 
+    conflicts: dict[str, dict[str, Any]] = ctx.cache.setdefault("role_conflicts", {}) if ctx is not None else {}
     for f in board.footprints:
         if f.ref in given:
+            chk = check_role(f, given[f.ref])
+            if chk["ok"] is False:
+                # the symbol value overrules a brief role that cannot be right for the part (an ESD array called a regulator)
+                sym = symbol_role(f)
+                roles[f.ref] = sym["role"] if sym else given[f.ref]
+                conflicts[f.ref] = {"brief_role": given[f.ref], "role_used": roles[f.ref], "message": chk["message"]}
+                continue
             roles[f.ref] = given[f.ref]
             continue
         kind = part_kind(f)

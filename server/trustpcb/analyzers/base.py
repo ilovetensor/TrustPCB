@@ -37,6 +37,8 @@ ANALYZER_NAMES = (
     "return_path",
     "impedance",
     "via_count",
+    "via_annular_ring",
+    "netclass_width",
 )
 
 #: spec defaults (section 9); every one can be replaced through ``AnalyzerContext.thresholds``
@@ -77,6 +79,11 @@ DEFAULTS: dict[str, Any] = {
     "impedance_min_section_mm": 1.0,
     # via_count: more than 2
     "via_max": 2,
+    # via_annular_ring: smallest annular ring a fab will make. 0.127 mm (5 mil) is OSH Park's two-layer figure
+    # (docs.oshpark.com/services); fabs differ, so set it to the fab in use
+    "via_min_annular_mm": 0.127,
+    # netclass_width: a track narrower than its project net class width by more than this is reported
+    "netclass_width_tolerance_mm": 0.001,
     # zones
     "zone_cluster_mm": 8.0,
     "zone_pad_mm": 0.5,

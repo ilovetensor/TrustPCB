@@ -1,0 +1,2433 @@
+{
+ "_note": "kicad-cli 10.0.5 DRC output for samples/nrf52840-node, violations only (unchanged)",
+ "kicad_version": "10.0.5",
+ "violations": [
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 0.9899 mm",
+     "pos": {
+      "x": 32.7,
+      "y": 9.6
+     },
+     "uuid": "05bc5591-eab8-43c3-9482-a277cb431710"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 0.4243 mm",
+     "pos": {
+      "x": 29.5,
+      "y": 1.0
+     },
+     "uuid": "149538f5-8562-4caa-99c6-a82eb02acc08"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 0.4243 mm",
+     "pos": {
+      "x": 29.2,
+      "y": 1.9
+     },
+     "uuid": "1f26cf20-9943-4ff8-83c7-197b78bfd65c"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 0.4243 mm",
+     "pos": {
+      "x": 28.9,
+      "y": 1.3
+     },
+     "uuid": "224f024a-70bc-4248-a68d-603b5619cd89"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 7.5000 mm",
+     "pos": {
+      "x": 30.5,
+      "y": 6.0
+     },
+     "uuid": "2473fb93-a76e-4c7d-83c0-d43794472656"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 6.5000 mm",
+     "pos": {
+      "x": 23.0,
+      "y": 1.0
+     },
+     "uuid": "2d8ece0e-a820-478d-aa9f-4eff230128de"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 2.1213 mm",
+     "pos": {
+      "x": 23.0,
+      "y": 6.0
+     },
+     "uuid": "418ef13a-3e85-48ef-a9d7-f2ea9fc82a96"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 0.3000 mm",
+     "pos": {
+      "x": 29.5,
+      "y": 1.9
+     },
+     "uuid": "544ed90c-6dd9-4eb6-8508-178569064829"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 2.0000 mm",
+     "pos": {
+      "x": 21.5,
+      "y": 4.5
+     },
+     "uuid": "5c668652-4a4e-4ced-82f8-efacf5aa0e2b"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 2.1213 mm",
+     "pos": {
+      "x": 32.0,
+      "y": 7.5
+     },
+     "uuid": "69630d3d-78c1-4ec0-a608-13aafb0eca0e"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 0.4243 mm",
+     "pos": {
+      "x": 29.8,
+      "y": 1.6
+     },
+     "uuid": "7e7d8663-8ddd-4f2b-8525-5ceab9ed5f34"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 0.3000 mm",
+     "pos": {
+      "x": 29.8,
+      "y": 1.3
+     },
+     "uuid": "84c0bbfd-ad4f-4634-a6df-326f98c874fc"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 2.1213 mm",
+     "pos": {
+      "x": 21.5,
+      "y": 2.5
+     },
+     "uuid": "b1116091-cf7d-4d64-8f5e-c5bba0ec33fb"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 0.3000 mm",
+     "pos": {
+      "x": 28.9,
+      "y": 1.6
+     },
+     "uuid": "dcebda54-c3fa-430f-9fd2-c19c9e5d74e7"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 1.4000 mm",
+     "pos": {
+      "x": 32.0,
+      "y": 8.9
+     },
+     "uuid": "e4d4628b-62fb-43da-821a-c6ab9776b27f"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items not allowed",
+   "items": [
+    {
+     "description": "Track [ANT_FEED] on F.Cu, length 1.4800 mm",
+     "pos": {
+      "x": 32.7,
+      "y": 11.08
+     },
+     "uuid": "f2c0f0cc-1c01-4a5b-a35a-547608d4e31e"
+    }
+   ],
+   "severity": "error",
+   "type": "items_not_allowed"
+  },
+  {
+   "description": "Items shorting two nets (nets 3V3 and DEC5)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [DEC5] on F.Cu - B.Cu",
+     "pos": {
+      "x": 35.52,
+      "y": 27.0
+     },
+     "uuid": "4982e7df-bc6c-4fe7-827b-40eec7aa92d5"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [DEC5] on F.Cu - B.Cu",
+     "pos": {
+      "x": 35.52,
+      "y": 27.0
+     },
+     "uuid": "4982e7df-bc6c-4fe7-827b-40eec7aa92d5"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.0250 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [RESET_N] on F.Cu - B.Cu",
+     "pos": {
+      "x": 34.8,
+      "y": 20.0
+     },
+     "uuid": "073e6728-8bc8-4527-8aa7-4a8b431ee2fd"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.1000 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [RESET_N] on F.Cu - B.Cu",
+     "pos": {
+      "x": 34.8,
+      "y": 20.0
+     },
+     "uuid": "073e6728-8bc8-4527-8aa7-4a8b431ee2fd"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Items shorting two nets (nets 3V3 and VBUS_F)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [VBUS_F] on F.Cu - B.Cu",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "9f800461-6b66-42ed-aea8-958f42129abf"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [VBUS_F] on F.Cu - B.Cu",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "9f800461-6b66-42ed-aea8-958f42129abf"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Items shorting two nets (nets 3V3 and LED_GPIO)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [LED_GPIO] on F.Cu - B.Cu",
+     "pos": {
+      "x": 35.25,
+      "y": 21.25
+     },
+     "uuid": "d5c2db23-cc42-40c4-b93a-7fa93004220c"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [LED_GPIO] on F.Cu - B.Cu",
+     "pos": {
+      "x": 35.25,
+      "y": 21.25
+     },
+     "uuid": "d5c2db23-cc42-40c4-b93a-7fa93004220c"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.0150 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [DECUSB] on F.Cu - B.Cu",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "a83752f5-64a7-4270-9aca-2b44f20d7a91"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0900 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Via [DECUSB] on F.Cu - B.Cu",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "a83752f5-64a7-4270-9aca-2b44f20d7a91"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "a18c86f8-c8e7-406f-9f93-92e5cb62be84"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [DEC5] on B.Cu, length 4.6245 mm",
+     "pos": {
+      "x": 32.25,
+      "y": 23.73
+     },
+     "uuid": "4e7f0a61-7dbc-404e-bb18-5b9b05a535df"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "a18c86f8-c8e7-406f-9f93-92e5cb62be84"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.0750 mm)",
+   "items": [
+    {
+     "description": "Via [TEMP_ALERT] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "3afeafec-383d-4943-933e-8f3b41c40146"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "a18c86f8-c8e7-406f-9f93-92e5cb62be84"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.1500 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "a18c86f8-c8e7-406f-9f93-92e5cb62be84"
+    },
+    {
+     "description": "Via [TEMP_ALERT] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "3afeafec-383d-4943-933e-8f3b41c40146"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [TEMP_ALERT] on B.Cu, length 8.6762 mm",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "84a3e044-6a59-4320-b218-5e9fa16394b0"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "a18c86f8-c8e7-406f-9f93-92e5cb62be84"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [VBUS_F] on B.Cu, length 13.9300 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "1efd8faf-8564-4aa4-84fd-967817d4084b"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "a18c86f8-c8e7-406f-9f93-92e5cb62be84"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets 3V3 and DECUSB)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "a18c86f8-c8e7-406f-9f93-92e5cb62be84"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.1200 mm)",
+   "items": [
+    {
+     "description": "Track [RESET_N] on B.Cu, length 10.9319 mm",
+     "pos": {
+      "x": 34.8,
+      "y": 20.0
+     },
+     "uuid": "70e7745a-e5f4-44da-90cc-3ad80043d529"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 0.2800 mm",
+     "pos": {
+      "x": 35.53,
+      "y": 19.75
+     },
+     "uuid": "9a3a7f11-9573-40c8-bc87-098d22fbec27"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.0898 mm)",
+   "items": [
+    {
+     "description": "Via [RESET_N] on F.Cu - B.Cu",
+     "pos": {
+      "x": 34.8,
+      "y": 20.0
+     },
+     "uuid": "073e6728-8bc8-4527-8aa7-4a8b431ee2fd"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 0.2800 mm",
+     "pos": {
+      "x": 35.53,
+      "y": 19.75
+     },
+     "uuid": "9a3a7f11-9573-40c8-bc87-098d22fbec27"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.1648 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 0.2800 mm",
+     "pos": {
+      "x": 35.53,
+      "y": 19.75
+     },
+     "uuid": "9a3a7f11-9573-40c8-bc87-098d22fbec27"
+    },
+    {
+     "description": "Via [RESET_N] on F.Cu - B.Cu",
+     "pos": {
+      "x": 34.8,
+      "y": 20.0
+     },
+     "uuid": "073e6728-8bc8-4527-8aa7-4a8b431ee2fd"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.1561 mm)",
+   "items": [
+    {
+     "description": "Via [I2C_SDA] on F.Cu - B.Cu",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "cd7c6dbe-c599-4af0-b54b-375984ac1330"
+    },
+    {
+     "description": "Via [I2C_SCL] on F.Cu - B.Cu",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "fb37e3c5-6201-446b-8ef9-2288112afcc1"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.2311 mm)",
+   "items": [
+    {
+     "description": "Via [I2C_SDA] on F.Cu - B.Cu",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "cd7c6dbe-c599-4af0-b54b-375984ac1330"
+    },
+    {
+     "description": "Via [I2C_SCL] on F.Cu - B.Cu",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "fb37e3c5-6201-446b-8ef9-2288112afcc1"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Items shorting two nets (nets I2C_SCL and I2C_SDA)",
+   "items": [
+    {
+     "description": "Track [I2C_SCL] on B.Cu, length 12.2117 mm",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "26f03456-8f17-4567-ad56-b873c586acf6"
+    },
+    {
+     "description": "Track [I2C_SDA] on B.Cu, length 5.1750 mm",
+     "pos": {
+      "x": 39.325,
+      "y": 14.675
+     },
+     "uuid": "66f8c475-a0d6-4855-b8b0-f4323a205f7f"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [I2C_SDA] on B.Cu, length 12.1269 mm",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "845b207c-c1b4-46d6-8a6a-d1b6306c65d7"
+    },
+    {
+     "description": "Track [SWDIO] on B.Cu, length 17.3524 mm",
+     "pos": {
+      "x": 34.75,
+      "y": 16.46
+     },
+     "uuid": "b3259dba-768f-403a-bc90-5e0fe556106c"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [SWDCLK] on B.Cu, length 16.2352 mm",
+     "pos": {
+      "x": 34.25,
+      "y": 16.75
+     },
+     "uuid": "43795256-c48c-474a-96f9-c89de0317293"
+    },
+    {
+     "description": "Track [I2C_SDA] on B.Cu, length 12.1269 mm",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "845b207c-c1b4-46d6-8a6a-d1b6306c65d7"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets I2C_SCL and I2C_SDA)",
+   "items": [
+    {
+     "description": "Track [I2C_SCL] on B.Cu, length 12.2117 mm",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "26f03456-8f17-4567-ad56-b873c586acf6"
+    },
+    {
+     "description": "Track [I2C_SDA] on B.Cu, length 12.1269 mm",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "845b207c-c1b4-46d6-8a6a-d1b6306c65d7"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [DEC5] on B.Cu, length 6.9800 mm",
+     "pos": {
+      "x": 32.25,
+      "y": 16.75
+     },
+     "uuid": "4517fbc2-62a8-4c09-b32a-495c87d6d33f"
+    },
+    {
+     "description": "Track [I2C_SDA] on B.Cu, length 12.1269 mm",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "845b207c-c1b4-46d6-8a6a-d1b6306c65d7"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets I2C_SDA and I2C_SCL)",
+   "items": [
+    {
+     "description": "Track [I2C_SDA] on B.Cu, length 12.1269 mm",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "845b207c-c1b4-46d6-8a6a-d1b6306c65d7"
+    },
+    {
+     "description": "Via [I2C_SCL] on F.Cu - B.Cu",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "fb37e3c5-6201-446b-8ef9-2288112afcc1"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [I2C_SDA] on B.Cu, length 12.1269 mm",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "845b207c-c1b4-46d6-8a6a-d1b6306c65d7"
+    },
+    {
+     "description": "Via [I2C_SCL] on F.Cu - B.Cu",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "fb37e3c5-6201-446b-8ef9-2288112afcc1"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.1561 mm)",
+   "items": [
+    {
+     "description": "Via [I2C_SDA] on F.Cu - B.Cu",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "cd7c6dbe-c599-4af0-b54b-375984ac1330"
+    },
+    {
+     "description": "Via [I2C_SCL] on F.Cu - B.Cu",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "fb37e3c5-6201-446b-8ef9-2288112afcc1"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.2311 mm)",
+   "items": [
+    {
+     "description": "Via [I2C_SDA] on F.Cu - B.Cu",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "cd7c6dbe-c599-4af0-b54b-375984ac1330"
+    },
+    {
+     "description": "Via [I2C_SCL] on F.Cu - B.Cu",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "fb37e3c5-6201-446b-8ef9-2288112afcc1"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [USB_D-_MCU] on F.Cu, length 6.5500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 22.25
+     },
+     "uuid": "087cd8d0-7d21-4aa6-8db7-5436d2218716"
+    },
+    {
+     "description": "Track [USB_D-_ESD] on F.Cu, length 4.9250 mm",
+     "pos": {
+      "x": 36.6,
+      "y": 20.575
+     },
+     "uuid": "9aa2e10b-9200-4f56-a1a9-b91a94a39dcd"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets USB_D+_MCU and USB_D-_ESD)",
+   "items": [
+    {
+     "description": "Track [USB_D+_MCU] on F.Cu, length 0.7071 mm",
+     "pos": {
+      "x": 36.75,
+      "y": 21.75
+     },
+     "uuid": "836dde37-6ab6-4636-b343-0689f714d4b5"
+    },
+    {
+     "description": "Track [USB_D-_ESD] on F.Cu, length 4.9250 mm",
+     "pos": {
+      "x": 36.6,
+      "y": 20.575
+     },
+     "uuid": "9aa2e10b-9200-4f56-a1a9-b91a94a39dcd"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [USB_D-_ESD] on F.Cu, length 4.9250 mm",
+     "pos": {
+      "x": 36.6,
+      "y": 20.575
+     },
+     "uuid": "9aa2e10b-9200-4f56-a1a9-b91a94a39dcd"
+    },
+    {
+     "description": "Track [USB_D+_MCU] on F.Cu, length 1.5000 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 21.75
+     },
+     "uuid": "ad02dcbe-a87e-4e4d-86b1-7f8d12c31879"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets DEC5 and USB_D-_ESD)",
+   "items": [
+    {
+     "description": "Pad 1 [DEC5] of C9 on F.Cu",
+     "pos": {
+      "x": 35.52,
+      "y": 27.0
+     },
+     "uuid": "55c66cac-8f38-4a45-9244-f6fcfb0c59f8"
+    },
+    {
+     "description": "Track [USB_D-_ESD] on F.Cu, length 2.4042 mm",
+     "pos": {
+      "x": 36.6,
+      "y": 25.5
+     },
+     "uuid": "e2693857-717b-4045-ba49-233c9a685a80"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Items shorting two nets (nets DEC5 and USB_D-_ESD)",
+   "items": [
+    {
+     "description": "Via [DEC5] on F.Cu - B.Cu",
+     "pos": {
+      "x": 35.52,
+      "y": 27.0
+     },
+     "uuid": "4982e7df-bc6c-4fe7-827b-40eec7aa92d5"
+    },
+    {
+     "description": "Track [USB_D-_ESD] on F.Cu, length 2.4042 mm",
+     "pos": {
+      "x": 36.6,
+      "y": 25.5
+     },
+     "uuid": "e2693857-717b-4045-ba49-233c9a685a80"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [USB_D-_ESD] on B.Cu, length 3.6416 mm",
+     "pos": {
+      "x": 39.175,
+      "y": 18.0
+     },
+     "uuid": "305906a3-ad59-4676-b55c-54cc5106e5fb"
+    },
+    {
+     "description": "Track [SWDIO] on B.Cu, length 17.3524 mm",
+     "pos": {
+      "x": 34.75,
+      "y": 16.46
+     },
+     "uuid": "b3259dba-768f-403a-bc90-5e0fe556106c"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [USB_D-_ESD] on B.Cu, length 3.6416 mm",
+     "pos": {
+      "x": 39.175,
+      "y": 18.0
+     },
+     "uuid": "305906a3-ad59-4676-b55c-54cc5106e5fb"
+    },
+    {
+     "description": "Track [SWDCLK] on B.Cu, length 16.2352 mm",
+     "pos": {
+      "x": 34.25,
+      "y": 16.75
+     },
+     "uuid": "43795256-c48c-474a-96f9-c89de0317293"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0720 mm)",
+   "items": [
+    {
+     "description": "Track [USB_D-_ESD] on F.Cu, length 2.4042 mm",
+     "pos": {
+      "x": 36.6,
+      "y": 25.5
+     },
+     "uuid": "e2693857-717b-4045-ba49-233c9a685a80"
+    },
+    {
+     "description": "Via [DEC5] on F.Cu - B.Cu",
+     "pos": {
+      "x": 35.52,
+      "y": 27.0
+     },
+     "uuid": "4982e7df-bc6c-4fe7-827b-40eec7aa92d5"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [CC2] on F.Cu, length 2.2550 mm",
+     "pos": {
+      "x": 25.7,
+      "y": 45.25
+     },
+     "uuid": "a7a5c3b8-403b-46d0-ad57-d7d52ecac95f"
+    },
+    {
+     "description": "Track [USB_D+_ESD] on F.Cu, length 2.5456 mm",
+     "pos": {
+      "x": 25.137,
+      "y": 44.45
+     },
+     "uuid": "f0fc848e-f00d-488a-9f8b-58ce3fa3d714"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets USB_D+_ESD and CC2)",
+   "items": [
+    {
+     "description": "Track [USB_D+_ESD] on F.Cu, length 2.5456 mm",
+     "pos": {
+      "x": 25.137,
+      "y": 44.45
+     },
+     "uuid": "f0fc848e-f00d-488a-9f8b-58ce3fa3d714"
+    },
+    {
+     "description": "Via [CC2] on F.Cu - B.Cu",
+     "pos": {
+      "x": 25.7,
+      "y": 45.25
+     },
+     "uuid": "f3557800-e81c-42b0-ae34-1441e83affc2"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [USB_D+_ESD] on F.Cu, length 2.5456 mm",
+     "pos": {
+      "x": 25.137,
+      "y": 44.45
+     },
+     "uuid": "f0fc848e-f00d-488a-9f8b-58ce3fa3d714"
+    },
+    {
+     "description": "Via [CC2] on F.Cu - B.Cu",
+     "pos": {
+      "x": 25.7,
+      "y": 45.25
+     },
+     "uuid": "f3557800-e81c-42b0-ae34-1441e83affc2"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [VBUS_F] on B.Cu, length 13.9300 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "1efd8faf-8564-4aa4-84fd-967817d4084b"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 9.6500 mm",
+     "pos": {
+      "x": 34.0,
+      "y": 22.85
+     },
+     "uuid": "704b2f2f-f1cb-4fac-b550-b5e09d01e469"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [VBUS_F] on B.Cu, length 13.9300 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "1efd8faf-8564-4aa4-84fd-967817d4084b"
+    },
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Track [VBUS_F] on B.Cu, length 13.9300 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "1efd8faf-8564-4aa4-84fd-967817d4084b"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [VBUS_F] on B.Cu, length 13.9300 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "1efd8faf-8564-4aa4-84fd-967817d4084b"
+    },
+    {
+     "description": "Track [DEC5] on B.Cu, length 4.6245 mm",
+     "pos": {
+      "x": 32.25,
+      "y": 23.73
+     },
+     "uuid": "4e7f0a61-7dbc-404e-bb18-5b9b05a535df"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [VBUS_F] on B.Cu, length 13.9300 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "1efd8faf-8564-4aa4-84fd-967817d4084b"
+    },
+    {
+     "description": "Track [TEMP_ALERT] on B.Cu, length 8.6762 mm",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "84a3e044-6a59-4320-b218-5e9fa16394b0"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [VBUS_F] on B.Cu, length 13.9300 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 22.75
+     },
+     "uuid": "1efd8faf-8564-4aa4-84fd-967817d4084b"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 23.25
+     },
+     "uuid": "729bb5ab-0d88-487d-b82d-11994a5570e5"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Track [LED_GPIO] on B.Cu, length 3.8891 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 21.25
+     },
+     "uuid": "9b048cf2-1982-4246-82f2-a434be7b2afe"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [I2C_SCL] on B.Cu, length 12.2117 mm",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "26f03456-8f17-4567-ad56-b873c586acf6"
+    },
+    {
+     "description": "Track [SWDIO] on B.Cu, length 17.3524 mm",
+     "pos": {
+      "x": 34.75,
+      "y": 16.46
+     },
+     "uuid": "b3259dba-768f-403a-bc90-5e0fe556106c"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [I2C_SCL] on B.Cu, length 12.2117 mm",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "26f03456-8f17-4567-ad56-b873c586acf6"
+    },
+    {
+     "description": "Track [SWDCLK] on B.Cu, length 16.2352 mm",
+     "pos": {
+      "x": 34.25,
+      "y": 16.75
+     },
+     "uuid": "43795256-c48c-474a-96f9-c89de0317293"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [I2C_SCL] on B.Cu, length 12.2117 mm",
+     "pos": {
+      "x": 31.0,
+      "y": 22.81
+     },
+     "uuid": "26f03456-8f17-4567-ad56-b873c586acf6"
+    },
+    {
+     "description": "Track [DEC5] on B.Cu, length 6.9800 mm",
+     "pos": {
+      "x": 32.25,
+      "y": 16.75
+     },
+     "uuid": "4517fbc2-62a8-4c09-b32a-495c87d6d33f"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 9.6500 mm",
+     "pos": {
+      "x": 34.0,
+      "y": 22.85
+     },
+     "uuid": "704b2f2f-f1cb-4fac-b550-b5e09d01e469"
+    },
+    {
+     "description": "Track [TEMP_ALERT] on B.Cu, length 8.6762 mm",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "84a3e044-6a59-4320-b218-5e9fa16394b0"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    },
+    {
+     "description": "Track [TEMP_ALERT] on B.Cu, length 5.1150 mm",
+     "pos": {
+      "x": 39.385,
+      "y": 29.675
+     },
+     "uuid": "b4387e70-5c43-4e86-a1a0-527021fb909f"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.0894 mm)",
+   "items": [
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    },
+    {
+     "description": "Track [TEMP_ALERT] on B.Cu, length 8.6762 mm",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "84a3e044-6a59-4320-b218-5e9fa16394b0"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Track [TEMP_ALERT] on B.Cu, length 8.6762 mm",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "84a3e044-6a59-4320-b218-5e9fa16394b0"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [SWDCLK] on B.Cu, length 11.5400 mm",
+     "pos": {
+      "x": 45.73,
+      "y": 28.23
+     },
+     "uuid": "46e74640-ea62-46bd-8606-edb3e188eeea"
+    },
+    {
+     "description": "Track [SWDIO] on B.Cu, length 17.3524 mm",
+     "pos": {
+      "x": 34.75,
+      "y": 16.46
+     },
+     "uuid": "b3259dba-768f-403a-bc90-5e0fe556106c"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [TEMP_ALERT] on B.Cu, length 8.6762 mm",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "84a3e044-6a59-4320-b218-5e9fa16394b0"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [RESET_N] on B.Cu, length 18.5500 mm",
+     "pos": {
+      "x": 42.53,
+      "y": 27.73
+     },
+     "uuid": "9363bf0e-075b-4def-ac83-c8b82b521224"
+    },
+    {
+     "description": "Track [SWDIO] on B.Cu, length 17.3524 mm",
+     "pos": {
+      "x": 34.75,
+      "y": 16.46
+     },
+     "uuid": "b3259dba-768f-403a-bc90-5e0fe556106c"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [SWDCLK] on B.Cu, length 16.2352 mm",
+     "pos": {
+      "x": 34.25,
+      "y": 16.75
+     },
+     "uuid": "43795256-c48c-474a-96f9-c89de0317293"
+    },
+    {
+     "description": "Track [RESET_N] on B.Cu, length 18.5500 mm",
+     "pos": {
+      "x": 42.53,
+      "y": 27.73
+     },
+     "uuid": "9363bf0e-075b-4def-ac83-c8b82b521224"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Track [RESET_N] on B.Cu, length 10.9319 mm",
+     "pos": {
+      "x": 34.8,
+      "y": 20.0
+     },
+     "uuid": "70e7745a-e5f4-44da-90cc-3ad80043d529"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets SWDCLK and SWDIO)",
+   "items": [
+    {
+     "description": "Track [SWDCLK] on B.Cu, length 11.5400 mm",
+     "pos": {
+      "x": 45.73,
+      "y": 28.23
+     },
+     "uuid": "46e74640-ea62-46bd-8606-edb3e188eeea"
+    },
+    {
+     "description": "PTH pad 2 [SWDIO] of J2",
+     "pos": {
+      "x": 56.0,
+      "y": 28.73
+     },
+     "uuid": "4992cfa8-99e9-4dc8-9189-6aaae0b8f1df"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0500 mm)",
+   "items": [
+    {
+     "description": "Track [SWDCLK] on B.Cu, length 11.5400 mm",
+     "pos": {
+      "x": 45.73,
+      "y": 28.23
+     },
+     "uuid": "46e74640-ea62-46bd-8606-edb3e188eeea"
+    },
+    {
+     "description": "PTH pad 2 [SWDIO] of J2",
+     "pos": {
+      "x": 56.0,
+      "y": 28.73
+     },
+     "uuid": "4992cfa8-99e9-4dc8-9189-6aaae0b8f1df"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [DEC5] on B.Cu, length 4.6245 mm",
+     "pos": {
+      "x": 32.25,
+      "y": 23.73
+     },
+     "uuid": "4e7f0a61-7dbc-404e-bb18-5b9b05a535df"
+    },
+    {
+     "description": "Track [3V3] on B.Cu, length 9.6500 mm",
+     "pos": {
+      "x": 34.0,
+      "y": 22.85
+     },
+     "uuid": "704b2f2f-f1cb-4fac-b550-b5e09d01e469"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Track [DEC5] on B.Cu, length 4.6245 mm",
+     "pos": {
+      "x": 32.25,
+      "y": 23.73
+     },
+     "uuid": "4e7f0a61-7dbc-404e-bb18-5b9b05a535df"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [DEC5] on B.Cu, length 4.6245 mm",
+     "pos": {
+      "x": 32.25,
+      "y": 23.73
+     },
+     "uuid": "4e7f0a61-7dbc-404e-bb18-5b9b05a535df"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [XTAL_B] on F.Cu, length 8.0000 mm",
+     "pos": {
+      "x": 25.0,
+      "y": 19.6
+     },
+     "uuid": "1d11302a-7f6c-448d-8000-7b2623bf2fe5"
+    },
+    {
+     "description": "Track [XTAL_A] on F.Cu, length 4.2500 mm",
+     "pos": {
+      "x": 24.5,
+      "y": 16.75
+     },
+     "uuid": "bb4a1b75-7d2c-415e-ae31-08f10d8cfb5e"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets DEC4 and I2C_SDA)",
+   "items": [
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    },
+    {
+     "description": "Via [I2C_SDA] on F.Cu - B.Cu",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "cd7c6dbe-c599-4af0-b54b-375984ac1330"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    },
+    {
+     "description": "Via [I2C_SDA] on F.Cu - B.Cu",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "cd7c6dbe-c599-4af0-b54b-375984ac1330"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Items shorting two nets (nets GND and DEC4)",
+   "items": [
+    {
+     "description": "Pad EP [GND] of U3 on F.Cu",
+     "pos": {
+      "x": 32.0,
+      "y": 20.0
+     },
+     "uuid": "75d9e133-9527-4cb7-a363-b0994b17edcc"
+    },
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Clearance violation (pad clearance 0.1500 mm; actual 0.1036 mm)",
+   "items": [
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    },
+    {
+     "description": "Pad B3 [<no net>] of U3 on F.Cu",
+     "pos": {
+      "x": 29.25,
+      "y": 22.5
+     },
+     "uuid": "ceed657f-cdbc-4f92-bd1c-7c7afc6e0dea"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Items shorting two nets (nets  and DEC4)",
+   "items": [
+    {
+     "description": "Pad D2 [<no net>] of U3 on F.Cu",
+     "pos": {
+      "x": 30.0,
+      "y": 22.75
+     },
+     "uuid": "429dea0b-be39-48f4-9aba-201e398d8101"
+    },
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Clearance violation (pad clearance 0.1500 mm; actual 0.1036 mm)",
+   "items": [
+    {
+     "description": "Pad F2 [<no net>] of U3 on F.Cu",
+     "pos": {
+      "x": 30.5,
+      "y": 22.75
+     },
+     "uuid": "482cc169-01f7-4554-b3df-ea7c9c414048"
+    },
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Items shorting two nets (nets DEC4 and I2C_SDA)",
+   "items": [
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    },
+    {
+     "description": "Pad G1 [I2C_SDA] of U3 on F.Cu",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "a79e5c88-a979-48ba-81aa-dc934dfe7591"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 9.6500 mm",
+     "pos": {
+      "x": 34.0,
+      "y": 22.85
+     },
+     "uuid": "704b2f2f-f1cb-4fac-b550-b5e09d01e469"
+    },
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets 3V3 and BUTTON_GPIO)",
+   "items": [
+    {
+     "description": "Via [3V3] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "16e37671-dd7e-4322-adb4-fe8f1d85fa53"
+    },
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    },
+    {
+     "description": "Via [3V3] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "16e37671-dd7e-4322-adb4-fe8f1d85fa53"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.0394 mm)",
+   "items": [
+    {
+     "description": "Via [TEMP_ALERT] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "3afeafec-383d-4943-933e-8f3b41c40146"
+    },
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.1144 mm)",
+   "items": [
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    },
+    {
+     "description": "Via [TEMP_ALERT] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "3afeafec-383d-4943-933e-8f3b41c40146"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [BUTTON_GPIO] on B.Cu, length 15.3654 mm",
+     "pos": {
+      "x": 33.0,
+      "y": 22.81
+     },
+     "uuid": "796f80da-91d8-4da1-9a2b-aff3f6f60de6"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Items shorting two nets (nets 3V3 and DECUSB)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 9.6500 mm",
+     "pos": {
+      "x": 34.0,
+      "y": 22.85
+     },
+     "uuid": "704b2f2f-f1cb-4fac-b550-b5e09d01e469"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Items shorting two nets (nets 3V3 and DECUSB)",
+   "items": [
+    {
+     "description": "Via [3V3] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "16e37671-dd7e-4322-adb4-fe8f1d85fa53"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    },
+    {
+     "description": "Via [3V3] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.75,
+      "y": 23.25
+     },
+     "uuid": "16e37671-dd7e-4322-adb4-fe8f1d85fa53"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Items shorting two nets (nets DECUSB and 3V3)",
+   "items": [
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    },
+    {
+     "description": "Via [3V3] on F.Cu - B.Cu",
+     "pos": {
+      "x": 34.0,
+      "y": 22.85
+     },
+     "uuid": "f07b78ea-0639-4440-a25f-a9419728e7d0"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    },
+    {
+     "description": "Via [3V3] on F.Cu - B.Cu",
+     "pos": {
+      "x": 34.0,
+      "y": 22.85
+     },
+     "uuid": "f07b78ea-0639-4440-a25f-a9419728e7d0"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Clearance violation ( clearance 0.2000 mm; actual 0.0650 mm)",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 12.7500 mm",
+     "pos": {
+      "x": 35.25,
+      "y": 19.75
+     },
+     "uuid": "02295cbb-d111-48ee-9150-4b9bd6128951"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "clearance"
+  },
+  {
+   "description": "Items shorting two nets (nets TEMP_ALERT and DECUSB)",
+   "items": [
+    {
+     "description": "Via [TEMP_ALERT] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "3afeafec-383d-4943-933e-8f3b41c40146"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "shorting_items"
+  },
+  {
+   "description": "Hole clearance violation (board setup constraints hole clearance 0.2500 mm; actual 0.0000 mm)",
+   "items": [
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    },
+    {
+     "description": "Via [TEMP_ALERT] on F.Cu - B.Cu",
+     "pos": {
+      "x": 33.25,
+      "y": 23.54
+     },
+     "uuid": "3afeafec-383d-4943-933e-8f3b41c40146"
+    }
+   ],
+   "severity": "error",
+   "type": "hole_clearance"
+  },
+  {
+   "description": "Tracks crossing",
+   "items": [
+    {
+     "description": "Track [3V3] on B.Cu, length 9.2500 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 23.25
+     },
+     "uuid": "729bb5ab-0d88-487d-b82d-11994a5570e5"
+    },
+    {
+     "description": "Track [DECUSB] on B.Cu, length 12.0208 mm",
+     "pos": {
+      "x": 34.81,
+      "y": 22.0
+     },
+     "uuid": "c2019278-28da-4d62-9c93-1625a171a70d"
+    }
+   ],
+   "severity": "error",
+   "type": "tracks_crossing"
+  },
+  {
+   "description": "Rear solder mask aperture bridges items with different nets",
+   "items": [
+    {
+     "description": "Track [SWDCLK] on B.Cu, length 11.5400 mm",
+     "pos": {
+      "x": 45.73,
+      "y": 28.23
+     },
+     "uuid": "46e74640-ea62-46bd-8606-edb3e188eeea"
+    },
+    {
+     "description": "PTH pad 2 [SWDIO] of J2",
+     "pos": {
+      "x": 56.0,
+      "y": 28.73
+     },
+     "uuid": "4992cfa8-99e9-4dc8-9189-6aaae0b8f1df"
+    }
+   ],
+   "severity": "error",
+   "type": "solder_mask_bridge"
+  },
+  {
+   "description": "Front solder mask aperture bridges items with different nets",
+   "items": [
+    {
+     "description": "Track [USB_D-_ESD] on F.Cu, length 2.4042 mm",
+     "pos": {
+      "x": 36.6,
+      "y": 25.5
+     },
+     "uuid": "e2693857-717b-4045-ba49-233c9a685a80"
+    },
+    {
+     "description": "Pad 1 [DEC5] of C9 on F.Cu",
+     "pos": {
+      "x": 35.52,
+      "y": 27.0
+     },
+     "uuid": "55c66cac-8f38-4a45-9244-f6fcfb0c59f8"
+    }
+   ],
+   "severity": "error",
+   "type": "solder_mask_bridge"
+  },
+  {
+   "description": "Front solder mask aperture bridges items with different nets",
+   "items": [
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    },
+    {
+     "description": "Pad EP [GND] of U3 on F.Cu",
+     "pos": {
+      "x": 32.0,
+      "y": 20.0
+     },
+     "uuid": "75d9e133-9527-4cb7-a363-b0994b17edcc"
+    }
+   ],
+   "severity": "error",
+   "type": "solder_mask_bridge"
+  },
+  {
+   "description": "Front solder mask aperture bridges items with different nets",
+   "items": [
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    },
+    {
+     "description": "Pad D2 [<no net>] of U3 on F.Cu",
+     "pos": {
+      "x": 30.0,
+      "y": 22.75
+     },
+     "uuid": "429dea0b-be39-48f4-9aba-201e398d8101"
+    }
+   ],
+   "severity": "error",
+   "type": "solder_mask_bridge"
+  },
+  {
+   "description": "Front solder mask aperture bridges items with different nets",
+   "items": [
+    {
+     "description": "Track [DEC4] on F.Cu, length 3.9174 mm",
+     "pos": {
+      "x": 29.25,
+      "y": 22.0
+     },
+     "uuid": "a3e5a307-a9fa-4808-ab60-8ef8fa1bd522"
+    },
+    {
+     "description": "Pad G1 [I2C_SDA] of U3 on F.Cu",
+     "pos": {
+      "x": 30.75,
+      "y": 23.25
+     },
+     "uuid": "a79e5c88-a979-48ba-81aa-dc934dfe7591"
+    }
+   ],
+   "severity": "error",
+   "type": "solder_mask_bridge"
+  }
+ ],
+ "unconnected_items": [],
+ "schematic_parity": []
+}

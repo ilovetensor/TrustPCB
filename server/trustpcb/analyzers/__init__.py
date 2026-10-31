@@ -3,7 +3,11 @@
 ``run_all(board, ctx)`` runs every analyzer on a board. ``run_for_version(version_dir, ctx)``
 loads the version's board, runs them and writes ``artifacts/analyzers.json``::
 
-    {candidates, overlays, status, seconds, registrations, context}
+    {candidates, overlays, status, seconds, registrations, context, part_roles, drc_summary}
+
+``part_roles`` is ``classify.part_roles_report`` (role used, source, symbol reading, conflicts with a brief) and
+``drc_summary`` is ``drc_summary.summarize`` of the version's KiCad candidates when ``artifacts/candidates.json``
+exists (distinct positions, net pairs and vias next to the record counts).
 
 Hook for the baseline step (after its own candidates are built)::
 
@@ -20,9 +24,10 @@ from pathlib import Path
 from typing import Any
 
 from .base import ANALYZER_NAMES, DEFAULTS, AnalyzerContext, finalize, run_all
+from .classify import check_role, part_roles_report, symbol_role
 from .loader import board_from_dict, load_board
 
-__all__ = ["ANALYZER_NAMES", "DEFAULTS", "AnalyzerContext", "board_from_dict", "finalize", "load_board", "run_all", "run_for_version"]
+__all__ = ["ANALYZER_NAMES", "DEFAULTS", "AnalyzerContext", "board_from_dict", "check_role", "finalize", "load_board", "part_roles_report", "run_all", "run_for_version", "symbol_role"]
 
 OUTPUT = "analyzers.json"
 
@@ -68,6 +73,18 @@ def run_for_version(version_dir: str | Path, ctx: AnalyzerContext | None = None,
         result["registrations"] = {"zone_roles": board.zone_roles, "candidate_targets": board.candidate_targets}
         result["context"] = ctx.to_dict() | {"cache": None}
         result["context"].pop("cache", None)
+        try:
+            result["part_roles"] = part_roles_report(board, ctx)
+        except Exception as exc:  # a report problem must not lose the analyzer results
+            result["part_roles"] = {"error": f"{type(exc).__name__}: {exc}"}
+        cands = art / "candidates.json"
+        if cands.is_file():
+            try:
+                from . import drc_summary
+
+                result["drc_summary"] = drc_summary.summarize(json.loads(cands.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                pass
         _atomic_write(art / OUTPUT, json.dumps(result, indent=1))
         return result
     finally:

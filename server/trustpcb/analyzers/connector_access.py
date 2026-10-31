@@ -16,6 +16,13 @@ included). The distance to the first edge is the board lying in front of the mou
 past the edge, or within ``connector_setback_mm`` of it, passes. The candidate also lists parts
 whose courtyard or pads fall in a corridor as wide as the courtyard, from the mouth to that edge,
 and the board edge nearest to the connector.
+
+The corridor is not a plug size: this analyzer has no data on any plug or cable. Its width is the
+connector's own courtyard width (the extent of the footprint ring across the mating direction), and the
+data says so (``corridor.basis``). Parts are listed when their courtyard or pads touch it; mounting holes
+are listed too, as ``mounting_holes_in_path``, because a screw hole stops a plug as surely as a part does
+(test points and fiducials are flat marks and are left out). Whether a given plug fits depends on its
+real overmould, which the board does not tell.
 """
 
 from __future__ import annotations
@@ -48,7 +55,7 @@ _EXCLUDE_RE = re.compile(
     re.I,
 )
 _NOT_SIGNAL_RE = re.compile(r"^(|~.*|sh(ell|ield)?\d*|s\d+|sld\d*|mp\d*|mh\d*|shld\d*)$", re.I)
-_FLAT_KINDS = ("testpoint", "fiducial", "mounting")
+_FLAT_KINDS = ("testpoint", "fiducial")
 
 #: pads must sit at one end: the body centre must be this fraction of the body length away from the pad centroid
 _MIN_OFFSET = 0.15
@@ -156,7 +163,8 @@ def _blockers(board: Board, fp: Footprint, corridor: Polygon, m, u) -> list[dict
     cx0, cy0, cx1, cy1 = corridor.bounds
     out = []
     for other in board.footprints:
-        if other.ref == fp.ref or part_kind(other) in _FLAT_KINDS:
+        kind = part_kind(other)
+        if other.ref == fp.ref or kind in _FLAT_KINDS:
             continue
         x0, y0, x1, y1 = other.bbox
         if x1 < cx0 or x0 > cx1 or y1 < cy0 or y0 > cy1:
@@ -175,6 +183,7 @@ def _blockers(board: Board, fp: Footprint, corridor: Polygon, m, u) -> list[dict
                 "side": other.side,
                 "in_path": "pads and courtyard" if pad_hits else "courtyard",
                 "from_mouth_mm": round(max(near, 0.0), 2),
+                "kind": "mounting_hole" if kind == "mounting" else "part",
             }
         )
     out.sort(key=lambda b: (b["from_mouth_mm"], b["ref"]))
@@ -263,11 +272,15 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             mark("object", [fp.id], label="mouth not at an edge"),
             mark("link", [point_target(acc.mouth), point_target(acc.hit)], label="board in front of mouth", value=meas(d, "mm", 2)),
         ]
+        parts = [b for b in acc.blockers if b["kind"] == "part"]
+        holes = [b for b in acc.blockers if b["kind"] == "mounting_hole"]
         m: dict[str, Any] = {
             "mouth_to_edge": meas(d, "mm", 2),
             "limit": meas(limit, "mm", 2),
             "corridor_width": meas(acc.width, "mm", 2),
-            "blockers": meas(len(acc.blockers), "count"),
+            "blockers": meas(len(parts), "count"),
+            "mounting_holes_in_path": meas(len(holes), "count"),
+            "objects_in_path": meas(len(acc.blockers), "count"),
         }
         extra: dict[str, Any] = {}
         near = acc.nearest
@@ -285,9 +298,12 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             shown = acc.blockers[:_MAX_BLOCKERS]
             targets += [b["id"] for b in shown]
             marks.append(mark("object", [b["id"] for b in shown], label="in the plug path"))
-            listed = ", ".join(f"{b['ref']} ({b['in_path']}, {b['from_mouth_mm']:.1f} mm from the mouth)" for b in shown)
+            listed = ", ".join(f"{b['ref']} ({'mounting hole' if b['kind'] == 'mounting_hole' else b['in_path']}, {b['from_mouth_mm']:.1f} mm from the mouth)" for b in shown)
             more = f" and {len(acc.blockers) - len(shown)} more" if len(acc.blockers) > len(shown) else ""
-            details.append(f"In a {acc.width:.1f} mm wide corridor in front of the mouth: {listed}{more}.")
+            details.append(
+                f"In a {acc.width:.1f} mm wide corridor in front of the mouth (the connector's courtyard width, not a plug size): "
+                f"{len(parts)} part(s) and {len(holes)} mounting hole(s): {listed}{more}."
+            )
         em.add(
             title,
             m,
@@ -302,7 +318,13 @@ def analyze(board: Board, ctx: AnalyzerContext) -> list[dict[str, Any]]:
             heading_deg=round(_heading(acc.u), 1),
             mouth=[round(acc.mouth[0], 3), round(acc.mouth[1], 3)],
             edge_point=[round(acc.hit[0], 3), round(acc.hit[1], 3)],
-            in_path=[{k: b[k] for k in ("ref", "side", "in_path", "from_mouth_mm")} for b in acc.blockers],
+            in_path=[{k: b[k] for k in ("ref", "side", "in_path", "from_mouth_mm", "kind")} for b in acc.blockers],
+            corridor={
+                "width_mm": round(acc.width, 3),
+                "length_mm": round(d, 3),
+                "basis": "the connector's courtyard width across the mating direction, from the middle of the mouth to the first board edge; it is not a plug or cable size",
+                "plug_envelope_known": False,
+            },
             kind="interior" if toward_interior else "setback",
             **extra,
         )
