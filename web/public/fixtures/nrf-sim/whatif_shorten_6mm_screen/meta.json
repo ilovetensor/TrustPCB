@@ -1,0 +1,230 @@
+{
+ "model": "rf-model-2",
+ "scenario": {
+  "model": "rf-model-2",
+  "version_id": "v-nrf",
+  "antenna_id": "net:ANT_FEED",
+  "band_ghz": [
+   2.4,
+   2.4835
+  ],
+  "quality": "screen",
+  "whatif_ops": [
+   {
+    "delta_mm": -6.0,
+    "op": "adjust_antenna_length"
+   }
+  ],
+  "material": null,
+  "region": null
+ },
+ "scenario_hash": "bab402ebe2af42f60ca6",
+ "setup": {
+  "kind": "trace",
+  "antenna_id": "net:ANT_FEED",
+  "antenna_net": "ANT_FEED",
+  "antenna_layer": "F.Cu",
+  "antenna_targets": [
+   "net:ANT_FEED"
+  ],
+  "antenna_bbox": [
+   21.0,
+   0.5,
+   32.85,
+   13.12
+  ],
+  "open_end": [
+   29.2,
+   1.0
+  ],
+  "port_xy": [
+   32.485,
+   12.8
+  ],
+  "port_on": "pad:L1:2",
+  "port_layer": "F.Cu",
+  "ground_layer": "B.Cu",
+  "ground_net": "GND",
+  "port_width_mm": 0.0,
+  "port_axis": "x",
+  "port_impedance_ohm": 50.0,
+  "band_ghz": [
+   2.4,
+   2.4835
+  ],
+  "f0_hz": 2441750000.0,
+  "fc_hz": 854612500.0,
+  "region": [
+   0.0,
+   0.0,
+   66.0,
+   43.8144
+  ],
+  "fine_zone": [
+   17.0,
+   0.0,
+   44.5,
+   17.12
+  ],
+  "narrowest_mm": 0.3,
+  "narrowest_what": "antenna track width on F.Cu (track:05bc5591)",
+  "network": {
+   "chain": [
+    "ANT_FEED",
+    "ANT_CHIP"
+   ],
+   "elements": [
+    {
+     "ref": "C20",
+     "kind": "C",
+     "value": 5e-13,
+     "value_text": "DNP 0.5pF",
+     "populated": false,
+     "topology": "shunt",
+     "nets": [
+      "ANT_FEED",
+      "GND"
+     ],
+     "chain_net": "ANT_FEED",
+     "position": 0
+    },
+    {
+     "ref": "L1",
+     "kind": "L",
+     "value": 2.2000000000000003e-09,
+     "value_text": "2.2nH",
+     "populated": true,
+     "topology": "series",
+     "nets": [
+      "ANT_FEED",
+      "ANT_CHIP"
+     ],
+     "chain_net": "ANT_FEED",
+     "position": 1
+    },
+    {
+     "ref": "C19",
+     "kind": "C",
+     "value": 5e-13,
+     "value_text": "DNP 0.5pF",
+     "populated": false,
+     "topology": "shunt",
+     "nets": [
+      "ANT_CHIP",
+      "GND"
+     ],
+     "chain_net": "ANT_CHIP",
+     "position": 2
+    }
+   ],
+   "source": "pad:U3:H23",
+   "understood": true,
+   "notes": []
+  },
+  "stackup": {
+   "layer_z": {
+    "B.Cu": 0.0,
+    "F.Cu": 1.565
+   },
+   "slabs": [
+    {
+     "zmin": 0.0,
+     "zmax": 1.565,
+     "epsilon_r": 4.5,
+     "loss_tangent": 0.02,
+     "name": "dielectric 1"
+    }
+   ],
+   "total_mm": 1.565,
+   "copper_order": [
+    "B.Cu",
+    "F.Cu"
+   ]
+  },
+  "assumptions": [
+   "stackup is a default (the board file has no stackup): FR4, no measured permittivity",
+   "copper is modelled as zero-thickness sheets; solder mask, silkscreen and component bodies are ignored",
+   "only the copper of components is modelled (pads); part bodies, shields and cables are not",
+   "outside the fine zone only pours and ground/antenna copper are kept, and they are simplified",
+   "50 ohm lumped port between the feed copper and the ground layer; matching parts are added afterwards as ideal lumped parts",
+   "the board edge is cut to a rectangle at the simulated region; absorbing boundary instead of an open field"
+  ],
+  "warnings": [
+   "3 gaps between antenna copper and other copper are under 0.25 mm (smallest 0.15 mm: component pad gaps and pour clearance); they are not resolved by the mesh and are not part of the 2-cell rule"
+  ],
+  "simulatable": true
+ },
+ "mesh": {
+  "quality": "screen",
+  "cells": 655340,
+  "nx": 155,
+  "ny": 151,
+  "nz": 28,
+  "thirds_edges": 14,
+  "max_growth_ratio": 1.476,
+  "min_cell_mm": 0.086,
+  "max_cell_substrate_mm": 1.9674,
+  "cells_per_wavelength_substrate": 21.79,
+  "substrate_eps_r": 4.5,
+  "lambda_substrate_mm": 42.873,
+  "narrowest_feature_mm": 0.3,
+  "narrowest_feature": "antenna track width on F.Cu (track:05bc5591)",
+  "min_cells_across_feature": 2.09,
+  "min_cells_across_where": "track:bb7be672 at (32.0, 12.0)",
+  "required_cells_across": 2.0,
+  "unresolved_small_gaps": [
+   "3 gaps between antenna copper and other copper are under 0.25 mm (smallest 0.15 mm: component pad gaps and pour clearance); they are not resolved by the mesh and are not part of the 2-cell rule"
+  ],
+  "rule_ok": true,
+  "rule_reasons": [],
+  "notes": [],
+  "narrow_refinements": 0
+ },
+ "y_convention": {
+  "scenario_y": "-board_y",
+  "note": "sidecar v_mm and row order of y-planes are scenario y; board_y = -scenario_y"
+ },
+ "region": [
+  0.0,
+  0.0,
+  66.0,
+  43.8144
+ ],
+ "fine_zone": [
+  17.0,
+  0.0,
+  44.5,
+  17.12
+ ],
+ "model_stats": {
+  "items": 663,
+  "dropped_far_items": 434,
+  "kept_far_items": 91,
+  "vias_total": 29,
+  "vias_kept": 29,
+  "triangles": {
+   "F.Cu": 1464,
+   "B.Cu": 416
+  },
+  "vias_in_scenario": 29,
+  "vias_dropped_snap": 0
+ },
+ "whatif_notes": [
+  "shortened the antenna by 6.00 mm from its open end"
+ ],
+ "material": null,
+ "port": {
+  "start": [
+   32.485,
+   -12.8,
+   0.0
+  ],
+  "end": [
+   32.485,
+   -12.8,
+   1.565
+  ],
+  "width_mm": 0.0,
+  "requested_width_mm": 0.0
+ }
+}
