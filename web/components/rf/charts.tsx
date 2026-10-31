@@ -3,7 +3,9 @@ import { useMemo, useRef, useState } from "react";
 import { rgb, FIELD_STOPS } from "../../lib/ramp.mjs";
 import type { S11Data, ZinData } from "../../lib/rf-data";
 
-export interface CurveSpec { id: string; label: string; f_ghz: number[]; s11_db: number[]; color?: string; dashed?: boolean }
+export interface CurveSpec { id: string; label: string; f_ghz: number[]; s11_db: number[]; color?: string; dashed?: boolean; width?: number; opacity?: number }
+export interface DipMark { f_ghz: number; db: number }
+export interface VLine { f_ghz: number; label: string }
 interface Band { lo_ghz: number; hi_ghz: number; target_db: number }
 
 const interp = (xs: number[], ys: number[], x: number) => {
@@ -14,8 +16,9 @@ const interp = (xs: number[], ys: number[], x: number) => {
 export const minOf = (c: { f_ghz: number[]; s11_db: number[] }) => { const i = c.s11_db.indexOf(Math.min(...c.s11_db)); return { f: c.f_ghz[i], db: c.s11_db[i] }; };
 
 /** Tuning graph: S11 over frequency, band shading, target line, draggable marker. */
-export function TuningGraph({ curves, band, marker, onMarker, height = 240, compact = false, yMin = -30 }: {
+export function TuningGraph({ curves, band, marker, onMarker, height = 240, compact = false, yMin = -30, dips, vlines, markMinima = true }: {
   curves: CurveSpec[]; band?: Band | null; marker?: number | null; onMarker?: (f: number) => void; height?: number; compact?: boolean; yMin?: number;
+  /** every S11 dip of the main curve, numbered on the graph */ dips?: DipMark[]; /** vertical reference lines such as the first series resonance */ vlines?: VLine[]; markMinima?: boolean;
 }) {
   const W = compact ? 140 : 400;
   const m = compact ? { l: 4, r: 4, t: 4, b: 4 } : { l: 44, r: 14, t: 14, b: 30 };
@@ -52,15 +55,27 @@ export function TuningGraph({ curves, band, marker, onMarker, height = 240, comp
       ))}
       {!compact && <text x={m.l} y={height - 2} className="rl-t">GHz</text>}
       {!compact && <text x={m.l + 4} y={m.t + 8} className="rl-t">S11 dB</text>}
-      {curves.map((c, i) => (
-        <path key={c.id} d={d(c)} fill="none" stroke={c.color ?? (i === curves.length - 1 ? "var(--paper)" : cols[0])} strokeWidth={i === curves.length - 1 ? 1.8 : 1.3} strokeDasharray={c.dashed || i < curves.length - 1 ? "4 3" : undefined} strokeLinejoin="round" />
+      {!compact && vlines?.filter((v) => v.f_ghz >= f0 && v.f_ghz <= f1).map((v, i) => (
+        <g key={"vl" + i}>
+          <line x1={x(v.f_ghz)} x2={x(v.f_ghz)} y1={m.t} y2={height - m.b} stroke="var(--paper-2)" strokeWidth="1" strokeDasharray="1.5 3" />
+          <text x={x(v.f_ghz) + 3} y={height - m.b - 5} className="rl-t" fill="var(--paper-2)">{v.label}</text>
+        </g>
       ))}
-      {!compact && curves.map((c) => { const mn = minOf(c); return (<g key={"mn" + c.id}><circle cx={x(mn.f)} cy={y(mn.db)} r="2.6" fill="var(--stage)" stroke="var(--paper-2)" /></g>); })}
+      {curves.map((c, i) => (
+        <path key={c.id} d={d(c)} fill="none" stroke={c.color ?? (i === curves.length - 1 ? "var(--paper)" : cols[0])} strokeWidth={c.width ?? (i === curves.length - 1 ? 1.8 : 1.3)} strokeDasharray={c.dashed ?? i < curves.length - 1 ? "4 3" : undefined} opacity={c.opacity} strokeLinejoin="round" />
+      ))}
+      {!compact && !dips && markMinima && curves.map((c) => { const mn = minOf(c); return (<g key={"mn" + c.id}><circle cx={x(mn.f)} cy={y(mn.db)} r="2.6" fill="var(--stage)" stroke="var(--paper-2)" /></g>); })}
+      {!compact && dips?.filter((dp) => dp.f_ghz >= f0 && dp.f_ghz <= f1).map((dp, i) => (
+        <g key={"dip" + i}>
+          <circle cx={x(dp.f_ghz)} cy={y(dp.db)} r="2.8" fill="var(--stage)" stroke="var(--paper)" strokeWidth="1.2" />
+          <text x={x(dp.f_ghz)} y={y(dp.db) + 12} textAnchor="middle" className="rl-t" fill="var(--paper)">{i + 1}</text>
+        </g>
+      ))}
       {!compact && marker != null && (
         <g>
           <line x1={x(marker)} x2={x(marker)} y1={m.t} y2={height - m.b} stroke="var(--paper)" strokeWidth="1" />
           <circle cx={x(marker)} cy={y(interp(main.f_ghz, main.s11_db, marker))} r="4" fill="var(--signal)" stroke="var(--stage)" strokeWidth="1.5" />
-          <g transform={`translate(${Math.min(W - 120, Math.max(m.l, x(marker) + 8))} ${m.t + 12})`}>
+          <g transform={`translate(${x(marker) > (m.l + W - m.r) / 2 ? m.l + 8 : W - m.r - 112} ${y(-13)})`}>
             <rect width="108" height="34" fill="var(--panel-solid)" stroke="var(--hair-2)" />
             <text x="6" y="14" className="rl-t" fill="var(--paper)">{marker.toFixed(3)} GHz</text>
             <text x="6" y="27" className="rl-t" fill="var(--signal)">{interp(main.f_ghz, main.s11_db, marker).toFixed(1)} dB</text>
@@ -72,13 +87,18 @@ export function TuningGraph({ curves, band, marker, onMarker, height = 240, comp
 }
 
 /** Smith chart (50 ohm) with the frequency path, band highlighted. */
-export function SmithChart({ zin, band, marker, size = 320 }: { zin: ZinData; band: Band; marker?: number | null; size?: number }) {
+export function SmithChart({ zin, band, marker, size = 320, second }: { zin: ZinData; band: Band; marker?: number | null; size?: number; /** a second path, drawn dashed (as built over antenna only) */ second?: ZinData | null }) {
   const c = size / 2, R = size / 2 - 14;
   const g = zin.f_ghz.map((f, i) => {
     const zr = zin.z_re[i] / 50, zi = zin.z_im[i] / 50;
     const den = (zr + 1) ** 2 + zi ** 2;
     return { f, x: ((zr * zr + zi * zi - 1) / den) * R + c, y: -((2 * zi) / den) * R + c };
   });
+  const g2 = second ? second.f_ghz.map((f, i) => {
+    const zr = second.z_re[i] / 50, zi = second.z_im[i] / 50;
+    const den = (zr + 1) ** 2 + zi ** 2;
+    return { f, x: ((zr * zr + zi * zi - 1) / den) * R + c, y: -((2 * zi) / den) * R + c };
+  }) : null;
   const rc = [0.2, 0.5, 1, 2, 5];
   const xc = [0.2, 0.5, 1, 2, 5];
   const pt = (arr: typeof g, a: number, b: number) => arr.filter((p) => p.f >= a && p.f <= b);
@@ -98,6 +118,7 @@ export function SmithChart({ zin, band, marker, size = 320 }: { zin: ZinData; ba
       <text x={c + R * 0.3333 + 3} y={c - 4} className="rl-t">VSWR 2</text>
       {[0.2, 0.5, 1, 2, 5].map((r) => (<text key={r} x={c + ((r - 1) / (r + 1)) * R + 2} y={c + 10} className="rl-t" textAnchor="middle" opacity="0.7">{r}</text>))}
       {g.slice(1).map((p, i) => (<line key={i} x1={g[i].x} y1={g[i].y} x2={p.x} y2={p.y} stroke={rgb(FIELD_STOPS, 0.15 + 0.8 * (i / g.length))} strokeWidth="1.8" opacity={p.f >= band.lo_ghz && p.f <= band.hi_ghz ? 1 : 0.55} />))}
+      {g2 && <path d={seg(g2)} fill="none" stroke="var(--paper-2)" strokeWidth="1.2" strokeDasharray="4 3" opacity="0.9" />}
       <path d={seg(inBand)} fill="none" stroke="var(--paper)" strokeWidth="3.4" strokeLinecap="round" opacity="0.9" />
       {g.length > 0 && <circle cx={g[0].x} cy={g[0].y} r="2.5" fill="var(--paper-3)" />}
       {mk && (<g><circle cx={mk.x} cy={mk.y} r="5" fill="var(--signal)" stroke="var(--stage)" strokeWidth="1.5" /><text x={mk.x + 8} y={mk.y - 8} className="rl-t" fill="var(--paper)">{mk.f.toFixed(3)}</text></g>)}

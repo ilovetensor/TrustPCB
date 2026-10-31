@@ -120,3 +120,56 @@
     height: 56vh;
   }
 }
+
+.cmp-note {
+  position: absolute;
+  z-index: 7;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  font-size: 11px;
+  max-width: min(440px, 80%);
+  pointer-events: none;
+}
+.cmp-picks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.cmp-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.cmp-pick select {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  background: var(--panel-2);
+  color: var(--paper);
+  border: 1px solid var(--hair-2);
+  font: 12px var(--font-ui);
+  padding: 0 6px;
+}
+.cmp-rf-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.cmp-rf-tbl th,
+.cmp-rf-tbl td {
+  text-align: left;
+  padding: 6px 6px 6px 0;
+  border-bottom: 1px solid var(--hair);
+  white-space: nowrap;
+}
+.cmp-rf-tbl th {
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--paper-3);
+}

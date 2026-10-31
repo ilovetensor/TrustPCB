@@ -1,5 +1,7 @@
 // Same-origin API proxy policy. Only the contracted routes (spec section 18) pass.
 const ids = "[a-zA-Z0-9_-]+";
+// The processed files of a simulation job (docs/specs/contracts.md, "Simulation jobs for the dashboard").
+const simFile = "(?:(?:s11|s11_as_built|zin|pattern|field|pulse|current|result|summary|meta)\\.json|(?:field_xy|field_xz|pulse|current)\\.bin|model\\.png)";
 const routes = [
   ["GET", /^health$/],
   ["GET", /^bootstrap$/],
@@ -10,7 +12,8 @@ const routes = [
   ["GET", new RegExp(`^versions/${ids}$`)],
   ["POST", new RegExp(`^versions/${ids}/reviews$`)],
   ["GET", new RegExp(`^reviews/${ids}$`)],
-  ["GET", new RegExp(`^reviews/${ids}/(stream|events|findings|assumptions|report)$`)],
+  ["GET", new RegExp(`^reviews/${ids}/(stream|events|findings|assumptions|report|sims)$`)],
+  ["GET", new RegExp(`^sim/${ids}/files/${simFile}$`)],
   ["GET", new RegExp(`^reviews/${ids}/report/revisions$`)],
   ["GET", new RegExp(`^reviews/${ids}/report/${ids}\\.(html|pdf|json)$`)],
   ["POST", new RegExp(`^reviews/${ids}/(cancel|threads)$`)],
@@ -33,7 +36,7 @@ export function trustedRequest(host, origin, method) {
   return !origin || origin === `http://${host}`;
 }
 
-/** Version artifacts (board.json, scene SVGs, the GLB) are the only responses a browser may keep for a short time. */
+/** Version artifacts (board.json, scene SVGs, the GLB) and processed simulation files are the only responses a browser may keep for a short time. The backend decides how long (finished jobs only). */
 export function isArtifactRoute(method, path) {
-  return method === "GET" && new RegExp(`^artifacts/${ids}$`).test(path);
+  return method === "GET" && (new RegExp(`^artifacts/${ids}$`).test(path) || new RegExp(`^sim/${ids}/files/${simFile}$`).test(path));
 }

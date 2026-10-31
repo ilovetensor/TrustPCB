@@ -9,6 +9,7 @@ import { useNarrow } from "../../lib/hooks";
 import { activeMarks } from "../../lib/review-reducer.mjs";
 import { buildMeta, fmtClock, findingLabel } from "../../lib/review-view";
 import { useReview, type Selected } from "../../lib/use-review";
+import { useReviewSims } from "../../lib/use-stage-rf";
 import type { BBox, Evidence, Geometry } from "../../lib/types";
 import type { FocusRequest, Ghost, Insets } from "../board2d/Board2D";
 import { BoardStage, describePick } from "../stage/BoardStage";
@@ -98,6 +99,8 @@ export function Workspace({ reviewId }: { reviewId: string }) {
   const index = useMemo(() => (board ? indexBoard(board) : null), [board]);
   const findingsMeta = useMemo(() => buildMeta(state.findingOrder.map((id) => state.findings[id])), [state.findingOrder, state.findings]);
   const marks = useMemo(() => activeMarks(state), [state]);
+  const simsWorking = Object.values(state.sims).some((x) => x.status !== "done");
+  const rfs = useReviewSims(reviewId, state.experiments.length + Object.keys(state.sims).length, simsWorking);
 
   const focusOn = useCallback((targets: string[], maxScale?: number) => {
     if (!index) return;
@@ -213,7 +216,7 @@ export function Workspace({ reviewId }: { reviewId: string }) {
   );
   const strip = (
     <Panel className="ws-ex" idx="EXPERIMENTS" delay={400} bodyClass="fill">
-      <ExperimentStrip state={state} reviewId={reviewId} band={band} rfNote={rfNote} />
+      <ExperimentStrip state={state} reviewId={reviewId} band={band} rfNote={rfNote} jobs={rfs.jobs} source={rfs.source} />
     </Panel>
   );
   const chat = (
@@ -242,8 +245,8 @@ export function Workspace({ reviewId }: { reviewId: string }) {
     <BoardStage
       board={board} glbUrl={bundle?.glbUrl ?? null} scene={bundle?.scene ?? null} zones={bundle?.zones ?? []}
       marks={marks} meta={findingsMeta} selectedId={selectedId} onSelect={selectFinding}
-      insets={layout.insets} toolbarTop={layout.toolbarTop} focus={focus} spotlight={spot} rf={null} ghost={ghost} pickedId={picked} onPick={setPicked} onAsk={askObject}
-      initialMode={q("mode") === "3d" ? "3d" : "2d"} initialExplode={Number(q("explode") ?? 0) || 0} rfAvailable={false}
+      insets={layout.insets} toolbarTop={layout.toolbarTop} focus={focus} spotlight={spot} rf={rfs.rf} ghost={ghost} pickedId={picked} onPick={setPicked} onAsk={askObject}
+      initialMode={q("mode") === "3d" ? "3d" : "2d"} initialExplode={Number(q("explode") ?? 0) || 0} rfAvailable={!!rfs.rf}
     />
   ) : (
     <div className="stage"><div className="stage-bg" aria-hidden /><div className="stage-loading mono idx">{(boardError ?? (!meta ? rv.error : null))?.toUpperCase() ?? "LOADING BOARD"}</div></div>

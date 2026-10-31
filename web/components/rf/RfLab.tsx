@@ -1,146 +1,295 @@
 "use client";
 import "./rf.css";
-import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { loadPatchSim, scenarioBoard, type RfBundle } from "../../lib/rf-data";
-import type { Board } from "../../lib/types";
-import { PatchBoard3D } from "./PatchBoard3D";
-import { Board2D } from "../board2d/Board2D";
-import { DEFAULT_LAYERS } from "../board2d/layers";
-import { Icon, Logo, Panel } from "../ui";
-import { CurrentCanvas2D } from "./FieldCanvas2D";
-import { PulsePlane3D, WaveField3D } from "./WaveField3D";
-import { RadiationBalloon } from "./RadiationBalloon";
-import { SmithChart, TuningGraph, minOf, type CurveSpec } from "./charts";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import type { BoardBundle } from "../../lib/api";
+import {
+  describeFreq, describeOps, dipsOf, isDone, isScreen, loadCurrent, loadCurves, loadField, loadMeta, loadPattern, loadPulse, loadSummary, measure,
+  QUALITY_NOTE, zFromGamma, type Curves, type SimJob, type SimSource,
+} from "../../lib/sims";
+import { useAsync } from "../../lib/use-async";
 import { cssGradient, FIELD_STOPS, SIGNED_STOPS } from "../../lib/ramp.mjs";
 import { reducedMotion, useNarrow, useReducedMotion } from "../../lib/hooks";
+import { Icon, Logo, Panel } from "../ui";
+import { SimStage, type SimView } from "./SimStage";
+import { SmithChart, TuningGraph, type CurveSpec } from "./charts";
 
-const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false });
-type View = "wave" | "pulse" | "pattern" | "current";
-const noop = () => {};
-const VIEW3D = { az: 0.55, el: 0.62, dist: 235 };
+export interface Band { lo_ghz: number; hi_ghz: number; target_db: number }
+type Trace = "antenna" | "both" | "as_built";
 
-function bandwidth(c: { f_ghz: number[]; s11_db: number[] }, thr = -10) {
-  const mn = minOf(c);
-  if (mn.db > thr) return null;
-  let i = c.f_ghz.indexOf(mn.f), lo = i, hi = i;
-  while (lo > 0 && c.s11_db[lo - 1] <= thr) lo--;
-  while (hi < c.f_ghz.length - 1 && c.s11_db[hi + 1] <= thr) hi++;
-  return { lo: c.f_ghz[lo], hi: c.f_ghz[hi] };
+const VIEWS: { key: SimView; label: string; needs: string[]; why: string }[] = [
+  { key: "wave", label: "Field", needs: ["field.json", "field_xy.bin"], why: "field" },
+  { key: "pulse", label: "Pulse", needs: ["pulse.json", "pulse.bin"], why: "pulse" },
+  { key: "pattern", label: "Pattern", needs: ["pattern.json"], why: "radiation pattern" },
+  { key: "current", label: "Current", needs: ["current.json", "current.bin"], why: "surface current" },
+];
+const canShow = (job: SimJob | null, v: SimView) => !!job && VIEWS.find((x) => x.key === v)!.needs.every((f) => job.files.includes(f));
+const OVERLAY_COLORS = ["var(--cu-bot)", "var(--sim-neg)", "var(--paper-3)"];
+const ghz = (hz: number) => (hz / 1e9).toFixed(3);
+const kindLabel = (k: SimJob["kind"]) => (k === "base" ? "Base" : k === "confirm" ? "Confirm" : "What-if");
+
+function JobCard({ job, active, overlaid, onActive, onOverlay }: { job: SimJob; active: boolean; overlaid: boolean; onActive: () => void; onOverlay: () => void }) {
+  const ops = describeOps(job.whatif_ops, job.material);
+  const done = isDone(job);
+  const dip = measure(job, "s11_dip_1"), depth = measure(job, "s11_dip_1_depth") ?? measure(job, "s11_min");
+  const res = measure(job, "resonance");
+  const f = dip ?? res;
+  return (
+    <div className={`rf-job ${active ? "on" : ""} ${done ? "" : "wait"}`}>
+      <button className="rf-job-main" onClick={onActive} disabled={!done} aria-pressed={active} title={done ? "Show this run" : `This run is ${job.status}`}>
+        <span className="rf-job-top">
+          {job.ref && <b className="mono">{job.ref}</b>}
+          <span className="idx">{kindLabel(job.kind)}</span>
+          {job.suspect && <span className="idx">{job.suspect}</span>}
+          <span style={{ flex: 1 }} />
+          {isScreen(job) ? <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span> : job.quality === "confirm" ? <span className="stamp solid">Confirm</span> : null}
+        </span>
+        <span className="rf-job-name">{job.label ?? "Simulation"}</span>
+        {ops && <span className="rf-job-ops mono">{ops}</span>}
+        <span className="rf-job-num mono">
+          {done && f != null && depth != null ? <><b>{(f / 1000).toFixed(3)}</b> GHz <b>{depth.toFixed(1)}</b> dB</> : done ? "no numbers recorded" : job.status}
+          {job.trust && <span className={`stamp ${job.trust.status === "ok" ? "" : "sig"}`} title={job.trust.reasons.join("; ") || undefined}>Trust {job.trust.status === "ok" ? "ok" : "failed"}</span>}
+        </span>
+        {!done && job.status !== "failed" && job.status !== "canceled" && job.status !== "timeout" && job.status !== "interrupted" && (
+          <span className="meter sig"><b style={{ width: `${(job.progress ?? 0) * 100}%` }} /></span>
+        )}
+      </button>
+      {done && <button className={`rf-job-ov ${overlaid ? "on" : ""}`} onClick={onOverlay} aria-pressed={overlaid} disabled={active} title={active ? "Shown" : overlaid ? "Remove from the tuning graph" : "Overlay on the tuning graph"}><Icon name={overlaid || active ? "check" : "plus"} size={11} /></button>}
+    </div>
+  );
 }
 
-function RfSample({ reviewId }: { reviewId: string }) {
-  const [rf, setRf] = useState<RfBundle | null | undefined>(undefined);
-  const [view, setView] = useState<View>("wave");
+export function RfLabView({ reviewId, source, bundle, title, goalBand, notice, sample = false, initialJob = null }: {
+  reviewId: string; source: SimSource; bundle: BoardBundle | null; title: string; goalBand: Band | null; notice?: string; sample?: boolean; initialJob?: string | null;
+}) {
+  const jobs = source.jobs;
+  const doneJobs = useMemo(() => jobs.filter(isDone), [jobs]);
+  const preferred = useMemo(() => [...doneJobs].reverse().find((j) => j.kind === "confirm" && j.files.includes("field.json")) ?? [...doneJobs].reverse().find((j) => j.files.includes("field.json")) ?? doneJobs[doneJobs.length - 1] ?? null, [doneJobs]);
+  const [activeId, setActiveId] = useState<string | null>(initialJob);
+  const [overlay, setOverlay] = useState<Record<string, boolean>>({});
+  const active = jobs.find((j) => j.job_id === activeId) ?? preferred;
+  useEffect(() => { if (!activeId && preferred) setActiveId(preferred.job_id); }, [activeId, preferred]);
+  // the base run is the default reference to overlay under a later run, unless the viewer chose otherwise
+  const baseRef = useMemo(() => doneJobs.find((j) => j.kind === "base" && j.job_id !== active?.job_id) ?? null, [doneJobs, active]);
+  const overlaid = useMemo(() => doneJobs.filter((j) => j.job_id !== active?.job_id && (overlay[j.job_id] ?? j.job_id === baseRef?.job_id)), [doneJobs, active, overlay, baseRef]);
+
+  const [view, setView] = useState<SimView>("wave");
+  const [mode, setMode] = useState<"2d" | "3d">("3d");
+  const [trace, setTrace] = useState<Trace>("both");
   const [marker, setMarker] = useState<number | null>(null);
-  const calm = useReducedMotion();
   const [paused, setPaused] = useState(false);
   const [frame, setFrame] = useState(0);
   const [pulsePlay, setPulsePlay] = useState(!reducedMotion());
+  const calm = useReducedMotion();
   const narrow = useNarrow();
 
-  useEffect(() => { loadPatchSim().then((b) => { setRf(b); if (b) setMarker(minOf(b.s11).f); }); }, []);
-  const board: Board | null = useMemo(() => (rf ? scenarioBoard(rf) : null), [rf]);
+  const k = active?.job_id ?? "";
+  const summary = useAsync(active ? () => loadSummary(source, active) : null, `s:${source.id}:${k}`).data ?? null;
+  const meta = useAsync(active ? () => loadMeta(source, active) : null, `m:${source.id}:${k}`).data ?? null;
+  const curves = useAsync<Curves>(active ? () => loadCurves(source, active) : null, `c:${source.id}:${k}`).data ?? null;
+  const overlayKey = overlaid.map((j) => j.job_id).join(",");
+  const overlayCurves = useAsync(overlaid.length ? () => Promise.all(overlaid.map(async (j) => ({ job: j, c: await loadCurves(source, j) }))) : null, `o:${source.id}:${overlayKey}`).data ?? null;
+
+  // pick a view this run can show
+  useEffect(() => { if (active && !canShow(active, view)) { const v = VIEWS.find((x) => canShow(active, x.key)); if (v) setView(v.key); } }, [active, view]);
+  const needField = view === "wave" && canShow(active, "wave");
+  const fields = useAsync(active && needField ? () => loadField(source, active) : null, `f:${source.id}:${k}:${needField}`);
+  const needPulse = view === "pulse" && canShow(active, "pulse");
+  const pulse = useAsync(active && needPulse ? () => loadPulse(source, active) : null, `p:${source.id}:${k}:${needPulse}`);
+  const needCur = view === "current" && canShow(active, "current");
+  const current = useAsync(active && needCur ? () => loadCurrent(source, active) : null, `u:${source.id}:${k}:${needCur}`);
+  const needPat = view === "pattern" && canShow(active, "pattern");
+  const pattern = useAsync(active && needPat ? () => loadPattern(source, active) : null, `t:${source.id}:${k}:${needPat}`);
 
   useEffect(() => {
-    if (view !== "pulse" || !rf?.pulse || !pulsePlay) return;
-    const n = rf.pulse.frames.length;
+    if (view !== "pulse" || !pulse.data || !pulsePlay) return;
+    const n = pulse.data.frames.length;
     const id = setInterval(() => setFrame((f) => { if (f >= n - 1) { setPulsePlay(false); return n - 1; } return f + 1; }), 90);
     return () => clearInterval(id);
-  }, [view, rf, pulsePlay]);
+  }, [view, pulse.data, pulsePlay]);
 
-  const curves: CurveSpec[] = useMemo(() => {
-    if (!rf) return [];
-    return [...(rf.overlays ?? []).map((o) => ({ id: o.id, label: o.label, ...o.s11 })), { id: "base", label: "Base", ...rf.s11 }];
-  }, [rf]);
-  const insets = narrow ? { l: 0, r: 0, t: 0, b: 0 } : { l: 340, r: 430, t: 70, b: 20 };
-  const mn = rf ? minOf(rf.s11) : null;
-  const bw = rf ? bandwidth(rf.s11) : null;
-  const inBand = rf && mn ? mn.f >= rf.band.lo_ghz && mn.f <= rf.band.hi_ghz && mn.db <= rf.band.target_db : false;
+  const bandArr = summary?.setup?.band_ghz ?? meta?.setup?.band_ghz ?? (goalBand ? [goalBand.lo_ghz, goalBand.hi_ghz] as [number, number] : null);
+  const band: Band | null = bandArr ? { lo_ghz: bandArr[0], hi_ghz: bandArr[1], target_db: goalBand?.target_db ?? -10 } : null;
+  const bandHz: [number, number] | null = band ? [band.lo_ghz, band.hi_ghz] : null;
 
-  const stage = board && rf ? (
-    view === "current" ? (
-      <div className="rf-stage"><div className="stage-bg" />
-        <Board2D
-          board={board} marks={[]} meta={{}} selectedId={null} onSelect={noop} layers={{ ...DEFAULT_LAYERS, issues: false, zones: false, silk: false }}
-          insets={insets} overlay={() => (rf.current ? <CurrentCanvas2D data={rf.current} /> : null)} focus={{ bbox: [-32, -27, 32, 27], nonce: 1 }}
+  const antenna = curves?.antenna ?? null, asBuilt = curves?.asBuilt ?? null;
+  const specs: CurveSpec[] = useMemo(() => {
+    const out: CurveSpec[] = [];
+    (overlayCurves ?? []).forEach(({ job, c }, i) => {
+      if (c.antenna) out.push({ id: `o-${job.job_id}`, label: `${job.ref ?? ""} ${job.label ?? kindLabel(job.kind)}`.trim(), f_ghz: c.antenna.f_ghz, s11_db: c.antenna.s11_db, color: OVERLAY_COLORS[i % OVERLAY_COLORS.length], dashed: true, width: 1.3, opacity: 0.9 });
+    });
+    if (asBuilt && (trace === "both" || trace === "as_built")) out.push({ id: "asbuilt", label: "As built (board's matching parts)", f_ghz: asBuilt.f_ghz, s11_db: asBuilt.s11_db, color: "var(--sim-4)", dashed: trace === "both", width: trace === "both" ? 1.4 : 1.9 });
+    if (antenna && (trace === "both" || trace === "antenna" || !asBuilt)) out.push({ id: "antenna", label: `${active?.ref ?? ""} antenna only`.trim(), f_ghz: antenna.f_ghz, s11_db: antenna.s11_db, color: "var(--paper)", dashed: false, width: 1.9 });
+    return out;
+  }, [overlayCurves, antenna, asBuilt, trace, active]);
+  const mainCurve = specs[specs.length - 1] ?? null;
+
+  const { dips, fromSummary } = useMemo(() => dipsOf(trace === "as_built" ? null : summary, trace === "as_built" ? asBuilt : antenna), [summary, antenna, asBuilt, trace]);
+  const fsr = summary?.sim?.first_series_resonance_hz;
+  useEffect(() => { setMarker(dips[0]?.f_ghz ?? null); }, [k, dips.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const smithMain = curves?.zin ?? null;
+  const smithAsBuilt = useMemo(() => (asBuilt?.re && asBuilt.im ? { f_ghz: asBuilt.f_ghz, ...zFromGamma(asBuilt.re, asBuilt.im, curves?.zin ? 50 : 50) } : null), [asBuilt, curves]);
+
+  const insets = narrow ? { l: 0, r: 0, t: 0, b: 0 } : { l: 358, r: 450, t: 66, b: 74 };
+  const screen = isScreen(active);
+  const sim = summary?.sim;
+  const freqNote = (() => {
+    if (view === "wave" && fields.data) {
+      const off = sim?.f_res && Math.abs(fields.data.f_hz - sim.f_res) / fields.data.f_hz > 0.02;
+      return `Field at ${describeFreq(fields.data.f_hz, bandHz)}, relative units.${off ? ` The antenna resonates elsewhere (${ghz(sim!.f_res!)} GHz); this shows how it behaves at the target.` : ""}`;
+    }
+    if (view === "pattern" && pattern.data) {
+      const atDip = sim?.f_res && Math.abs(pattern.data.f_hz - sim.f_res) / pattern.data.f_hz < 0.005;
+      return `Pattern at ${describeFreq(pattern.data.f_hz, bandHz)}${atDip ? ", the deepest S11 dip" : ""}. Field and current are drawn at the band frequency, so the two can differ.`;
+    }
+    if (view === "current" && current.data) return `Current at ${describeFreq(current.data.f_hz, bandHz)}.`;
+    if (view === "pulse") return "A broadband pulse leaving the feed: it shows how energy spreads, not one frequency.";
+    return "";
+  })();
+  const loading = (view === "wave" && fields.data === undefined) || (view === "pulse" && pulse.data === undefined && needPulse) || (view === "current" && current.data === undefined && needCur) || (view === "pattern" && pattern.data === undefined && needPat);
+  const unavailable = active && !canShow(active, view);
+
+  const stage = (
+    <div className="rf-stage"><div className="stage-bg" />
+      {bundle && active ? (
+        <SimStage
+          board={bundle.board} glbUrl={bundle.glbUrl} sceneInfo={bundle.scene} view={view} mode={mode} meta={meta}
+          fields={fields.data} current={current.data} pulse={pulse.data} pattern={pattern.data} frame={frame} paused={paused} calm={calm} insets={insets}
         />
-      </div>
-    ) : (
-      <div className="rf-stage"><div className="stage-bg" />
-        <Scene3D bare center={[0, 0.8, 0]} board={board} glbUrl="" marks={[]} meta={{}} selectedId={null} onSelect={noop} explode={0} insets={insets} showMarks={false} boardDims={false} autoRotate={view === "pattern" && !calm} view3d={VIEW3D}>
-          <PatchBoard3D rf={rf} />
-          {view === "wave" && rf.fieldXY && <WaveField3D slice={rf.fieldXY} paused={paused || calm} />}
-          {view === "wave" && rf.fieldXZ && <WaveField3D slice={rf.fieldXZ} paused={paused || calm} />}
-          {view === "pulse" && rf.pulse && <PulsePlane3D pulse={rf.pulse} y={rf.pulse.at_mm} frame={frame} />}
-          {view === "pattern" && rf.pattern && <RadiationBalloon pattern={rf.pattern} center={[0, 1.6, 0]} scale={30} />}
-        </Scene3D>
-      </div>
-    )
-  ) : <div className="rf-stage"><div className="stage-bg" /></div>;
+      ) : <div className="stage-loading mono idx">{bundle ? "NO FINISHED RUN YET" : "LOADING THE BOARD"}</div>}
+      {loading && <div className="rf-loading mono idx">LOADING {VIEWS.find((v) => v.key === view)!.why.toUpperCase()} DATA</div>}
+      {unavailable && <div className="rf-loading mono idx">THIS RUN KEPT NO {VIEWS.find((v) => v.key === view)!.why.toUpperCase()} FILES</div>}
+    </div>
+  );
 
+  const runs = (
+    <Panel className="rf-runs" idx="RUNS" title="Simulations" delay={60} bodyClass="rf-body tight" actions={<span className="idx">{doneJobs.length} OF {jobs.length} DONE</span>}>
+      <div className="rf-joblist">
+        {jobs.map((j) => (
+          <JobCard key={j.job_id} job={j} active={j.job_id === active?.job_id} overlaid={overlaid.some((o) => o.job_id === j.job_id)} onActive={() => { setActiveId(j.job_id); setFrame(0); }}
+            onOverlay={() => setOverlay((o) => ({ ...o, [j.job_id]: !(overlaid.some((x) => x.job_id === j.job_id)) }))} />
+        ))}
+      </div>
+    </Panel>
+  );
+
+  const ramp = view === "wave" ? SIGNED_STOPS : FIELD_STOPS;
   const controls = (
-    <Panel className="rf-ctl" idx="LAB" title="Simulation view" delay={100} bodyClass="rf-body">
-      <div className="seg" role="tablist" aria-label="RF view" style={{ display: "flex" }}>
-        {([["wave", "Field"], ["pulse", "Pulse"], ["pattern", "Pattern"], ["current", "Current"]] as [View, string][]).map(([k, l]) => (
-          <button key={k} style={{ flex: 1 }} role="tab" aria-selected={view === k} onClick={() => { setView(k); if (k === "pulse") { setFrame(0); setPulsePlay(true); } }}>{l}</button>
+    <Panel className="rf-ctl" idx="VIEW" title="On the board" delay={140} bodyClass="rf-body">
+      <div className="seg" role="tablist" aria-label="Simulation view" style={{ display: "flex" }}>
+        {VIEWS.map((v) => (
+          <button key={v.key} style={{ flex: 1 }} role="tab" aria-selected={view === v.key} disabled={!canShow(active, v.key)} title={canShow(active, v.key) ? undefined : `This run kept no ${v.why} files`}
+            onClick={() => { setView(v.key); if (v.key === "pulse") { setFrame(0); setPulsePlay(true); } }}>{v.label}</button>
         ))}
       </div>
       <div className="rf-legend">
-        {view === "wave" && (<><span className="idx">FIELD, INSTANTANEOUS</span><div className="rf-ramp" style={{ background: cssGradient(SIGNED_STOPS) }} /><div className="rf-ramp-l mono"><span>negative</span><span>0</span><span>positive</span></div>
-          <p className="dim">Complex solver field at {rf ? (rf.f0_hz / 1e9).toFixed(2) : ""} GHz (the scenario frequency, not the resonance), rotated in phase. Time is slowed so the wave is visible.</p>
-          <button className="btn sm" disabled={calm} title={calm ? "Motion is off: your system asks for reduced motion." : undefined} onClick={() => setPaused(!paused)}><Icon name={paused ? "play" : "pause"} size={11} /> {paused ? "Play" : "Pause"}</button></>)}
-        {view === "pulse" && (<><span className="idx">PULSE LEAVING THE ANTENNA, |E|</span><div className="rf-ramp" style={{ background: cssGradient(FIELD_STOPS) }} /><div className="rf-ramp-l mono"><span>0</span><span>peak</span></div>
-          {rf?.pulse ? (<><input type="range" min={0} max={rf.pulse.frames.length - 1} value={frame} onChange={(e) => { setPulsePlay(false); setFrame(+e.target.value); }} aria-label="Pulse frame" style={{ width: "100%", accentColor: "var(--signal)" }} />
-            <button className="btn sm" onClick={() => { setFrame(0); setPulsePlay(true); }}><Icon name="rotate" size={11} /> Play once</button></>) : <p className="dim">No pulse data in this result.</p>}</>)}
-        {view === "pattern" && (<><span className="idx">RADIATION SHAPE, DIRECTIVITY</span><div className="rf-ramp" style={{ background: cssGradient(FIELD_STOPS) }} /><div className="rf-ramp-l mono"><span>{rf?.pattern?.floor_dbi ?? -30} dBi</span><span>{rf?.pattern ? `${rf.pattern.dmax_dbi.toFixed(1)} dBi max` : ""}</span></div>
-          <p className="dim">Balloon mesh from far-field data. Radius and colour follow strength. The bright dot marks the maximum at theta {rf?.pattern?.dmax_theta_deg} deg, phi {rf?.pattern?.dmax_phi_deg} deg.</p></>)}
-        {view === "current" && (<><span className="idx">SURFACE CURRENT ON COPPER, |Js|</span><div className="rf-ramp" style={{ background: cssGradient(FIELD_STOPS) }} /><div className="rf-ramp-l mono"><span>0</span><span>99.5th pct</span></div>
-          <p className="dim">Heat colours show where the antenna current flows. Edges can exceed the scale.</p></>)}
+        <span className="idx">{view === "wave" ? "E-FIELD, INSTANTANEOUS, Ez" : view === "pulse" ? "PULSE, |E|" : view === "pattern" ? "DIRECTIVITY" : "SURFACE CURRENT, |Js|"}</span>
+        <div className="rf-ramp" style={{ background: cssGradient(ramp) }} />
+        <div className="rf-ramp-l mono">
+          {view === "wave" ? <><span>negative</span><span>0</span><span>positive</span></> : view === "pattern" ? <><span>{pattern.data ? `${(pattern.data.dmax_dbi - 10).toFixed(0)} dBi` : ""}</span><span>{pattern.data ? `${pattern.data.dmax_dbi.toFixed(1)} dBi max` : ""}</span></> : <><span>0</span><span>{view === "current" ? "99.5th pct" : "peak"}</span></>}
+        </div>
+        <p className="dim">{freqNote || "Real openEMS output drawn on this version's board model."}</p>
+        {view === "pattern" && pattern.data && <p className="dim">Peak {pattern.data.dmax_dbi.toFixed(1)} dBi at theta {pattern.data.dmax_theta_deg} deg, phi {pattern.data.dmax_phi_deg} deg (the bright dot). Radius covers the top 20 dB, colour the top 10 dB.</p>}
+        {view === "current" && <p className="dim">Heat on the top copper. Sharp edges can exceed the scale.</p>}
       </div>
-      <dl className="kv rf-kv">
-        <dt>Resonance</dt><dd className="num">{mn ? `${mn.f.toFixed(3)} GHz` : "-"}</dd>
-        <dt>Best S11</dt><dd className="num">{mn ? `${mn.db.toFixed(1)} dB` : "-"}</dd>
-        <dt>-10 dB band</dt><dd className="num">{bw ? `${bw.lo.toFixed(3)} to ${bw.hi.toFixed(3)} GHz` : "Never reaches -10 dB"}</dd>
-        <dt>Target</dt><dd><span className={`stamp ${inBand ? "solid" : "sig"}`}>{inBand ? "In band" : "Off target"}</span><div className="dim" style={{ fontSize: 11, marginTop: 4 }}>Scenario f0 {rf ? (rf.f0_hz / 1e9).toFixed(2) : ""} GHz, band shown +/- 50 MHz</div></dd>
-        {rf?.pattern && (<><dt>Max gain</dt><dd className="num">{rf.pattern.dmax_dbi.toFixed(1)} dBi</dd></>)}
-        <dt>Trust</dt><dd><span className="stamp">{String((rf?.result as { trust?: { status?: string } } | undefined)?.trust?.status ?? "unchecked")}</span></dd>
-      </dl>
+      <div className="rf-row">
+        <div className="seg" role="group" aria-label="Board view">
+          <button aria-pressed={mode === "3d" || view === "pattern"} onClick={() => setMode("3d")}><Icon name="cube" size={11} /> 3D</button>
+          <button aria-pressed={mode === "2d" && view !== "pattern"} disabled={view === "pattern"} onClick={() => setMode("2d")}><Icon name="board" size={11} /> 2D</button>
+        </div>
+        <span className="idx rf-dashed" title="The dashed box is the region the solver modelled. The red ring is the port.">- - modelled region</span>
+      </div>
+    </Panel>
+  );
+
+  const numbers: [string, string][] = [];
+  if (sim) {
+    if (sim.f_res != null && sim.s11_min_db != null) numbers.push(["Deepest dip", `${ghz(sim.f_res)} GHz ${sim.s11_min_db.toFixed(1)} dB`]);
+    if (fsr) 
+    if (sim.bandwidth) numbers.push(["-10 dB range", `${ghz(sim.bandwidth.f_low_hz)} to ${ghz(sim.bandwidth.f_high_hz)}`]);
+  }
+  if (summary?.s11?.antenna_only) numbers.push(["Band worst S11", `${summary.s11.antenna_only.band_worst_db.toFixed(1)} dB${summary.s11.as_built ? ` / ${summary.s11.as_built.band_worst_db.toFixed(1)} as built` : ""}`]);
+  if (summary?.zin_at_band_centre) { const z = summary.zin_at_band_centre; numbers.push(["Zin at band", `${z.re.toFixed(0)} ${z.im < 0 ? "-" : "+"} j${Math.abs(z.im).toFixed(0)} ohm`]); }
+  if (sim?.solve_s != null) numbers.push(["Solve time", `${Math.round(sim.solve_s)} s${sim.cells ? `, ${(sim.cells / 1e6).toFixed(2)} M cells` : ""}`]);
+  if (sim?.dmax_dbi != null) numbers.push(["Peak gain", `${sim.dmax_dbi.toFixed(1)} dBi${sim.efficiency_est != null ? `, eff. ~${(sim.efficiency_est * 100).toFixed(0)} %` : ""}`]);
+  const inBand = band && sim?.f_res ? sim.f_res / 1e9 >= band.lo_ghz && sim.f_res / 1e9 <= band.hi_ghz && (sim.s11_min_db ?? 0) <= band.target_db : null;
+
+  const charts = (
+    <Panel className="rf-charts" idx="RESPONSE" title="Tuning" delay={200} bodyClass="rf-body" actions={<span className="rf-acts">
+      {active?.trust && <span className={`stamp ${active.trust.status === "ok" ? "" : "sig"}`} title={active.trust.reasons.join("; ") || "Energy decay, passivity, mesh and port checks"}>{active.trust.status === "ok" ? "Trust ok" : "Trust failed"}</span>}
+      {inBand != null && <span className={`stamp ${inBand ? "solid" : "sig"}`}>{inBand ? "Dip in band" : "Off target"}</span>}
+      {screen ? <span className="stamp" title={QUALITY_NOTE}>Screen, compare only</span> : active?.quality === "confirm" ? <span className="stamp solid">Confirm</span> : null}
+    </span>}>
+      <div className="rf-row">
+        <span className="idx">S11 AND BAND</span><span style={{ flex: 1 }} />
+        {asBuilt && (
+          <div className="seg" role="group" aria-label="Which S11 trace">
+            <button aria-pressed={trace === "antenna"} onClick={() => setTrace("antenna")}>Antenna</button>
+            <button aria-pressed={trace === "both"} onClick={() => setTrace("both")}>Both</button>
+            <button aria-pressed={trace === "as_built"} onClick={() => setTrace("as_built")}>As built</button>
+          </div>
+        )}
+      </div>
+      {specs.length ? (
+        <TuningGraph curves={specs} band={band} marker={marker} onMarker={setMarker} height={214} dips={dips} vlines={fsr ? [{ f_ghz: fsr / 1e9, label: "1st series res." }] : undefined} />
+      ) : <p className="dim">{curves === null ? "Loading the S11 curve." : "This run has no S11 curve."}</p>}
+      <div className="rf-leg mono">
+        {specs.slice().reverse().map((c) => (<span key={c.id}><i style={{ background: c.color, opacity: c.dashed ? 0.8 : 1 }} />{c.label}</span>))}
+        {band && <span><i style={{ background: "var(--signal)" }} />Band {band.lo_ghz.toFixed(2)} to {band.hi_ghz.toFixed(2)} GHz, target {band.target_db} dB</span>}
+      </div>
+      <div className="rf-split">
+        <div>
+          <span className="idx">SMITH CHART, 50 OHM</span>
+          {smithMain && band ? <SmithChart zin={smithMain} second={trace !== "antenna" ? smithAsBuilt : null} band={band} marker={marker} size={196} /> : <p className="dim">{band ? "No impedance file for this run." : "The target band is unknown."}</p>}
+        </div>
+        <div className="rf-dipcol">
+          <span className="idx">S11 DIPS{fromSummary ? "" : ", FOUND ON THE CURVE"}</span>
+          {dips.length > 0 ? (
+            <ol className="rf-dips mono" aria-label="S11 dips">
+              {dips.map((d, i) => (<li key={i}><b>{i + 1}</b><span>{d.f_ghz.toFixed(3)}</span><span>{d.db.toFixed(1)} dB</span>{band && d.f_ghz >= band.lo_ghz && d.f_ghz <= band.hi_ghz && <span className="stamp solid">In band</span>}</li>))}
+            </ol>
+          ) : <p className="dim" style={{ margin: 0, fontSize: 12 }}>No dip below -3 dB.</p>}
+          {fsr ? <p className="dim rf-fsr mono"><i />1st series resonance {ghz(fsr)} GHz, where the reactance crosses zero</p> : null}
+        </div>
+      </div>
+      {summary?.plausibility?.map((p, i) => (<p key={i} className="rf-warn">{p}</p>))}
+      {screen && <p className="rf-warn quiet">{QUALITY_NOTE} A confirm run is the one to quote.</p>}
+      <div className="rf-stats">
+        {numbers.map(([a, b]) => (<div key={a}><span className="idx">{a}</span><b className="mono">{b}</b></div>))}
+      </div>
       <p className="idx rf-note">SIMULATED. NOT A SUBSTITUTE FOR A REAL ANTENNA MEASUREMENT.</p>
     </Panel>
   );
-  const charts = (
-    <Panel className="rf-charts" idx="RESPONSE" title="Tuning and match" delay={200} bodyClass="rf-body">
-      <span className="idx">S11 AND BAND</span>
-      {rf ? <TuningGraph curves={curves} band={rf.band} marker={marker} onMarker={setMarker} height={210} /> : <p className="dim">No result.</p>}
-      <div className="rf-leg mono">
-        {curves.map((c, i) => (<span key={c.id}><i style={{ background: i === curves.length - 1 ? "var(--paper)" : "var(--paper-3)" }} />{c.label}</span>))}
-        <span><i style={{ background: "var(--signal)" }} />Band and target</span>
-      </div>
-      <span className="idx" style={{ marginTop: 6 }}>SMITH CHART, 50 OHM</span>
-      {rf && <SmithChart zin={rf.zin} band={rf.band} marker={marker} size={300} />}
-    </Panel>
+
+  const dock = (
+    <div className="rf-dock hair panel">
+      {view === "wave" && (<><button className="btn sm" disabled={calm} title={calm ? "Motion is off: your system asks for reduced motion." : undefined} onClick={() => setPaused(!paused)}><Icon name={paused ? "play" : "pause"} size={11} /> {paused ? "Play" : "Pause"}</button><span className="idx">PHASE ROTATES AT {fields.data ? ghz(fields.data.f_hz) : ""} GHZ, TIME SLOWED</span></>)}
+      {view === "pulse" && pulse.data && (<>
+        <button className="btn sm" onClick={() => { setFrame(0); setPulsePlay(true); }}><Icon name="rotate" size={11} /> Play once</button>
+        <input type="range" min={0} max={pulse.data.frames.length - 1} value={frame} onChange={(e) => { setPulsePlay(false); setFrame(+e.target.value); }} aria-label="Pulse frame" style={{ width: 220, accentColor: "var(--signal)" }} />
+        <span className="idx">T = {((pulse.data.times_s[Math.min(frame, pulse.data.times_s.length - 1)] ?? 0) * 1e9).toFixed(2)} NS</span></>)}
+      {view === "pattern" && <span className="idx">DRAG TO ORBIT. THE BALLOON IS CENTRED ON THE ANTENNA.</span>}
+      {view === "current" && <span className="idx">TOP COPPER, AT {current.data ? ghz(current.data.f_hz) : ""} GHZ</span>}
+    </div>
   );
 
   return (
     <main className="rf">
       {stage}
       <header className="rf-top">
-        <Link href="/projects" aria-label="Projects"><Logo size={20} /></Link>
+        <Link href="/projects" aria-label="Projects"><Logo size={20} word={false} /></Link>
         <span className="idx">/</span>
-        <Link href={`/reviews/${reviewId}`} className="idx">REVIEW {reviewId.toUpperCase()}</Link>
+        <Link href={sample ? "/" : `/reviews/${reviewId}`} className="idx">{sample ? "SAMPLE" : `REVIEW ${reviewId.slice(0, 8).toUpperCase()}`}</Link>
         <span className="idx">/</span><b className="rf-title">RF lab</b>
+        <span className="rf-sub dim">{title}</span>
         <span style={{ flex: 1 }} />
-        {rf && <span className="stamp sim" title={rf.source}><i />{rf.label}</span>}
-        <Link className="btn sm" href={`/reviews/${reviewId}`}><Icon name="board" size={12} /> Workspace</Link>
+        <span className="stamp sim" title="Computed by the openEMS solver"><i />Simulated</span>
+        <Link className="btn sm" href={sample ? "/" : `/reviews/${reviewId}`}><Icon name="board" size={12} /> {sample ? "Home" : "Workspace"}</Link>
       </header>
-      {rf && (<div className="rf-banner mono"><span className="stamp fixture">Sample data</span> The solver output shown is the bundled 2.5 GHz patch-antenna run, not this review's board. <Link href={`/reviews/${reviewId}/rf`} className="signal">Leave the sample</Link></div>)}
-      {rf === null && (<div className="rf-none hair panel"><span className="idx">NOT TESTED</span><p>No simulation result exists for this review, so the RF lab has nothing to show. Nothing here is estimated.</p></div>)}
-      {controls}
-      {charts}
+      {notice && <div className="rf-banner mono"><span className="stamp fixture">Bundled sample</span> {notice}</div>}
+      {runs}{controls}{charts}
+      {dock}
     </main>
   );
 }
-
-export { RfSample };

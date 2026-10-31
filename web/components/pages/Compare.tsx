@@ -11,6 +11,10 @@ import { Board2D, type ActiveMarkItem } from "../board2d/Board2D";
 import { useScene } from "../board2d/useScene";
 import { DEFAULT_LAYERS } from "../board2d/layers";
 import { CompareFixture } from "./CompareFixture";
+import { CompareTuning, PatternLayer, useCompareSims, A_COLOR, B_COLOR, PATTERN_VIEWS, type PatternViewKey } from "./CompareRf";
+import { FieldCanvas2D } from "../rf/FieldCanvas2D";
+import { bestRun, useRunData } from "../../lib/use-run-data";
+import { describeFreq, isScreen } from "../../lib/sims";
 import { Icon, Panel, SevBar, SevGlyph, TopBar } from "../ui";
 
 const none = { l: 0, r: 0, t: 0, b: 0 };
@@ -32,6 +36,10 @@ function CompareLive() {
   const [b, setB] = useState<BoardBundle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [split, setSplit] = useState(50);
+  const [rfMode, setRfMode] = useState<"board" | "field" | "pattern">("board");
+  const [pview, setPview] = useState<PatternViewKey>("persp");
+  const [pickA, setPickA] = useState<string | null>(null);
+  const [pickB, setPickB] = useState<string | null>(null);
   const [view, setView] = useState<{ scale: number; tx: number; ty: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const drag = useRef(false);
@@ -56,6 +64,19 @@ function CompareLive() {
   }, [from, to]);
 
   const sceneA = useScene(a?.scene), sceneB = useScene(b?.scene);
+  // solver runs of each version's review: when both have some, the page overlays their tuning curves and offers the field and pattern slider
+  const sims = useCompareSims(cmp?.from.review_id, cmp?.to.review_id);
+  const jobA = (sims.a && (sims.a.jobs.find((j) => j.job_id === pickA) ?? bestRun(sims.a.jobs))) || null;
+  const jobB = (sims.b && (sims.b.jobs.find((j) => j.job_id === pickB) ?? bestRun(sims.b.jobs))) || null;
+  const bothSims = !!(jobA && jobB);
+  const dataA = useRunData(sims.a, jobA, bothSims && rfMode === "field", bothSims && rfMode === "pattern");
+  const dataB = useRunData(sims.b, jobB, bothSims && rfMode === "field", bothSims && rfMode === "pattern");
+  const fieldOk = !!(jobA?.files.includes("field.json") && jobB?.files.includes("field.json"));
+  const patternOk = !!(jobA?.files.includes("pattern.json") && jobB?.files.includes("pattern.json"));
+  const mode = bothSims ? rfMode : "board";
+  const rfBand = useMemo(() => { const bd = dataB.summary?.setup?.band_ghz ?? dataA.summary?.setup?.band_ghz ?? dataB.meta?.setup?.band_ghz; return bd ? { lo_ghz: bd[0], hi_ghz: bd[1], target_db: -10 } : null; }, [dataA.summary, dataB.summary, dataB.meta]);
+  const antennaOf = (m: typeof dataA.meta, bd: BBox) => { const q = m?.setup?.antenna_bbox; return (q && q.length === 4 ? [(q[0] + q[2]) / 2, 3, (q[1] + q[3]) / 2] : [(bd[0] + bd[2]) / 2, 3, (bd[1] + bd[3]) / 2]) as [number, number, number]; };
+  const refDbi = Math.max(dataA.pattern?.dmax_dbi ?? -99, dataB.pattern?.dmax_dbi ?? -99);
   const marksA = useMemo(() => asMarks(cmp?.board ? (cmp.board as unknown as { marks?: { from: Mark[] } }).marks?.from : undefined, "low", "a"), [cmp]);
   const marksB = useMemo(() => asMarks(cmp?.board ? (cmp.board as unknown as { marks?: { to: Mark[] } }).marks?.to : undefined, "medium", "b"), [cmp]);
   const fit = useMemo<BBox | null>(() => (a && b ? (bboxUnion([a.board.bbox, b.board.bbox]) as BBox) : null), [a, b]);
@@ -78,6 +99,13 @@ function CompareLive() {
             <h1 className="serif">What changed between versions.</h1>
           </div>
           <span className="grow" />
+          {bothSims && (
+            <div className="seg" role="group" aria-label="What the slider compares" style={{ marginRight: 12 }}>
+              <button aria-pressed={mode === "board"} onClick={() => setRfMode("board")}>Board</button>
+              <button aria-pressed={mode === "field"} disabled={!fieldOk} title={fieldOk ? undefined : "One of the chosen runs kept no field files"} onClick={() => setRfMode("field")}>Field</button>
+              <button aria-pressed={mode === "pattern"} disabled={!patternOk} title={patternOk ? undefined : "One of the chosen runs has no radiation pattern"} onClick={() => setRfMode("pattern")}>Pattern</button>
+            </div>
+          )}
           {cmp && <div className="seg" aria-label="Versions"><button aria-pressed>A: v{nA}</button><button aria-pressed>B: v{nB}</button></div>}
         </div>
         {error && <p className="chat-err" role="alert">{error}</p>}
@@ -87,13 +115,44 @@ function CompareLive() {
             <div className="cmp-board hair panel" ref={box} onPointerMove={move} onPointerUp={() => { drag.current = false; }} onPointerLeave={() => { drag.current = false; }}>
               {a && b && (
                 <>
-                  <div className="cmp-layer"><Board2D board={a.board} marks={marksA} meta={{}} selectedId={null} onSelect={() => {}} layers={DEFAULT_LAYERS} insets={none} interactive={false} chrome={false} externalView={view} onViewChange={setView} fitTo={fit} scene={sceneA} /></div>
-                  <div className="cmp-layer top" style={{ clipPath: `inset(0 0 0 ${split}%)` }}><Board2D board={b.board} marks={marksB} meta={{}} selectedId={null} onSelect={() => {}} layers={DEFAULT_LAYERS} insets={none} onViewChange={setView} externalView={view} fitTo={fit} scene={sceneB} chrome={false} /></div>
+                  {mode === "pattern" ? (
+                    <>
+                      <div className="cmp-layer"><PatternLayer board={a.board} pattern={dataA.pattern} center={antennaOf(dataA.meta, a.board.bbox)} view={pview} refDbi={refDbi} /></div>
+                      <div className="cmp-layer top" style={{ clipPath: `inset(0 0 0 ${split}%)` }}><PatternLayer board={b.board} pattern={dataB.pattern} center={antennaOf(dataB.meta, b.board.bbox)} view={pview} refDbi={refDbi} /></div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="cmp-layer"><Board2D board={a.board} marks={mode === "field" ? [] : marksA} meta={{}} selectedId={null} onSelect={() => {}} layers={DEFAULT_LAYERS} insets={none} interactive={false} chrome={false} externalView={view} onViewChange={setView} fitTo={fit} scene={sceneA} overlay={mode === "field" && dataA.fields?.xy ? () => <FieldCanvas2D slice={dataA.fields!.xy!} /> : undefined} /></div>
+                      <div className="cmp-layer top" style={{ clipPath: `inset(0 0 0 ${split}%)` }}><Board2D board={b.board} marks={mode === "field" ? [] : marksB} meta={{}} selectedId={null} onSelect={() => {}} layers={DEFAULT_LAYERS} insets={none} onViewChange={setView} externalView={view} fitTo={fit} scene={sceneB} chrome={false} overlay={mode === "field" && dataB.fields?.xy ? () => <FieldCanvas2D slice={dataB.fields!.xy!} /> : undefined} /></div>
+                    </>
+                  )}
                   <div className="cmp-handle" style={{ left: `${split}%` }} onPointerDown={(e) => { drag.current = true; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); }}>
                     <span /><b><Icon name="compare" size={14} /></b>
                   </div>
                   <span className="cmp-lab a stamp solid">A / v{nA}</span>
                   <span className="cmp-lab b stamp solid">B / v{nB}</span>
+                  {mode !== "board" && (
+                    <div className="cmp-note hair panel mono">
+                      {mode === "field" ? (
+                        <>
+                          <span className="idx">FIELD, E-Z</span>
+                          <span>A {dataA.fields?.f_hz ? describeFreq(dataA.fields.f_hz, rfBand ? [rfBand.lo_ghz, rfBand.hi_ghz] : null) : "loading"}{isScreen(jobA) ? " (screen)" : ""}</span>
+                          <span>B {dataB.fields?.f_hz ? describeFreq(dataB.fields.f_hz, rfBand ? [rfBand.lo_ghz, rfBand.hi_ghz] : null) : "loading"}{isScreen(jobB) ? " (screen)" : ""}</span>
+                          <span className="dim">Each field has its own relative scale: compare where the energy goes, not how strong it is.</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="idx">RADIATION PATTERN, SAME DB SCALE</span>
+                          <span>A {dataA.pattern ? `${dataA.pattern.dmax_dbi.toFixed(1)} dBi peak at ${(dataA.pattern.f_hz / 1e9).toFixed(3)} GHz` : "loading"}</span>
+                          <span>B {dataB.pattern ? `${dataB.pattern.dmax_dbi.toFixed(1)} dBi peak at ${(dataB.pattern.f_hz / 1e9).toFixed(3)} GHz` : "loading"}</span>
+                          <span className="dim">Each pattern is taken at its own deepest S11 dip, so the two frequencies can differ. Screen runs: compare shapes only.</span>
+                          <span className="seg" role="group" aria-label="Camera" style={{ pointerEvents: "auto" }}>
+                            {(Object.keys(PATTERN_VIEWS) as PatternViewKey[]).map((k) => (<button key={k} aria-pressed={pview === k} onClick={() => setPview(k)}>{k === "persp" ? "3/4" : k}</button>))}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -103,9 +162,12 @@ function CompareLive() {
                 <div style={{ padding: 14, display: "grid", gap: 10 }}>
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}><span className="idx">A v{nA}</span>{cmp.from.counts ? <SevBar counts={cmp.from.counts} size="sm" /> : <span className="dim">no review</span>}</div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}><span className="idx">B v{nB}</span>{cmp.to.counts ? <SevBar counts={cmp.to.counts} size="sm" /> : <span className="dim">no review</span>}</div>
-                  <p className="idx">RESONANCE: NOT TESTED. THE COMPARISON HOLDS NO SIMULATION RESULTS.</p>
+                  {!bothSims && <p className="idx">{sims.done ? "RESONANCE: NOT COMPARED. BOTH VERSIONS NEED A SIMULATION IN THEIR REVIEWS FOR THAT." : "LOOKING FOR SIMULATIONS."}</p>}
                 </div>
               </Panel>
+              {bothSims && sims.a && sims.b && (
+                <CompareTuning sourceA={sims.a} sourceB={sims.b} jobA={jobA} jobB={jobB} onPickA={setPickA} onPickB={setPickB} dataA={dataA} dataB={dataB} nA={nA} nB={nB} band={rfBand} />
+              )}
               <Panel className="card" idx="CHANGES" title="Findings" delay={200}>
                 {cmp.findings ? (
                   <>

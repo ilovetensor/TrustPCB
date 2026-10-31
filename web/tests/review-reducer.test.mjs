@@ -96,7 +96,21 @@ test("simulation lifecycle fills the experiment strip from the backend's field n
   assert.equal(s.experiments.length, 1);
   assert.equal(s.experiments[0].measurements.f_res_hz.value, 2.4e9);
   assert.equal(s.experiments[0].curve, null, "no curve is invented when the backend sent none");
+  assert.equal(s.experiments[0].suspect, "X-1", "each experiment knows which suspect it belongs to");
+  assert.equal(s.experiments[0].hash, "h");
+  assert.equal(s.sims["S-1"].pct, 1);
   assert.equal(s.trail.length, 1);
+});
+
+test("a running simulation shows its fraction and suspect before it is done", () => {
+  const s = replayAll([
+    ev(1, "sim_queued", { ref: "S-2", hash: "h2", label: "Test", kind: "whatif", quality: "screen", suspect: "X-2" }),
+    ev(2, "sim_progress", { ref: "S-2", hash: "h2", fraction: 0.4, phase: "solving" }),
+  ]);
+  assert.equal(s.sims["S-2"].pct, 0.4);
+  assert.equal(s.sims["S-2"].status, "running");
+  assert.equal(s.sims["S-2"].suspect, "X-2");
+  assert.equal(s.experiments.length, 0);
 });
 
 test("investigation and suspect events use their real keys", () => {

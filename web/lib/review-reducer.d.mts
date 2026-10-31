@@ -4,8 +4,8 @@ export interface TrailEntry { id: string; kind: string; text: string; seq: numbe
 export interface Suspect { id: string; code?: string; title: string; status: string; conclusion?: string }
 export interface Investigation { id: string; code?: string; question: string; status: string; outcome?: any; goodEnough?: boolean; suspects: Suspect[] }
 export interface Measurement { value: number; unit: string }
-export interface Experiment { id: string; label: string; kind: string; quality?: string; measurements: Record<string, Measurement>; delta: Record<string, number> | null; curve: any; trust: string; ok: boolean; meetsTarget?: boolean; evidence?: string }
-export interface Sim { id: string; label: string; kind: string; quality?: string; suspect?: string; change: string | null; status: string; pct: number; step: string; measurements?: Record<string, Measurement>; curve?: any }
+export interface Experiment { id: string; label: string; kind: string; quality?: string; suspect?: string; hash?: string; solveS?: number; measurements: Record<string, Measurement>; delta: Record<string, number> | null; curve: any; trust: string; ok: boolean; meetsTarget?: boolean; evidence?: string }
+export interface Sim { id: string; label: string; kind: string; quality?: string; suspect?: string; hash?: string; change: string | null; status: string; pct: number; step: string; measurements?: Record<string, Measurement>; curve?: any }
 export interface Quota { used: number; limit: number; left?: number }
 export interface Budget { phase?: number; depth?: string; wall_s?: Quota; solver_s?: Quota; turns?: Quota; images?: Quota; investigations?: Quota; confirm_runs?: Quota; input_tokens?: Quota; output_tokens?: Quota; [k: string]: any }
 export interface Brief { purpose: string; part_roles?: Record<string, string>; risks?: { text: string; targets?: string[] }[]; priorities?: string[]; unknowns?: string[]; wireless?: any; roles?: Record<string, string[]>; zones: Record<string, string[]> }

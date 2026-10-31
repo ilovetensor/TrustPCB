@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { Curve } from "../../lib/curve";
 import { useReducedMotion, reducedMotion } from "../../lib/hooks";
 import { FIXTURE_MODE, listProjects } from "../../lib/api";
-import { loadPatchSim, scenarioBoard, type RfBundle } from "../../lib/rf-data";
+import { loadPatchSim, scenarioBoard, type PulseData, type RfBundle } from "../../lib/rf-data";
+import { loadField, loadPulse, NRF_BOARD, nrfSampleSource, type Fields } from "../../lib/sims";
+import { normaliseBoard } from "../../lib/api";
 import type { Board, ProjectSummary } from "../../lib/types";
 import { PatchBoard3D } from "../rf/PatchBoard3D";
 import { PulsePlane3D } from "../rf/WaveField3D";
@@ -16,17 +18,38 @@ import dynamic from "next/dynamic";
 
 const Scene3D = dynamic(() => import("../scene3d/Scene3D").then((m) => m.Scene3D), { ssr: false });
 /** Loops the solver's real time-domain pulse frames so the hero keeps radiating. */
-function PulseLoop({ rf }: { rf: RfBundle }) {
+function PulseLoop({ pulse }: { pulse: PulseData | null | undefined }) {
   const [f, setF] = useState(0);
   useEffect(() => {
-    if (!rf.pulse) return;
-    if (reducedMotion()) { setF(Math.floor(rf.pulse.frames.length * 0.45)); return; } // a still frame, no loop
-    const n = rf.pulse.frames.length + 14;
+    if (!pulse) return;
+    if (reducedMotion()) { setF(Math.floor(pulse.frames.length * 0.45)); return; } // a still frame, no loop
+    const n = pulse.frames.length + 14;
     const id = setInterval(() => setF((x) => (x + 1) % n), 80);
     return () => clearInterval(id);
-  }, [rf]);
-  if (!rf.pulse) return null;
-  return <PulsePlane3D pulse={rf.pulse} y={rf.pulse.at_mm + 0.3} frame={Math.min(f, rf.pulse.frames.length - 1)} fadeOut={f >= rf.pulse.frames.length ? 1 - (f - rf.pulse.frames.length) / 14 : 1} />;
+  }, [pulse]);
+  if (!pulse) return null;
+  return <PulsePlane3D pulse={pulse} y={pulse.at_mm + 0.3} frame={Math.min(f, pulse.frames.length - 1)} fadeOut={f >= pulse.frames.length ? 1 - (f - pulse.frames.length) / 14 : 1} />;
+}
+
+/** The hero's real example: the nRF52840 sample board with its solver field and pulse (public/fixtures/nrf-sim). Null until loaded or when the files are absent. */
+function useNrfHero() {
+  const [d, setD] = useState<{ board: Board; fields: Fields | null; pulse: PulseData | null; f_res: number | null } | null | undefined>(undefined);
+  const [pulse, setPulse] = useState<PulseData | null>(null);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const [src, board] = await Promise.all([nrfSampleSource(), fetch(NRF_BOARD.board).then((r) => r.json())]);
+      const job = src.jobs.find((j) => j.kind === "confirm");
+      if (!job) throw new Error("no confirm run");
+      const fields = await loadField(src, job);
+      if (live) setD({ board: normaliseBoard(board), fields, pulse: null, f_res: job.measurements.resonance ? job.measurements.resonance.value * 1e6 : null });
+      // the pulse is 17 MB: it arrives after the field is already on screen
+      const p = await loadPulse(src, job);
+      if (live) setPulse(p);
+    })().catch(() => { if (live) setD(null); });
+    return () => { live = false; };
+  }, []);
+  return { hero: d, pulse };
 }
 const none = { l: 0, r: 0, t: 0, b: 0 };
 const noop = () => {};
@@ -41,9 +64,13 @@ const STEPS = [
 export function Landing() {
   const calm = useReducedMotion();
   const [rf, setRf] = useState<RfBundle | null>(null);
+  const nrf = useNrfHero();
+  const useRealBoard = !!nrf.hero?.fields?.xy;
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [fx, setFx] = useState<{ curve: Curve; curve2: Curve; band: { lo_ghz: number; hi_ghz: number; target_db: number } } | null>(null);
-  useEffect(() => { listProjects().then(setProjects).catch(() => setProjects([])); loadPatchSim().then(setRf); }, []);
+  useEffect(() => { listProjects().then(setProjects).catch(() => setProjects([])); }, []);
+  // the patch run is only the fallback when the nRF sample files are missing
+  useEffect(() => { if (nrf.hero === null) loadPatchSim().then(setRf); }, [nrf.hero]);
   // illustrative curves exist only in fixture mode
   useEffect(() => { if (FIXTURE_MODE) void import("../../lib/fixture-api").then((m) => setFx({ curve: m.resolveCurve("base")!, curve2: m.resolveCurve("confirm")!, band: m.TARGET_BAND })); }, []);
   const latest = projects.find((p) => p.latest_review_id);
@@ -56,7 +83,16 @@ export function Landing() {
       <section className="ld-hero">
         <div className="ld-scene" aria-hidden>
           <div className="stage-bg" />
-          {board && rf && (
+          {useRealBoard && nrf.hero ? (
+            <Scene3D
+              board={nrf.hero.board} glbUrl={NRF_BOARD.glb} marks={empty.marks} meta={empty.meta} selectedId={null} onSelect={noop}
+              explode={0} insets={none} hero autoRotate={!calm} showMarks={false} boardDims={false} shift={[0.22, 0.05]} view3d={{ az: 0.62, el: 0.6, scale: 1.55 }}
+            >
+              {nrf.hero.fields?.xy && <WaveField3D slice={nrf.hero.fields.xy} />}
+              {nrf.hero.fields?.xz && <WaveField3D slice={nrf.hero.fields.xz} opacity={0.75} />}
+              <PulseLoop pulse={nrf.pulse} />
+            </Scene3D>
+          ) : nrf.hero === null && board && rf && (
             <Scene3D
               bare center={[0, 0.8, 0]} board={board} glbUrl="" marks={empty.marks} meta={empty.meta} selectedId={null} onSelect={noop}
               explode={0} insets={none} hero autoRotate={!calm} showMarks={false} shift={[0.2, 0.02]}
@@ -64,7 +100,7 @@ export function Landing() {
               <PatchBoard3D rf={rf} />
               {rf.fieldXY && <WaveField3D slice={rf.fieldXY} />}
               {rf.fieldXZ && <WaveField3D slice={rf.fieldXZ} />}
-              <PulseLoop rf={rf} />
+              <PulseLoop pulse={rf.pulse} />
             </Scene3D>
           )}
         </div>
@@ -103,7 +139,9 @@ export function Landing() {
         </div>
         <div className="ld-fig mono rise" style={{ animationDelay: "1000ms" }}>
           <span className="idx">FIG. 1</span>
-          <span>2.5 GHz patch antenna, 60 x 50 mm. Complex field from the solver, phase locked, time slowed to be visible.</span>
+          <span>{useRealBoard
+            ? `nRF52840 node, 66 x 53 mm. Field at 2.44 GHz and the launch pulse from a real solver run, time slowed to be visible. This antenna as drawn resonates at ${nrf.hero?.f_res ? (nrf.hero.f_res / 1e9).toFixed(2) : "1.87"} GHz, off the band: the kind of thing TrustPCB reports.`
+            : "2.5 GHz patch antenna, 60 x 50 mm. Complex field from the solver, phase locked, time slowed to be visible."}</span>
           <span className="stamp sim"><i />Real openEMS output</span>
         </div>
         <div className="ld-title hair mono">
