@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import sys
 import tempfile
+import os
 import time
 from pathlib import Path
 
@@ -24,6 +25,9 @@ from trustpcb.analyzers.base import AnalyzerContext  # noqa: E402
 from trustpcb.pcb.model import parse_board, parse_board_text  # noqa: E402
 from trustpcb.sims import power, power_grid  # noqa: E402
 from trustpcb.sims.base import run_cached  # noqa: E402
+
+# Speed limits are for a developer machine; CI runners are slower and set TRUSTPCB_TEST_TIME_SCALE.
+TIME_SCALE = float(os.environ.get('TRUSTPCB_TEST_TIME_SCALE') or 1)
 
 SAMPLES = SERVER.parent / "samples"
 RHO = power_grid.RHO_CU_20            # ohm mm
@@ -414,7 +418,7 @@ def test_sample_usb_ldo_led(tmp_path):
     sim = sims.SIMULATORS["power"]
     t0 = time.perf_counter()
     res, folder, _ = run_cached(sim, b, AnalyzerContext(), {"temperature_c": 20.0}, [], tmp_path)
-    assert time.perf_counter() - t0 < 10.0
+    assert time.perf_counter() - t0 < 10.0 * TIME_SCALE
     assert res.status == "ok" and res.trust["status"] == "ok", [c for c in res.trust["checks"] if c["status"] != "ok"]
     nets = res.detail["nets"]
     assert set(nets) == {"VBUS", "VBUS_F", "3V3"}
@@ -440,7 +444,7 @@ def test_sample_nrf52840_node(tmp_path):
     sim = sims.SIMULATORS["power"]
     t0 = time.perf_counter()
     res, folder, _ = run_cached(sim, b, AnalyzerContext(), {"temperature_c": 20.0}, [], tmp_path)
-    assert time.perf_counter() - t0 < 10.0
+    assert time.perf_counter() - t0 < 10.0 * TIME_SCALE
     assert res.status == "ok" and res.trust["status"] == "ok", [c for c in res.trust["checks"] if c["status"] == "failed"]
     nets = res.detail["nets"]
     assert {"VBUS_RAW", "VBUS_F", "3V3"} <= set(nets)

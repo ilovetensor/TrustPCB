@@ -13,6 +13,7 @@ import json
 import math
 import sys
 import tempfile
+import os
 import time
 from pathlib import Path
 
@@ -29,6 +30,9 @@ from trustpcb.pcb.model import parse_board, parse_board_text  # noqa: E402
 from trustpcb.sims import fieldsolve as fs  # noqa: E402
 from trustpcb.sims import signal as sg  # noqa: E402
 from trustpcb.sims.base import run_cached  # noqa: E402
+
+# Speed limits are for a developer machine; CI runners are slower and set TRUSTPCB_TEST_TIME_SCALE.
+TIME_SCALE = float(os.environ.get('TRUSTPCB_TEST_TIME_SCALE') or 1)
 
 SAMPLES = SERVER.parent / "samples"
 NRF = SAMPLES / "nrf52840-node" / "nrf52840_rf_iot_node.kicad_pcb"
@@ -499,7 +503,7 @@ def test_usb_ldo_led_sample(tmp_path):
     b = parse_board(USB, "v")
     t0 = time.perf_counter()
     res = run(b, out=tmp_path)
-    assert time.perf_counter() - t0 < 10
+    assert time.perf_counter() - t0 < 10 * TIME_SCALE
     assert res.status == "ok" and res.trust["status"] == "ok", res.trust
     assert res.detail["nets"]  # the longest signal nets, since none has a fast name
     assert any("longest signal nets" in n or True for n in res.notes)

@@ -98,6 +98,8 @@ jobs:
       # Tests that need kicad-cli skip themselves when it is missing, and -rs lists each skip.
       # Tests marked slow (solver, Docker, full pipelines) are excluded.
       - name: Tests
+        env:
+          TRUSTPCB_TEST_TIME_SCALE: '4'      # shared 2-core runners are several times slower than a laptop
         run: uv run --locked pytest -n 2 -m "not slow" -q -rs
 
   web:

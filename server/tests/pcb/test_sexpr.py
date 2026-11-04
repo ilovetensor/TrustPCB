@@ -1,9 +1,13 @@
+import os
 import time
 from pathlib import Path
 
 import pytest
 
 from trustpcb.pcb import sexpr
+
+# Speed limits are for a developer machine; CI runners are slower and set TRUSTPCB_TEST_TIME_SCALE.
+TIME_SCALE = float(os.environ.get('TRUSTPCB_TEST_TIME_SCALE') or 1)
 
 SAMPLES = Path(__file__).resolve().parents[3] / "samples"
 NRF_PCB = SAMPLES / "nrf52840-node" / "nrf52840_rf_iot_node.kicad_pcb"
@@ -40,6 +44,6 @@ def test_sample_boards_parse_fast(path):
     text = path.read_text()
     t = time.perf_counter()
     root = sexpr.parse(text)
-    assert time.perf_counter() - t < 1.0
+    assert time.perf_counter() - t < 1.0 * TIME_SCALE
     assert root[0] == "kicad_pcb"
     assert sexpr.arg(root, "generator_version") == "10.0"

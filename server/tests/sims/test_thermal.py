@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import time
 from pathlib import Path
 
@@ -12,6 +13,9 @@ import pytest
 from trustpcb.pcb import geom
 from trustpcb.pcb.model import Board, Footprint, Layer, Net, Pad, Track, Via, Zone, parse_board
 from trustpcb.sims import thermal as T
+
+# Speed limits are for a developer machine; CI runners are slower and set TRUSTPCB_TEST_TIME_SCALE.
+TIME_SCALE = float(os.environ.get('TRUSTPCB_TEST_TIME_SCALE') or 1)
 
 SERVER = Path(__file__).resolve().parents[2]
 SAMPLES = SERVER.parent / "samples"
@@ -324,7 +328,7 @@ def test_sample_boards_fast_and_trusted(path, load, tmp_path):
     assert len(ldos) == 1 and ldos[0]["vin_v"] == 5.0 and ldos[0]["vout_v"] == 3.3
     t0 = time.perf_counter()
     r = run(b, {"ldo": {ldos[0]["ref"]: {"load_a": load}}}, tmp=tmp_path)
-    assert time.perf_counter() - t0 < 15
+    assert time.perf_counter() - t0 < 15 * TIME_SCALE
     assert r.status == "ok" and r.trusted, r.trust
     assert r.metrics["total_power"]["value"] == pytest.approx(1.7 * load)
     assert r.metrics["energy_balance_error"]["value"] < 0.01
