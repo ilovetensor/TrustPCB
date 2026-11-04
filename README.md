@@ -130,29 +130,9 @@ Built for the **Meta Global AI Developer Hackathon** (Indie track, 27 October to
 - **Built during the event:** every commit is dated 31 October 2026 or later (`git log --reverse`). Some backend and web scaffolding (launcher, session lock, event stream, token checks) was reused from the author's own earlier code, written in the same period.
 - **No other model provider** is used in the product.
 
-## Tests
-
-```sh
-bash scripts/test-all.sh        # backend tests (no live model, no solver)
-npm run typecheck               # web type check
-npm --prefix web test           # web unit tests
-```
-
 ## Configuration
 
-All settings are optional environment variables. `.env.example` lists them all. The common ones:
-
-| Variable | Purpose |
-|---|---|
-| `META_API_KEY` / `BASETEN_API_KEY` | Muse key (or set it in Settings) |
-| `TRUSTPCB_RUNNER` | `muse_api` or `scripted`. Defaults to `muse_api` when a key is set |
-| `TRUSTPCB_MUSE_EFFORT` | `low`, `medium` (default), `high` or `xhigh` |
-| `TRUSTPCB_DATA_DIR` | Where projects and the database live (default `.trustpcb/`) |
-| `TRUSTPCB_MAX_REVIEWS` | Reviews that run at once (default 3) |
-| `DIGIKEY_CLIENT_ID`, `DIGIKEY_CLIENT_SECRET`, `MOUSER_API_KEY` | Optional part lookup and datasheet reading |
-| `KICAD_CLI_PATH` | Path to `kicad-cli` if it isn't found automatically |
-| `TRUSTPCB_EMS_IMAGE` | Solver image (default `trustpcb-ems:dev`) |
-| `TRUSTPCB_DEMO_READONLY` | `1` serves finished reviews read-only |
+Nothing is required: add your model key under **Settings** and you're set. Optional settings, such as reasoning effort, the data folder, DigiKey and Mouser keys and the KiCad path, are listed with comments in [`.env.example`](.env.example).
 
 ## Repository layout
 
