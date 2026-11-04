@@ -1,11 +1,11 @@
 #!/bin/sh
 # TrustPCB installer for macOS and Linux.
-#   curl -fsSL https://raw.githubusercontent.com/ilovetensor/trustpcb/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/ilovetensor/TrustPCB/main/install.sh | sh
 # Clones (or updates) TrustPCB into $TRUSTPCB_DIR (default ~/trustpcb), installs uv if it is missing,
 # and runs `npm run setup`. It never uses sudo and changes nothing outside that folder and uv's own install.
 set -eu
 
-REPO="${TRUSTPCB_REPO:-https://github.com/ilovetensor/trustpcb.git}"
+REPO="${TRUSTPCB_REPO:-https://github.com/ilovetensor/TrustPCB.git}"
 DIR="${TRUSTPCB_DIR:-$HOME/trustpcb}"
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }

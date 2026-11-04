@@ -8,10 +8,10 @@
 
 An open-source AI reviewer for KiCad boards that runs real checks and simulations and shows the evidence for every claim.
 
-[Website](https://trustpcb.planary.xyz) · [Releases](https://github.com/ilovetensor/trustpcb/releases) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+[Website](https://trustpcb.planary.xyz) · [Releases](https://github.com/ilovetensor/TrustPCB/releases) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
-[![Tests](https://github.com/ilovetensor/trustpcb/actions/workflows/ci.yml/badge.svg)](https://github.com/ilovetensor/trustpcb/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/ilovetensor/trustpcb?color=111)](https://github.com/ilovetensor/trustpcb/releases)
+[![Tests](https://github.com/ilovetensor/TrustPCB/actions/workflows/ci.yml/badge.svg)](https://github.com/ilovetensor/TrustPCB/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ilovetensor/TrustPCB?color=111)](https://github.com/ilovetensor/TrustPCB/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111)](LICENSE)
 [![X](https://img.shields.io/badge/@r0vrrr-111?logo=x)](https://x.com/r0vrrr)
 
@@ -55,13 +55,13 @@ You need Node.js 22+ and git. [KiCad](https://www.kicad.org/) 10 adds the rule c
 **macOS / Linux**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ilovetensor/trustpcb/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ilovetensor/TrustPCB/main/install.sh | sh
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-irm https://raw.githubusercontent.com/ilovetensor/trustpcb/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/ilovetensor/TrustPCB/main/install.ps1 | iex
 ```
 
 The installer clones the repo into `~/trustpcb` (set `TRUSTPCB_DIR` to choose another folder) and installs the dependencies. Then start TrustPCB:
@@ -73,7 +73,7 @@ docker build -f docker/ems/Dockerfile -t trustpcb-ems:dev .  # optional: openEMS
 
 Windows support is new and less tested than macOS and Linux. Please report problems.
 
-Manual install: `git clone https://github.com/ilovetensor/trustpcb.git && cd trustpcb && npm run setup && npm run dev`.
+Manual install: `git clone https://github.com/ilovetensor/TrustPCB.git && cd trustpcb && npm run setup && npm run dev`.
 
 Then open **Settings**, add a model key (see below), and upload a board. A sample to start with is `samples/nrf52840-node-v3`: zip the folder or drag it in.
 

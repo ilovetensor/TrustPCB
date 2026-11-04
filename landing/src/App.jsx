@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Icon from './Icon.jsx';
 
-const REPO = 'ilovetensor/trustpcb';
+const REPO = 'ilovetensor/TrustPCB';
 const GITHUB = `https://github.com/${REPO}`;
 const FALLBACK_VERSION = 'v0.1.0';
 

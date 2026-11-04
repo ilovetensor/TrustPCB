@@ -1,10 +1,10 @@
 # TrustPCB installer for Windows (PowerShell).
-#   irm https://raw.githubusercontent.com/ilovetensor/trustpcb/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/ilovetensor/TrustPCB/main/install.ps1 | iex
 # Clones (or updates) TrustPCB into $env:TRUSTPCB_DIR (default ~\trustpcb), installs uv if it is missing,
 # and runs `npm run setup`. It needs no administrator rights.
 $ErrorActionPreference = 'Stop'
 
-$Repo = if ($env:TRUSTPCB_REPO) { $env:TRUSTPCB_REPO } else { 'https://github.com/ilovetensor/trustpcb.git' }
+$Repo = if ($env:TRUSTPCB_REPO) { $env:TRUSTPCB_REPO } else { 'https://github.com/ilovetensor/TrustPCB.git' }
 $Dir = if ($env:TRUSTPCB_DIR) { $env:TRUSTPCB_DIR } else { Join-Path $HOME 'trustpcb' }
 
 function Say($text) { Write-Host $text -ForegroundColor White }
