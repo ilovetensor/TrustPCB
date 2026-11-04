@@ -1,7 +1,7 @@
 """Analyzer context, candidate and mark helpers, and ``run_all``.
 
 Analyzers measure; they never judge. Each module exposes ``analyze(board, ctx) -> list[dict]``
-returning candidates in the shape described in ``docs/ARCHITECTURE.md``. A module may also expose
+returning candidates in the shape described in ``CONTRIBUTING.md``. A module may also expose
 ``overlays(board, ctx) -> dict`` (data for the UI) which ``run_all`` stores under the module name.
 
 ``run_all`` runs every analyzer in a fixed order. One analyzer failing never stops the others;

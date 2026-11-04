@@ -3,7 +3,7 @@ import "./pages.css";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { ApiError, createProject, FIXTURE_MODE, getKeyStatus, getProject, getVersion, startReview, uploadVersion, type Depth, type Goal, type VersionInfo } from "../../lib/api";
+import { ApiError, createProject, FIXTURE_MODE, getKeyStatus, getModelAvailable, getProject, getVersion, startReview, uploadVersion, type Depth, type Goal, type VersionInfo } from "../../lib/api";
 import { cleanExtent, defaultExtent, extentOptions, type ExtentId } from "../../lib/extent.mjs";
 import { ExtentPicker } from "./ExtentPicker";
 import { DemoNotice, Icon, Panel, TopBar } from "../ui";
@@ -63,6 +63,8 @@ function UploadInner() {
   }, [existing]);
 
   useEffect(() => { void getKeyStatus().then(setKeys); }, []);
+  const [modelOk, setModelOk] = useState<boolean | null>(null);
+  useEffect(() => { void getModelAvailable().then(setModelOk); }, []);
 
   const onFiles = (list: FileList | File[]) => {
     const files = [...list].filter((f) => f.size >= 0);
@@ -145,6 +147,9 @@ function UploadInner() {
         </div>
         {FIXTURE_MODE && (
           <p className="warn"><span className="signal"><Icon name="info" size={15} /></span><span><b>Fixture mode.</b> Uploads are off. <Link href="/reviews/r-0042" className="signal">Open the sample review replay</Link>.</span></p>
+        )}
+        {modelOk === false && (
+          <p className="warn" role="note" data-testid="no-model-key"><span className="signal"><Icon name="info" size={15} /></span><span><b>No model key found.</b> Add a Meta or Baseten API key in <Link href="/settings" className="signal">Settings</Link> to run the Muse review. Without one, only the scripted checks run.</span></p>
         )}
         <div className="drop-grid">
           <div>

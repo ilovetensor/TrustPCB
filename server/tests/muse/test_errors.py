@@ -63,11 +63,11 @@ async def test_a_stream_error_event_before_content_is_retried(api, ask, sink, tm
 
 async def test_missing_key_is_a_clear_error_before_any_request(api, runner, sink, ask, monkeypatch):
     monkeypatch.delenv('MODEL_API_KEY')
-    with pytest.raises(RuntimeError, match='MODEL_API_KEY is not set'):
+    with pytest.raises(RuntimeError, match='No Muse key is set'):
         await runner.run(ask(), sink.emit, sink.interact)
     assert api.requests == [] and sink.events == []
     monkeypatch.setenv('MODEL_API_KEY', '   ')
-    with pytest.raises(RuntimeError, match='MODEL_API_KEY is not set'):
+    with pytest.raises(RuntimeError, match='No Muse key is set'):
         await runner.run(ask(), sink.emit, sink.interact)
 
 

@@ -79,14 +79,23 @@ def _import(name: str):
     return importlib.import_module(_module_for(name))
 
 
+def _muse_configured() -> bool:
+    try:
+        from .muse import configured
+        return configured()
+    except ImportError:
+        return False
+
+
 def resolve_profile(name: str | None = None) -> dict:
     """The profile dict a review or thread is bound to.
 
-    No name: TRUSTPCB_RUNNER, else the extension runner when TRUSTPCB_RUNNER_MODULE is set, else scripted.
+    No name: TRUSTPCB_RUNNER, else the extension runner when TRUSTPCB_RUNNER_MODULE is set, else muse_api when a
+    Muse key is set (environment or Settings), else scripted.
     A configured extension that is missing or cannot be imported is an error that says why, never a
     silent switch to another runner.
     """
-    name = name or os.environ.get('TRUSTPCB_RUNNER') or extension_profile_name() or 'scripted'
+    name = name or os.environ.get('TRUSTPCB_RUNNER') or extension_profile_name() or ('muse_api' if _muse_configured() else 'scripted')
     extension = None if name in PROFILES else extension_profile_name()
     if name not in PROFILES and name != extension:
         raise ValueError(f'Unsupported runner profile: {name}')

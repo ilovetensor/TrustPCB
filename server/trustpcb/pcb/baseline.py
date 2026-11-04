@@ -11,7 +11,7 @@
 
 Steps run in parallel with bounded concurrency and fail independently: a failed step is recorded
 in ``baseline.json`` and the rest still produce their results. DRC and ERC violations become
-candidate dicts in the shape described in ``docs/ARCHITECTURE.md`` with marks whose targets resolve on the board
+candidate dicts in the shape described in ``CONTRIBUTING.md`` with marks whose targets resolve on the board
 (a KiCad item uuid maps to a track, via, pad, part or zone id; otherwise a ``point:x,y`` target).
 """
 

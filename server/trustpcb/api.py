@@ -462,9 +462,10 @@ def create_app(data_dir: Path | None = None, token: str | None = None, runner_fa
     @app.get('/api/settings/keys')
     async def key_settings():
         if demo_readonly():                       # a public demo shows nothing about the owner's keys
-            return {'read_only': True, 'keys': [], 'parts_available': False}
+            return {'read_only': True, 'keys': [], 'parts_available': False, 'model_available': False}
         from .parts import available
-        return {'read_only': False, 'keys': key_rows(), 'parts_available': available()}
+        from .runners.muse import configured
+        return {'read_only': False, 'keys': key_rows(), 'parts_available': available(), 'model_available': configured()}
 
     @app.put('/api/settings/keys/{name}')
     async def put_key(name: str, body: KeyBody):

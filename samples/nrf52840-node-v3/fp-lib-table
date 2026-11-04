@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "NRF52840_RF")(type "KiCad")(uri "${KIPRJMOD}/nrf52840_rf_iot_node.pretty")(options "")(descr "Project-local footprints"))
+)

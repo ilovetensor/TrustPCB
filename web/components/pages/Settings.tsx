@@ -7,6 +7,8 @@ import { useAppEnv } from "../../lib/demo";
 import { Icon, TopBar } from "../ui";
 
 const WHY: Record<string, string> = {
+  Meta: "Runs the review agent on Meta Muse Spark through Meta's own API. Set this or a Baseten key; if both are set, Meta is used.",
+  Baseten: "Runs the review agent on Muse Spark Open (meta-models/muse-spark-open-1026) hosted by Baseten.",
   DigiKey: "Looks up manufacturer, description, parameters and the datasheet link for a part number. Needs both the client ID and the client secret of a DigiKey Product Information app.",
   Mouser: "A second source for the same lookups, and a fallback when DigiKey has no key.",
 };
@@ -61,10 +63,10 @@ export function Settings() {
         <div className="pg-head">
           <div>
             <h1 className="heading">Settings</h1>
-            <p className="pg-sub">Optional keys for part lookup and datasheet reading. Reviews and simulations run without them.</p>
+            <p className="pg-sub">A Meta or Baseten key runs the Muse review agent. DigiKey and Mouser keys are optional and add part lookup and datasheet reading.</p>
           </div>
         </div>
-        <p className="se-note"><Icon name="lock" size={16} /><span>Keys stay on this machine. They are kept in a private file in the data folder, used only to ask DigiKey and Mouser, and never sent to the model, the solver, KiCad or the browser. A saved value is never shown again.</span></p>
+        <p className="se-note"><Icon name="lock" size={16} /><span>Keys stay on this machine. They are kept in a private file in the data folder, and each one is sent only to its own service: the model key to Meta or Baseten, a part key to DigiKey or Mouser. None goes to the solver, KiCad or the browser. A saved value is never shown again.</span></p>
         {readOnly && <p className="se-note" role="note" data-testid="settings-readonly"><Icon name="info" size={16} /><span>Settings are switched off in the read-only demo.</span></p>}
         {error && <p className="empty" role="alert" style={{ color: "var(--sev-high)" }}>{error}</p>}
         {!state && !error && <p className="empty dim">Loading settings.</p>}
@@ -73,6 +75,7 @@ export function Settings() {
           return (
             <section key={service} className="se-card" aria-label={service}>
               <div className="se-card-head">
+                {(service === "Meta" || service === "Baseten") && <img src="/brand/meta-logo.svg" alt="" width={20} height={20} />}
                 <h2>{service}</h2>
                 <span className="grow" />
                 <a className="se-get" href={rows[0].get_url} target="_blank" rel="noopener noreferrer">Get a {service} key <Icon name="external" size={13} /></a>
@@ -82,6 +85,7 @@ export function Settings() {
             </section>
           );
         })}
+        {!readOnly && state && state.model_available === false && <p className="se-hint">No model key yet: reviews use the scripted checks only.</p>}
         {!readOnly && state && <p className="se-hint">{state.parts_available ? "Part lookup is on." : "Part lookup is off until a key is set. Tools that need it report that it is not configured."}</p>}
       </main>
     </div>

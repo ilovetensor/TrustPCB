@@ -31,3 +31,10 @@ next-env.d.ts
 *.log
 .DS_Store
 docker/ems/.cache/
+
+# Internal notes, kept local
+docs/ARCHITECTURE.md
+docs/DEMO.md
+docs/HACKATHON.md
+samples/*.zip
+*.kicad_prl
