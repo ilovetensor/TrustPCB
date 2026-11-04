@@ -9,7 +9,7 @@
     "test": "bash scripts/test-all.sh",
     "test:related": "bash scripts/test-related.sh",
     "typecheck": "npm --prefix web run typecheck",
-    "test:release": "node --test scripts/tests/",
+    "test:release": "node --test scripts/tests/*.test.mjs",
     "check:versions": "node scripts/release.mjs check",
     "build": "npm --prefix web run build"
   }

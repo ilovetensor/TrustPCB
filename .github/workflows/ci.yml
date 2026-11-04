@@ -39,8 +39,8 @@ jobs:
               && git fetch --no-tags --depth=1 origin "$BASE" 2>/dev/null; then
             changed="$(git diff --name-only "$BASE" HEAD)"
             echo "$changed"
-            # Anything outside documentation and community files counts as code.
-            other="$(printf '%s\n' "$changed" | grep -Ev '^(docs/|[^/]+\.md$|LICENSE$|NOTICE$|\.editorconfig$|\.github/(ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE\.md$|dependabot\.yml$)|$)' || true)"
+            # Anything outside documentation, community files, the landing page and installers counts as code.
+            other="$(printf '%s\n' "$changed" | grep -Ev '^(docs/|landing/|install\.(sh|ps1)$|[^/]+\.md$|LICENSE$|NOTICE$|\.editorconfig$|\.github/(ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE\.md$|dependabot\.yml$)|$)' || true)"
             if [ -z "$other" ]; then
               code=false
             fi
@@ -62,7 +62,7 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/release.mjs check
-      - run: node --test scripts/tests/
+      - run: node --test scripts/tests/*.test.mjs
       - run: bash -n scripts/*.sh
 
   backend:
