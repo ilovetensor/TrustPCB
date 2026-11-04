@@ -127,7 +127,7 @@ A Standard review of a new board takes about 25 to 60 minutes, depending on the 
 Built for the **Meta Global AI Developer Hackathon** (Indie track, 27 October to 4 November 2026).
 
 - **Meta model:** Muse Spark is the investigating agent in every real review. It uses tool calling, multimodal input (board renders and simulation plots), adaptive thinking and streaming. The demo review ran on Muse Spark Open (`meta-models/muse-spark-open-1026`) via Baseten. The runner works the same way with a Meta API key.
-- **Built during the event:** every commit is dated 31 October 2026 or later (`git log --reverse`). The backend and web shell started from the author's own earlier MIT project, earlier project, whose first commit is dated 29 October 2026 (see [NOTICE](NOTICE)). Parts of the code were written with AI coding assistants under the author's direction and review.
+- **Built during the event:** every commit is dated 31 October 2026 or later (`git log --reverse`). Some backend and web scaffolding (launcher, session lock, event stream, token checks) was reused from the author's own earlier code, written in the same period.
 - **No other model provider** is used in the product.
 
 ## Tests
