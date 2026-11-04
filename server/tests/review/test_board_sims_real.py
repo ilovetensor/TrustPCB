@@ -14,7 +14,8 @@ from trustpcb.runners.scripted import ScriptedRunner
 from trustpcb.sessions import SessionManager
 from trustpcb.storage import Store
 
-pytestmark = pytest.mark.skipif(not registry(), reason='the board simulators are not installed')
+pytestmark = [pytest.mark.skipif(not registry(), reason='the board simulators are not installed'),
+              pytest.mark.slow]   # real physics: minutes on a CI runner, so CI skips it (run with scripts/test-all.sh --slow)
 FakeLab, FakeClock, Env = review_conftest.FakeLab, review_conftest.FakeClock, review_conftest.Env
 
 
