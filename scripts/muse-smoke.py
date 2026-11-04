@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""G0 check for the muse_api runner: one small tool turn, then a tool that returns a small PNG.
+"""G0 check for the muse_api runner: one tiny text call, one tiny tool round trip, and with --images a tool that returns a small PNG.
 
-Needs MODEL_API_KEY in the environment; without it this prints why and exits 2. It makes at most a
-handful of short requests (low effort, small max_tokens) and prints what worked. It prints no key.
+Needs MODEL_API_KEY in the environment; without it this prints why and exits 2. It makes a few short requests
+(low effort, small max_tokens) and prints status and token usage only, never the key. The endpoint and model
+come from TRUSTPCB_MUSE_BASE_URL and TRUSTPCB_MUSE_MODEL (the key goes only to the hosts the runner allows).
 
-    MODEL_API_KEY=... python3 scripts/muse-smoke.py [--mode tool_result|user_message|both] [--plain]
+    MODEL_API_KEY=... python3 scripts/muse-smoke.py [--images] [--mode tool_result|user_message|both] [--plain]
 
 The image check asks the model for the colour of a solid-colour square. A 200 reply that names the wrong
 colour (or says it sees no image) means images inside tool results are accepted but not seen: rerun with
@@ -29,7 +30,7 @@ from trustpcb.runners.base import RunRequest  # noqa: E402
 from trustpcb.runners.muse import MuseError, MuseRunner  # noqa: E402
 
 
-def png(rgb: tuple[int, int, int], size: int = 24) -> str:
+def png(rgb: tuple[int, int, int], size: int = 256) -> str:
     """A solid-colour PNG, base64 encoded."""
     def chunk(kind: bytes, data: bytes) -> bytes:
         body = kind + data
@@ -66,7 +67,7 @@ def registry() -> ToolRegistry:
                          ToolDef('show_swatch', 'Return a small image of a solid colour square.', none, show_swatch, phases=frozenset({0}), image=True)], Gate())
 
 
-async def attempt(label: str, prompt: str, image_mode: str | None, stream: bool, max_turns: int) -> tuple[bool, str, list]:
+async def attempt(label: str, prompt: str, image_mode: str | None, stream: bool, max_turns: int, tools: bool = True) -> tuple[bool, str, list]:
     os.environ['TRUSTPCB_MUSE_STREAM'] = '1' if stream else '0'
     if image_mode:
         os.environ['TRUSTPCB_MUSE_IMAGE_MODE'] = image_mode
@@ -82,7 +83,7 @@ async def attempt(label: str, prompt: str, image_mode: str | None, stream: bool,
 
     with tempfile.TemporaryDirectory() as scratch:
         runner = MuseRunner(data_dir=scratch, max_tokens=700, effort='low')
-        request = RunRequest(None, 'You are a terse test assistant. Use the tools when asked.', prompt, registry(), max_turns, {})
+        request = RunRequest(None, 'You are a terse test assistant. Use the tools when asked.', prompt, registry() if tools else ToolRegistry([], Gate()), max_turns, {})
         try:
             await runner.run(request, emit, interact)
         except MuseError as exc:
@@ -100,6 +101,7 @@ async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--mode', choices=['tool_result', 'user_message', 'both', 'auto'], default='both',
                         help='where the image goes; auto lets the runner fall back by itself')
+    parser.add_argument('--images', action='store_true', help='also check images returned from tools')
     parser.add_argument('--plain', action='store_true', help='use plain responses instead of streaming')
     args = parser.parse_args()
     if not (os.environ.get('MODEL_API_KEY') or '').strip():
@@ -107,6 +109,12 @@ async def main() -> int:
         return 2
     stream = not args.plain
     failures = 0
+
+    print(f'endpoint {os.environ.get("TRUSTPCB_MUSE_BASE_URL") or "default"}, model {os.environ.get("TRUSTPCB_MUSE_MODEL") or "profile default"}')
+    ok, text, events = await attempt('text call', 'Reply with the single word: pong', None, stream, 1, tools=False)
+    worked = ok and bool(text.strip())
+    print(f'[{"ok" if worked else "FAIL"}] text call: replied={bool(text.strip())}, {totals(events)}' + ('' if ok else f' {text[:300]}'))
+    failures += 0 if worked else 1
 
     ok, text, events = await attempt('tool turn', 'Use add_numbers with a=17 and b=25, then state the sum in one short sentence.', None, stream, 4)
     sums = [p for k, p in events if k == 'tool_result' and p.get('name') == 'add_numbers']
@@ -116,7 +124,7 @@ async def main() -> int:
         failures += 1
         print('       ', text[:300])
 
-    modes = {'both': ['tool_result', 'user_message'], 'auto': [None]}.get(args.mode, [args.mode])
+    modes = [] if not args.images else {'both': ['tool_result', 'user_message'], 'auto': [None]}.get(args.mode, [args.mode])
     for mode in modes:
         label = f'image ({mode or "auto"})'
         ok, text, events = await attempt(label, 'Call show_swatch, then say in one word what colour the square is.', mode, stream, 4)

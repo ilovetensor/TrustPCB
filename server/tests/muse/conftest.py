@@ -14,10 +14,14 @@ from trustpcb.runners.muse import MuseRunner
 
 
 @pytest.fixture(autouse=True)
-def muse_env(monkeypatch):
+def muse_env(monkeypatch, tmp_path):
     monkeypatch.setenv('MODEL_API_KEY', KEY)
-    for name in ('TRUSTPCB_MUSE_EFFORT', 'TRUSTPCB_MUSE_IMAGE_MODE', 'TRUSTPCB_MUSE_STREAM', 'TRUSTPCB_MUSE_TIMEOUT_S'):
+    for name in ('TRUSTPCB_MUSE_BASE_URL', 'TRUSTPCB_MUSE_MODEL', 'TRUSTPCB_MUSE_EFFORT', 'TRUSTPCB_MUSE_IMAGE_MODE', 'TRUSTPCB_MUSE_STREAM', 'TRUSTPCB_MUSE_TIMEOUT_S'):
         monkeypatch.delenv(name, raising=False)
+    for name in ('META_API_KEY', 'BASETEN_API_KEY'):
+        monkeypatch.delenv(name, raising=False)
+    from trustpcb import settings_store
+    monkeypatch.setattr(settings_store, '_data_dir', tmp_path / 'settings')   # never read the developer's saved keys
 
 
 @pytest.fixture(params=['stream', 'plain'])

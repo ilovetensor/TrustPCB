@@ -11,7 +11,7 @@ Differences between KiCad versions that this module absorbs:
 * pad angles are absolute (they already include the footprint rotation).
 * footprint children are footprint-local; ``abs = footprint_xy + rotate(local, footprint_angle)``.
 
-The ids are the target ids used across the review (see ``docs/ARCHITECTURE.md``). Where a footprint repeats a pad number (several
+The ids are the target ids used across the review (see ``CONTRIBUTING.md``). Where a footprint repeats a pad number (several
 ``SH`` shield pads, or unnumbered mounting holes) the first keeps ``pad:<ref>:<number>``, later
 ones become ``pad:<ref>:<number>#2``, ``#3`` and unnumbered ones ``pad:<ref>:~<n>``.
 """

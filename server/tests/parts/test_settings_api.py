@@ -8,11 +8,11 @@ from trustpcb import settings_store
 VALUE = 'api-value-never-echoed-4242'
 
 
-def test_status_lists_the_three_keys_without_values(api):
+def test_status_lists_the_keys_without_values(api):
     body = api.get('/api/settings/keys').json()
-    assert [row['name'] for row in body['keys']] == ['DIGIKEY_CLIENT_ID', 'DIGIKEY_CLIENT_SECRET', 'MOUSER_API_KEY']
+    assert [row['name'] for row in body['keys']] == ['META_API_KEY', 'BASETEN_API_KEY', 'DIGIKEY_CLIENT_ID', 'DIGIKEY_CLIENT_SECRET', 'MOUSER_API_KEY']
     assert all(set(row) == {'name', 'service', 'label', 'get_url', 'set', 'source'} for row in body['keys'])
-    assert body['parts_available'] is False and body['read_only'] is False
+    assert body['parts_available'] is False and body['read_only'] is False and body['model_available'] is False
 
 
 def test_put_stores_and_never_echoes(api, caplog):
@@ -60,7 +60,7 @@ def test_the_demo_refuses_writes_and_shows_nothing(api, monkeypatch):
     assert api.put('/api/settings/keys/MOUSER_API_KEY', json={'value': 'other-value'}).status_code == 403
     assert api.delete('/api/settings/keys/MOUSER_API_KEY').status_code == 403
     shown = api.get('/api/settings/keys').json()
-    assert shown == {'read_only': True, 'keys': [], 'parts_available': False}
+    assert shown == {'read_only': True, 'keys': [], 'parts_available': False, 'model_available': False}
     assert settings_store.get_secret('MOUSER_API_KEY') == VALUE
 
 

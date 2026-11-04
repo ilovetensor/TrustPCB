@@ -162,6 +162,15 @@ export async function getKeyStatus(): Promise<Record<string, { set: boolean; sou
   } catch { return null; }
 }
 
+/** Whether a Muse key (Meta or Baseten, from Settings or the environment) is set; null when unknown (fixtures, demo, offline). */
+export async function getModelAvailable(): Promise<boolean | null> {
+  if (FIXTURE_MODE) return null;
+  try {
+    const r = await apiGet<Record<string, any>>("settings/keys");
+    return r?.read_only || typeof r?.model_available !== "boolean" ? null : r.model_available;
+  } catch { return null; }
+}
+
 /* ------------------------------ board ------------------------------ */
 
 const boardCache = new Map<string, Promise<BoardBundle>>();
@@ -323,8 +332,10 @@ export async function getCompare(from: string, to: string): Promise<CompareResul
 /* ------------------------------ settings: optional service keys ------------------------------ */
 
 export interface KeyRow { name: string; service: string; label: string; get_url: string; set: boolean; source: "env" | "app" | null }
-export interface KeySettings { read_only: boolean; keys: KeyRow[]; parts_available: boolean }
+export interface KeySettings { read_only: boolean; keys: KeyRow[]; parts_available: boolean; model_available?: boolean }
 let fixtureKeys: KeyRow[] = [
+  { name: "META_API_KEY", service: "Meta", label: "Meta API key (Muse Spark on api.meta.ai)", get_url: "https://developer.meta.ai/", set: false, source: null },
+  { name: "BASETEN_API_KEY", service: "Baseten", label: "Baseten API key (Muse Spark Open)", get_url: "https://app.baseten.co/settings/api_keys", set: false, source: null },
   { name: "DIGIKEY_CLIENT_ID", service: "DigiKey", label: "DigiKey client ID", get_url: "https://developer.digikey.com/", set: false, source: null },
   { name: "DIGIKEY_CLIENT_SECRET", service: "DigiKey", label: "DigiKey client secret", get_url: "https://developer.digikey.com/", set: false, source: null },
   { name: "MOUSER_API_KEY", service: "Mouser", label: "Mouser search API key", get_url: "https://www.mouser.com/api-hub/", set: false, source: null },

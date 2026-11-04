@@ -1,9 +1,9 @@
-"""Optional service keys (DigiKey, Mouser) kept on this machine.
+"""Optional service keys (Meta Muse, DigiKey, Mouser) kept on this machine.
 
 A key comes from the environment first and from `<data>/secrets.json` second. The file is written with mode 0600, is
 never copied by the demo seed script and is listed in `.gitignore`. A value goes in and is read back only by code inside the
-server that calls a supplier. Nothing here returns a value to the web app, writes one to a log or an event, or puts one into
-a model request, a report, a solver container, kicad-cli or the PDF browser (those programs get an allow-listed environment,
+server that calls that service (a model key goes only to its model provider, a supplier key only to its supplier). Nothing
+here returns a value to the web app, writes one to a log or an event, or puts one into a model prompt, a report, a solver container, kicad-cli or the PDF browser (those programs get an allow-listed environment,
 see `pcb/env.py`).
 
     get_secret(name)        the value, or None. Only for the supplier clients.
@@ -29,6 +29,8 @@ MAX_VALUE_CHARS = 512
 
 # name -> what the web app shows. The names are also the environment variables.
 KEYS: dict[str, dict[str, str]] = {
+    'META_API_KEY': {'service': 'Meta', 'label': 'Meta API key (Muse Spark on api.meta.ai)', 'url': 'https://developer.meta.ai/'},
+    'BASETEN_API_KEY': {'service': 'Baseten', 'label': 'Baseten API key (Muse Spark Open)', 'url': 'https://app.baseten.co/settings/api_keys'},
     'DIGIKEY_CLIENT_ID': {'service': 'DigiKey', 'label': 'DigiKey client ID', 'url': 'https://developer.digikey.com/'},
     'DIGIKEY_CLIENT_SECRET': {'service': 'DigiKey', 'label': 'DigiKey client secret', 'url': 'https://developer.digikey.com/'},
     'MOUSER_API_KEY': {'service': 'Mouser', 'label': 'Mouser search API key', 'url': 'https://www.mouser.com/api-hub/'},

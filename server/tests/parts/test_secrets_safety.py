@@ -14,7 +14,8 @@ from trustpcb.review.report_pdf import minimal_env
 
 ROOT = Path(__file__).resolve().parents[3]
 SERVER = ROOT / 'server' / 'trustpcb'
-NAMES = list(settings_store.KEYS)
+MODEL_KEYS = {'META_API_KEY', 'BASETEN_API_KEY'}     # read only by the Muse runner, see test_model_keys_stay_in_the_muse_runner
+NAMES = [name for name in settings_store.KEYS if name not in MODEL_KEYS]
 
 
 def test_the_secrets_file_and_env_files_are_git_ignored():
@@ -86,7 +87,16 @@ def test_get_secret_is_called_only_by_the_supplier_code():
             continue
         if 'get_secret(' in path.read_text(encoding='utf-8'):
             callers.append(path.relative_to(SERVER).as_posix())
-    assert set(callers) == {'parts/catalog.py'}, callers
+    assert set(callers) == {'parts/catalog.py', 'runners/muse.py'}, callers
+    muse = (SERVER / 'runners' / 'muse.py').read_text(encoding='utf-8')
+    assert not any(name in muse for name in NAMES), 'the Muse runner must never read a supplier key'
+
+
+def test_model_keys_stay_in_the_muse_runner():
+    allowed = {SERVER / 'settings_store.py', SERVER / 'api.py', SERVER / 'runners' / 'muse.py'}
+    offenders = [str(path.relative_to(ROOT)) for path in SERVER.rglob('*.py')
+                 if path not in allowed and any(name in path.read_text(encoding='utf-8') for name in MODEL_KEYS)]
+    assert not offenders, offenders
 
 
 def test_the_api_routes_never_call_get_secret():

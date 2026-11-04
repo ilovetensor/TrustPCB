@@ -16,8 +16,6 @@ These matter more than style. A change that breaks one will not be merged.
 
 You need Node.js 22 or newer and [uv](https://docs.astral.sh/uv/) (it installs Python 3.12). KiCad 10 (`kicad-cli`) is optional for most work: without it the tests that need it skip themselves. Docker is only needed for RF simulation work. A Muse API key is optional: the default **scripted** runner needs no key and calls no model, so you can run the app and all the tests without one.
 
-To see how the pieces fit together before you change anything, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
 ```sh
 git clone <your fork of this repository> trustpcb
 cd trustpcb
@@ -70,7 +68,7 @@ If both labels are present, `major` wins. The pull request title becomes the cha
 
 ## What makes a good analyzer or finding
 
-An analyzer is one module in `server/trustpcb/analyzers/` with `analyze(board, ctx) -> list[Candidate]` (see `track_angle.py` for a small one), its name added to `ANALYZER_NAMES` in `analyzers/base.py`, and tests in `server/tests/analyzers/`. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has the step-by-step list and the Candidate shape. A good one:
+An analyzer is one module in `server/trustpcb/analyzers/` with `analyze(board, ctx) -> list[Candidate]` (see `track_angle.py` for a small one), its name added to `ANALYZER_NAMES` in `analyzers/base.py`, and tests in `server/tests/analyzers/`. The step-by-step list and the Candidate shape are under [Adding an analyzer](#adding-an-analyzer) below. A good one:
 
 - **Measures one thing and says what.** Values come with units (mm, deg, ohm) and the limit it compared against.
 - **Points at the board.** Every candidate lists target ids that resolve with `Board.resolve`, and marks that let the app draw the place.
@@ -91,3 +89,28 @@ A good finding (changes to review logic and prompts) names the place, states the
 ## For maintainers
 
 When the repository is created, follow the setup list in [docs/RELEASING.md](docs/RELEASING.md): create the labels, allow the release commit through branch protection, turn on private vulnerability reporting, and fill in the contact method in the Code of Conduct.
+
+## Adding an analyzer
+
+1. Create `server/trustpcb/analyzers/<name>.py` with `RULE = "<name>"` and `analyze(board, ctx) -> list[dict]`. Use `Emitter(RULE).add(title, measurements, targets, marks, severity)`; `track_angle.py` is a small example. Measurements use `meas(value, unit)`; marks use `mark(type, targets, ...)`.
+2. Add the name to `ANALYZER_NAMES` in `analyzers/base.py` (this is also the run order) and any thresholds to `DEFAULTS` there, read with `ctx.t("key")`.
+3. If the rule is about layout and the review should judge it in phase 3, add it to `LAYOUT_RULES` in `review/budgets.py`. Rule groups are formed from each candidate's `rule`, so nothing else is needed for the review to see it.
+4. Add a short note on what it looks for to the table in the README.
+5. Add tests in `server/tests/analyzers/`: a small board where it fires, one where it stays quiet, and a run on a sample board where that makes sense.
+6. Run `bash scripts/test-related.sh server/trustpcb/analyzers/<name>.py`.
+
+An analyzer measures; it never judges. It sets `severity_hint` as a hint only, and one analyzer failing does not stop the others.
+
+## Evidence, findings and candidates
+
+- **Evidence** (`review/evidence.py`) is a stored row with a display code (E-nnn) and a type: `candidate`, `measurement`, `simulation`, `confirm`, `comparison`, `calculation`, `placement`, `reference`. Values are stored as `{measurements: {name: {value, unit}}, ...}`.
+- **Finding** (`review/findings.py`) is a row with a code (F-nnn), severity, class, text fields, marks (where on the board), evidence ids, assumptions and not-tested notes. Every change goes through `FindingEngine.prepare`, which:
+  - sets the class from the evidence (the model cannot choose it);
+  - refuses opinion rated critical;
+  - checks every number with a unit against evidence (`number_check.py`);
+  - checks every mark resolves on the board;
+  - refuses wording that claims the board was edited;
+  - refuses once (`lint.py`, then lets the same sentence stand, so a run never jams) a causal sentence with no evidence code, a do-not-populate statement that names one of several parts or guesses why, "keep the width constant" beside a width for the target impedance, and a severity other than the analyzers' worst hint with no `severity_reason`.
+- The server also refuses to dismiss an RF `netclass_width` result whose class width gives about the target impedance (`classwidth.py`) and writes the class width and the width for the target into the finding that covers it. `read_schematic` with kind `state` returns the schematic's no-connect markers, do-not-populate flags and pin names (`analyzers/schematic.py`), and parity results carry what the schematic already has.
+- **Fingerprints** (`fingerprint.py`) keep a finding's identity when coordinates shift, so a new version can be compared finding by finding (`compare.py`, `change.py`).
+- **Candidates** are the analyzers' and KiCad's raw results: `{id, rule, title, source, measurements, targets, marks, severity_hint, ...}`. Targets are board ids such as `ref:C5`, `pad:U1:3`, `net:GND` or `point:x,y`, resolved by `Board.resolve`.

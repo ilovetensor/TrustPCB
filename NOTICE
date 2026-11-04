@@ -4,7 +4,7 @@ Copyright (c) 2026 TrustPCB contributors. Released under the MIT License (see LI
 Dreamblox
 ---------
 TrustPCB starts from the backend and web shell of Dreamblox, the author's earlier project.
-Dreamblox's first commit is dated 29 October 2026. See docs/HACKATHON.md. The Dreamblox
+Dreamblox's first commit is dated 29 October 2026. See the Hackathon section of README.md. The Dreamblox
 licence, which requires this notice to be kept with substantial portions of that code:
 
   MIT License

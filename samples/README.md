@@ -6,6 +6,7 @@ These boards were designed by the TrustPCB author. The board designs (outline, c
 |---|---|
 | `nrf52840-node` | USB-powered nRF52840 sensor node with a printed meander antenna |
 | `nrf52840-node-v2` | The same board after the engineer's hand edits for the free re-tune the review confirmed: L1 becomes a 0.51 pF series capacitor, and C20 and C19 are fitted with 0.3 pF and 0.36 pF. Copper and geometry are unchanged, for version rechecks |
+| `nrf52840-node-v3` | A revised nRF52840 node, reviewed in the demo video on Muse Spark Open |
 | `patch-2g5` | 2.5 GHz patch antenna on FR-4 |
 | `usb-ldo-led` | A 40 x 30 mm USB-C powered 3.3 V regulator board (AP2112K, fuse, CC resistors, status LED, test points) with no radio, for the no-wireless review path |
 

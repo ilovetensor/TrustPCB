@@ -47,18 +47,24 @@ const env = {
   TRUSTPCB_BACKEND_URL: `http://127.0.0.1:${BACKEND_PORT}`,
 };
 const children = [];
+const windows = process.platform === 'win32';
+// Each service runs in its own process group; Windows has no groups, so taskkill stops the tree instead.
+function killTree(pid, signal) {
+  if (windows) spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
+  else process.kill(-pid, signal);
+}
 let stopping = false;
 function stop(code = 0) {
   if (stopping) return;
   stopping = true;
   for (const child of children) {
     if (child.pid) {
-      try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already exited */ }
+      try { killTree(child.pid, 'SIGTERM'); } catch { /* already exited */ }
     }
   }
   const force = setTimeout(() => {
     for (const child of children) {
-      if (child.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }
+      if (child.pid) { try { killTree(child.pid, 'SIGKILL'); } catch {} }
     }
     process.exit(code);
   }, 4000);
@@ -67,7 +73,7 @@ function stop(code = 0) {
 }
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => stop());
 function launch(command, args, cwd) {
-  const child = spawn(command, args, { cwd, env, stdio: 'inherit', detached: true });
+  const child = spawn(command, args, { cwd, env, stdio: 'inherit', detached: !windows, shell: windows });
   children.push(child);
   child.on('error', error => { console.error(error.message); stop(1); });
   child.on('exit', code => { if (!stopping) stop(code ?? 1); });
@@ -83,7 +89,8 @@ if (extraRequirements) {
 }
 uvArgs.push('uvicorn', 'trustpcb.api:app', '--app-dir', 'server', '--host', '127.0.0.1', '--port', String(BACKEND_PORT), '--timeout-graceful-shutdown', '3');
 launch('uv', uvArgs, root);
-if (hasWeb) launch('npm', ['run', 'dev'], path.join(root, 'web'));
+// TRUSTPCB_WEB_MODE=start serves the production build (run `npm run build` first): no dev overlay, for recordings
+if (hasWeb) launch('npm', ['run', process.env.TRUSTPCB_WEB_MODE === 'start' ? 'start' : 'dev'], path.join(root, 'web'));
 else console.log('web/package.json not found: starting the backend only.');
 console.log(`\nTrustPCB backend → http://127.0.0.1:${BACKEND_PORT}${hasWeb ? `\nTrustPCB → http://127.0.0.1:${WEB_PORT}` : ''}\n`);
 

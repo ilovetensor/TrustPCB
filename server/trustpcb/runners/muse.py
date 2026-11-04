@@ -14,7 +14,13 @@ Facts this module relies on (Meta Model API docs, checked 2026-10-31):
   * Prompt caching is automatic on the server; this module sends no cache markers.
   * The `-contributor` models allow training on the content, so this runner refuses them.
 
-Configuration (environment): MODEL_API_KEY (required, the only credential ever sent),
+Baseten's hackathon endpoint (https://inference.baseten.co, model `meta-models/muse-spark-open-1026`) speaks the
+same Messages format with the same Bearer auth; its responses carry `thinking` blocks before text and tool calls.
+
+Key and provider (first one set wins): MODEL_API_KEY (sent to TRUSTPCB_MUSE_BASE_URL, default api.meta.ai), then
+META_API_KEY (api.meta.ai, muse-spark-1.3), then BASETEN_API_KEY (inference.baseten.co, muse-spark-open-1026). The last
+two may also be saved in Settings (settings_store); only the chosen key is sent, and only to its own host.
+Other configuration (environment): TRUSTPCB_MUSE_BASE_URL (an https URL on ALLOWED_HOSTS), TRUSTPCB_MUSE_MODEL (wins over the profile model),
 TRUSTPCB_MUSE_EFFORT (default medium), TRUSTPCB_MUSE_IMAGE_MODE (tool_result|user_message),
 TRUSTPCB_MUSE_STREAM (default 1; 0 uses plain responses), TRUSTPCB_MUSE_TIMEOUT_S (read timeout),
 TRUSTPCB_DATA_DIR (where conversations are saved, under muse_sessions/).
@@ -32,6 +38,7 @@ import re
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -42,6 +49,13 @@ log = logging.getLogger('trustpcb.muse')
 BASE_URL = 'https://api.meta.ai'
 ENDPOINT = '/v1/messages'
 DEFAULT_MODEL = 'muse-spark-1.3'
+# The key is sent only to these hosts, over https.
+ALLOWED_HOSTS = ('api.meta.ai', 'inference.baseten.co')
+# Named keys and where each one goes. A key saved for one provider is never sent to the other.
+PROVIDERS = {
+    'META_API_KEY': {'base_url': BASE_URL, 'model': DEFAULT_MODEL},
+    'BASETEN_API_KEY': {'base_url': 'https://inference.baseten.co', 'model': 'meta-models/muse-spark-open-1026'},
+}
 DEFAULT_EFFORT = 'medium'
 EFFORTS = ('low', 'medium', 'high', 'xhigh')
 MAX_TOKENS = 8000
@@ -85,7 +99,7 @@ class _Canceled(Exception):
 
 
 _BEARER = re.compile(r'(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{6,}')
-_ENV_KEY = re.compile(r'(?i)(MODEL_API_KEY\s*[=:]\s*)[^\s,;"\']+')
+_ENV_KEY = re.compile(r'(?i)((?:MODEL|META|BASETEN)_API_KEY\s*[=:]\s*)[^\s,;"\']+')
 
 
 def redact(text: Any, secrets: tuple[str, ...] | list[str] = ()) -> str:
@@ -95,6 +109,55 @@ def redact(text: Any, secrets: tuple[str, ...] | list[str] = ()) -> str:
             out = out.replace(secret, '[REDACTED]')
     out = _BEARER.sub(r'\1[REDACTED]', out)
     return _ENV_KEY.sub(r'\1[REDACTED]', out)
+
+
+def _stored(name: str) -> str | None:
+    from .. import settings_store
+    try:
+        return settings_store.get_secret(name)
+    except Exception:                               # an unreadable store is the same as no stored key
+        return None
+
+
+def resolve_target() -> dict | None:
+    """{'name', 'key', 'base_url', 'model'} for the first key that is set, or None. base_url and model are None for MODEL_API_KEY."""
+    key = (os.environ.get('MODEL_API_KEY') or '').strip()
+    if key:
+        return {'name': 'MODEL_API_KEY', 'key': key, 'base_url': None, 'model': None}
+    for name, target in PROVIDERS.items():
+        key = (_stored(name) or '').strip()
+        if key:
+            return {'name': name, 'key': key, **target}
+    return None
+
+
+def configured() -> bool:
+    """Whether any Muse key is set (environment or Settings). Never returns or logs the value."""
+    return resolve_target() is not None
+
+
+def resolve_base_url(value: str | None = None) -> str:
+    """TRUSTPCB_MUSE_BASE_URL, else `value`, else the default; refuses any host that may not receive the key."""
+    url = (os.environ.get('TRUSTPCB_MUSE_BASE_URL') or value or BASE_URL).strip()
+    scheme = host = ''
+    ok = False
+    try:
+        parts = urlsplit(url)
+        scheme, host = parts.scheme, (parts.hostname or '').lower()
+        ok = scheme == 'https' and host in ALLOWED_HOSTS and not parts.username and not parts.password and parts.port in (None, 443)
+    except ValueError:
+        pass
+    if not ok:
+        raise MuseError(f'Refusing to send the Muse key to {host or "that URL"}: the base URL must be https on one of {", ".join(ALLOWED_HOSTS)}.')
+    return f'https://{host}{parts.path.rstrip("/")}'
+
+
+def resolve_base_url_for(provider_url: str, override: str | None = None) -> str:
+    """The base URL for a named provider key: `override` only when it is on the provider's own host."""
+    url = resolve_base_url(provider_url) if not override else resolve_base_url(override)
+    if urlsplit(url).hostname != urlsplit(provider_url).hostname:
+        raise MuseError(f'Refusing to send this key to {urlsplit(url).hostname}: it belongs to {urlsplit(provider_url).hostname}.')
+    return url
 
 
 # ---- message helpers -----------------------------------------------------------------------
@@ -289,7 +352,7 @@ class _Turn:
             if block.get('type') == 'text':
                 block.setdefault('text', '')
             elif block.get('type') == 'thinking':
-                block.setdefault('thinking', '')
+                block['thinking'] = block.get('thinking') or ''
             elif block.get('type') == 'tool_use':
                 block['input'] = block.get('input') or {}
             index = int(event.get('index', len(self.blocks)))
@@ -345,6 +408,9 @@ class _Turn:
             raise MuseStreamError('The Muse response stream ended before the message was complete.', retryable=True)
         content = [self.blocks[i] for i in sorted(self.blocks)]
         content = [b for b in content if not (b.get('type') == 'text' and not b.get('text'))]
+        for block in content:
+            if block.get('type') == 'thinking' and not block.get('signature'):
+                block.pop('signature', None)         # a block that never received a signature is replayed without one
         return {'content': content, 'stop_reason': self.stop_reason, 'usage': self.usage, 'bad_inputs': self.bad_inputs}
 
 
@@ -352,7 +418,7 @@ class _Turn:
 
 class MuseRunner:
     def __init__(self, *, data_dir: Path | str | None = None, transport: httpx.AsyncBaseTransport | None = None,
-                 base_url: str = BASE_URL, max_tokens: int = MAX_TOKENS, model: str | None = None, effort: str | None = None,
+                 base_url: str | None = None, max_tokens: int = MAX_TOKENS, model: str | None = None, effort: str | None = None,
                  sleep=None):
         self.data_dir = Path(data_dir) if data_dir else Path(os.environ.get('TRUSTPCB_DATA_DIR') or REPO_ROOT / '.trustpcb')
         self.transport, self.base_url, self.max_tokens = transport, base_url, max_tokens
@@ -373,13 +439,14 @@ class MuseRunner:
             raise MuseError(f'Refusing model {model}: contributor models allow training on user content. Use a standard model such as {DEFAULT_MODEL}.')
         return model
 
-    def _api_key(self) -> str:
-        key = (os.environ.get('MODEL_API_KEY') or '').strip()
-        if not key:
-            raise MuseError('MODEL_API_KEY is not set. The muse_api runner reads the Muse key only from that environment variable.')
+    def _target(self) -> dict:
+        target = resolve_target()
+        if target is None:
+            raise MuseError('No Muse key is set. Add a Meta or Baseten API key in Settings, or set META_API_KEY, BASETEN_API_KEY or MODEL_API_KEY.')
+        key = target['key']
         if not key.isascii() or any(c.isspace() for c in key):
-            raise MuseError('MODEL_API_KEY contains characters that cannot be sent as a header. Check that it was copied whole.')
-        return key
+            raise MuseError(f'{target["name"]} contains characters that cannot be sent as a header. Check that it was copied whole.')
+        return target
 
     def _effort(self, request: RunRequest) -> str:
         effort = os.environ.get('TRUSTPCB_MUSE_EFFORT') or self.effort or (request.profile or {}).get('effort') or DEFAULT_EFFORT
@@ -439,9 +506,12 @@ class MuseRunner:
         return httpx.Timeout(connect=15.0, read=read, write=30.0, pool=15.0)
 
     async def _run(self, request: RunRequest, emit) -> None:
-        self._key = self._api_key()
+        target = self._target()
+        self._key = target['key']
         profile = request.profile or {}
-        model = self._check_model(self.model or profile.get('model') or DEFAULT_MODEL)
+        model = self._check_model(os.environ.get('TRUSTPCB_MUSE_MODEL') or self.model or target['model'] or profile.get('model') or DEFAULT_MODEL)
+        # A named key goes only to its own host; TRUSTPCB_MUSE_BASE_URL steers MODEL_API_KEY alone.
+        base_url = resolve_base_url(self.base_url) if target['base_url'] is None else resolve_base_url_for(target['base_url'], self.base_url)
         effort = self._effort(request)
         stream = (os.environ.get('TRUSTPCB_MUSE_STREAM') or '1') != '0'
         forced = os.environ.get('TRUSTPCB_MUSE_IMAGE_MODE') or None
@@ -469,7 +539,8 @@ class MuseRunner:
         turns = nudges = 0
         headers = {'Authorization': f'Bearer {self._key}', 'Content-Type': 'application/json', 'User-Agent': 'trustpcb-muse/1'}
 
-        async with httpx.AsyncClient(base_url=self.base_url, headers=headers, timeout=self._timeout(stream), transport=self.transport) as client:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=self._timeout(stream), transport=self.transport,
+                                         follow_redirects=False) as client:
             try:
                 while True:
                     if self._cancel.is_set():
@@ -694,7 +765,7 @@ class MuseRunner:
             if block.get('type') == 'thinking' and (block.get('thinking') or '').strip():
                 await emit('thought', {'text': block['thinking']})
             elif block.get('type') == 'text':
-                await emit('text_delta', {'text': block['text']})
+                await emit('text_delta', {'text': block.get('text') or ''})
         return {'content': content, 'stop_reason': data.get('stop_reason'), 'usage': data.get('usage') or {}, 'bad_inputs': set()}
 
 
