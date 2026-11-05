@@ -4,9 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Releases are created automatically when a pull request is merged to `main`; the release workflow moves the entries below into a dated version section and adds one line for the merged pull request. See [docs/RELEASING.md](docs/RELEASING.md). Nothing has been released yet: the first release will be 0.1.0 and will include everything listed under Unreleased.
+Releases are created automatically when a pull request is merged to `main`; the release workflow moves the entries below into a dated version section and adds one line for the merged pull request. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-11-05
 
 ### Added
 
