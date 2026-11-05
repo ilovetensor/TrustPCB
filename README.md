@@ -17,7 +17,9 @@ An open-source AI reviewer for KiCad boards that runs real checks and simulation
 
 <img src="web/public/brand/meta-logo.svg" alt="Meta" height="18"> &nbsp;Built on **Meta Muse Spark**. The demo below runs on Muse Spark Open.
 
-[![Watch the demo: a TrustPCB review of the nRF52840 sample board](docs/media/demo-poster.jpg)](https://trustpcb.vercel.app/#demo)
+[![A TrustPCB review of the nRF52840 sample board, at 4x speed](docs/media/demo.gif)](https://trustpcb.vercel.app/#demo)
+
+<sub>4x speed. [Full video with sound](https://trustpcb.vercel.app/#demo).</sub>
 
 *Demo (1 min 42 s): a full review of `samples/nrf52840-node-v3` running on `meta-models/muse-spark-open-1026` via Baseten.*
 
