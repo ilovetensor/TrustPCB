@@ -19,7 +19,7 @@ An open-source AI reviewer for KiCad boards that runs real checks and simulation
 
 [![A TrustPCB review of the nRF52840 sample board, at 4x speed](docs/media/demo.gif)](https://trustpcb.vercel.app/#demo)
 
-<sub>4x speed. [Full video with sound](https://trustpcb.vercel.app/#demo).</sub>
+<sub>4x speed. [Full video at normal speed](https://trustpcb.vercel.app/#demo).</sub>
 
 *Demo (1 min 42 s): a full review of `samples/nrf52840-node-v3` running on `meta-models/muse-spark-open-1026` via Baseten.*
 
